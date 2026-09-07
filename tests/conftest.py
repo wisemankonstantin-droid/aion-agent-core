@@ -10,7 +10,12 @@ TEST_DB = ROOT / ".aion-test.db"
 if TEST_DB.exists():
     TEST_DB.unlink()
 
-os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
+POSTGRES_GATE = os.getenv("AION_POSTGRES_GATE") == "1"
+if POSTGRES_GATE:
+    # Only the disposable loopback CI service is allowed; no production URL.
+    os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres@127.0.0.1:5432/aion_gate"
+else:
+    os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 os.environ["AION_DISABLE_EXTERNAL_DISCOVERY"] = "1"
 os.environ["AION_RETURN_THRESHOLD_MINUTES"] = "1"
 os.environ["AION_JOIN_RATE_PER_MINUTE"] = "500"
@@ -18,7 +23,8 @@ os.environ["AION_JOIN_RATE_PER_MINUTE"] = "500"
 from app.db import Base, engine  # noqa: E402
 from app import models  # noqa: E402,F401
 
-Base.metadata.create_all(bind=engine)
+if not POSTGRES_GATE:
+    Base.metadata.create_all(bind=engine)
 
 
 def pytest_sessionfinish(session, exitstatus):

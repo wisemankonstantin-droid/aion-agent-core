@@ -1,0 +1,72 @@
+name: PostgreSQL pre-production release gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/postgres-release-gate-0.7.1]
+permissions:
+  contents: read
+jobs:
+  postgres-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: aion_gate
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aion_gate"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      AION_REQUIRE_A2A: "1"
+      AION_DISABLE_EXTERNAL_DISCOVERY: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Clean hash-locked installation
+        run: |
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/pip install --require-hashes -r requirements.txt
+      - name: Dependency integrity
+        run: python -m pip check
+      - name: Secret scan
+        run: python scripts/check_secrets.py
+      - name: Compile and workflow YAML
+        run: |
+          python -m compileall -q app tests scripts
+          python -c "import pathlib,yaml; [yaml.safe_load(p.read_text()) for p in pathlib.Path('.github/workflows').glob('*.yml')]"
+      - name: Full SQLite suite
+        run: python -m pytest -q
+      - name: PostgreSQL fresh and upgrade migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/aion_gate
+        run: |
+          python -c "from app.db import engine; from sqlalchemy import text; from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config('alembic.ini')).get_heads()==['0004_reputation_idempotency']; print(engine.connect().execute(text('select version()')).scalar())"
+          python -m alembic upgrade 0003_activation_funnel
+          python -m alembic upgrade head
+          python -m alembic upgrade head
+          python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0004_reputation_idempotency'"
+          python -m alembic check
+          python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_fresh')); c.close()"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
+      - name: PostgreSQL application and real concurrency suite
+        env:
+          AION_POSTGRES_GATE: "1"
+        run: python -m pytest -q --ignore=tests/test_migrations.py --ignore=tests/test_startup.py
+      - name: PostgreSQL startup and readiness
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/aion_gate
+        run: |
+          python scripts/readiness.py
+          python -m alembic upgrade head
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 18761 > /tmp/aion-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true; cat /tmp/aion-server.log' EXIT
+          python -c "import time,urllib.request,json; time.sleep(5); r=json.load(urllib.request.urlopen('http://127.0.0.1:18761/readiness',timeout=10)); print(r); assert all(r['checks'].values())"
