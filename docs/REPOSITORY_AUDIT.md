@@ -108,13 +108,9 @@ The second clean Python 3.12 environment installed successfully with artifact
 hash verification; all 42 tests passed there as well. Git diff whitespace check
 passes. One inherited trailing space in a migration docstring was removed.
 
-Local git commit and backup tag exist. Remote publication was attempted through
-both normal git and the connected GitHub API. Git has no authenticated credential;
-the connector's create_branch call returned HTTP 403 `Resource not accessible
-by integration`. Repository metadata push/admin flags do not override that
-integration permission restriction. No remote modifications or PR were created.
-Post-push remote reread and GitHub Actions validation are therefore pending.
-
-USER BLOCKER: authenticate git for this repository or grant the connected GitHub
-integration repository content write permission (workflow writes are also needed
-for .github/workflows). Render workspace confirmation is separately pending.
+GitHub CLI authentication is working through the Windows keyring as
+`wisemankonstantin-droid`, and Git uses the GitHub CLI credential helper.
+`codex/normalize-repository` was pushed successfully at
+`cb79011583506b59ede4bba9f6be8144b3392333`. The remote branch SHA and all 77
+tracked blob SHAs match the local commit. Required files were read back through
+the GitHub API. No merge, default-branch update or deployment was performed.
