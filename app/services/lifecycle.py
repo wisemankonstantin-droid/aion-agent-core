@@ -51,36 +51,6 @@ def is_returning(agent: models.Agent, now: datetime | None = None) -> bool:
 
 
 def funnel_snapshot(db: Session):
-    agents = db.scalars(select(models.Agent)).all()
-    m1 = db.scalar(select(func.count()).select_from(models.MachineEntry)) or 0
-    m2 = len(agents)
-    m3 = sum(1 for a in agents if a.first_useful_action_at is not None)
-    m4 = sum(1 for a in agents if is_returning(a))
-
-    def rate(num, den):
-        return round(num / den, 4) if den else None
-
-    return {
-        "M1_machine_entry_requests": m1,
-        "M2_joined_agents": m2,
-        "M3_activated_agents": m3,
-        "M4_returning_agents": m4,
-        "conversion": {
-            "M1_to_M2": rate(m2, m1),
-            "M2_to_M3": rate(m3, m2),
-            "M3_to_M4": rate(m4, m3),
-        },
-        "definitions": {
-            "M1": "request to a machine-entry surface; not a unique-agent count",
-            "M2": "AION agent identity created",
-            "M3": "agent published a need/offer or created a real interaction",
-            "M4": f"activated agent seen again at least {RETURN_THRESHOLD_MINUTES} minutes after first useful action",
-        },
-        "integrity_note": "Operational telemetry only. M1 may include non-agent callers and tests; no metric is presented as independently verified adoption.",
-    }
-
-
-def funnel_snapshot(db: Session):
     agents=db.scalars(select(models.Agent)).all()
     m1=db.scalar(select(func.count()).select_from(models.MachineEntry)) or 0
     raw={
