@@ -1,7 +1,23 @@
-# Project checkpoint — 2026-09-07
+# Project checkpoint — 2026-09-08
+
+PRE-PRODUCTION RELEASE GATE: PASS
+
+- **Release branch:** `codex/postgres-release-gate-0.7.1`.
+- **Exact tested release commit:** `6ecc7574bf07ab3099674d4b8fea0ef7aef7a626`. This checkpoint is a documentation-only successor; obtain its own HEAD with `git rev-parse HEAD`.
+- **Cumulative lineage:** recovery `406df8e` -> atomic join `b08629e` -> DNS pinning `a57dfa1` -> matching `15ae2b8` -> cleanup `022855b16a23cb5eca36fd9d0652632ba07b5123` -> release gate.
+- **Isolation/version:** disposable GitHub Actions service `postgres:18`, actual PostgreSQL 18.6, loopback-only exposed port, test-only databases aion_gate and aion_fresh. No production credentials used.
+- **Clean install:** fresh Python 3.12.14 virtual environment; hash-required installation PASS; pip check reports no broken requirements.
+- **Full SQLite suite:** 75 passed, 3 skipped (the three PostgreSQL-only tests).
+- **PostgreSQL suite:** 76 passed, no skips. All tests except the two explicitly SQLite-specific migration/startup modules ran on PostgreSQL; separate PostgreSQL migration/startup steps replace those modules.
+- **Real concurrency:** two workers use distinct PostgreSQL backend PIDs. Tests observe both granted and waiting advisory locks in pg_locks. Exact-ID and different-ID/same-logical-identity races produce one Agent, two initial capabilities, one credential, and a controlled 409 for the competitor. Injected capability persistence failure leaves no Agent.
+- **Migrations:** fresh-to-head and repeated upgrade PASS; 0003_activation_funnel -> 0004_reputation_idempotency PASS; single expected Alembic head and database revision asserted; alembic check PASS. No downgrade.
+- **Readiness/startup:** source compilation and workflow YAML parsing PASS; static readiness all checks true; alembic upgrade head followed by real Uvicorn on 127.0.0.1:18761 returned readiness with database and A2A runtime true.
+- **Secret scan:** 88 files, 0 findings.
+- **Actions evidence:** https://github.com/wisemankonstantin-droid/aion-agent-core/actions/runs/34166647559 — success, every mandatory step inspected. Normal AION CI run 34166647437 also succeeded.
+- **Remaining gate:** independent cutover decision, backup/rollback preparation and explicit production authorization. Passing isolated validation does not mean production is hardened. Main, recovery, Render, production environment and database unchanged; no deployment performed.
 
 - **CURRENT VERSION:** direct recovered and reconciled source 0.7.1. The retained historical ZIP contains 0.6.2 despite its 0.6.0 filename.
-- **CURRENT BRANCH:** `codex/cleanup-shadowed-definitions-0.7.1`, created directly from matching-integrity hardening commit `15ae2b8d4b7cb7a549c2577c8af3f14c9030a837`.
+- **CURRENT BRANCH:** `codex/postgres-release-gate-0.7.1`, based exactly on `022855b16a23cb5eca36fd9d0652632ba07b5123`.
 - **CURRENT PRODUCTION:** `https://aion-agent-core-live.onrender.com`, Render service `aion-agent-core-live` (`srv-daei9gpt0dsc73abhs10`) in `My Workspace` (`tea-daehtv2d0e5s738ir540`). Public health/version/readiness report 0.7.1, A2A mounted and database ready.
 - **Repository structure:** `app/` FastAPI/SQLAlchemy source; `alembic/` four migrations; `tests/` REST, MCP, A2A, identity, matching, external validation, migration and startup regression; `scripts/` readiness, secret and operational checks; root dependency lock, Docker/Render configuration and operating docs; `.github/workflows/` CI and explicit live gates. The ZIP is historical evidence, not source of truth.
 - **Completed work:** normalized 0.6.2 into direct source; established GitHub authorization/publication; verified Render provenance; recovered and reconciled 0.7.1 direct source; restored server-controlled A2A acquisition attribution; expanded the permanent directive; completed atomic join/race hardening; completed bounded DNS/SSRF rebinding hardening; completed bounded matching-integrity hardening; removed historical shadowed registry and lifecycle definitions without changing their effective behavior.
