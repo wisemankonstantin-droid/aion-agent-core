@@ -89,12 +89,12 @@ def discover_external_agents(query:str,limit:int=5):
 
 # AION_EXTERNAL_VALIDATION_V1
 import datetime as _dt
+import http.client as _http
 import ipaddress as _ip
 import json as _json
 import socket as _socket
-import urllib.error as _uerr
+import ssl as _ssl
 import urllib.parse as _uparse
-import urllib.request as _ureq
 import uuid as _uuid
 import time as _time
 
@@ -103,34 +103,60 @@ _AION_VALIDATION_CACHE = {}
 _AION_VALIDATION_TTL = 600
 _AION_MAX_EXTERNAL_BYTES = 1_000_000
 
-class _NoRedirect(_ureq.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-_AION_OPENER = _ureq.build_opener(_NoRedirect)
-
-def _public_url(url):
+def _resolve_public_https(url):
     try:
         p=_uparse.urlparse(str(url or ""))
         if p.scheme!="https" or not p.hostname or p.username or p.password:
-            return False,"url_must_be_public_https"
+            return None,(),"url_must_be_public_https"
         if p.port not in (None,443):
-            return False,"nonstandard_port_rejected"
+            return None,(),"nonstandard_port_rejected"
         infos=_socket.getaddrinfo(p.hostname,p.port or 443,type=_socket.SOCK_STREAM)
-        ips={x[4][0] for x in infos}
-        if not ips:
-            return False,"dns_no_addresses"
-        for raw in ips:
+        if not infos:
+            return None,(),"dns_no_addresses"
+        candidates=[]
+        seen=set()
+        for family,socktype,proto,_,sockaddr in infos:
+            raw=sockaddr[0]
             ip=_ip.ip_address(raw)
             if not ip.is_global:
-                return False,"non_public_address:"+str(ip)
-        return True,None
+                return None,(),"non_public_address:"+str(ip)
+            key=(family,socktype,proto,sockaddr)
+            if key not in seen:
+                seen.add(key); candidates.append(key)
+        return p,tuple(candidates),None
     except Exception as e:
-        return False,"url_validation_error:"+type(e).__name__
+        return None,(),"url_validation_error:"+type(e).__name__
+
+def _public_url(url):
+    _,candidates,reason=_resolve_public_https(url)
+    return bool(candidates),reason
+
+class _PinnedHTTPSConnection(_http.HTTPConnection):
+    """HTTPS over one already validated numeric socket destination."""
+    def __init__(self,hostname,candidate,timeout):
+        super().__init__(hostname,443,timeout=timeout)
+        self._candidate=candidate
+        self._tls_context=_ssl.create_default_context()
+
+    def connect(self):
+        family,socktype,proto,sockaddr=self._candidate
+        raw=_socket.socket(family,socktype,proto)
+        try:
+            raw.settimeout(self.timeout)
+            raw.connect(sockaddr)
+            # The TCP peer is pinned, while the original hostname remains the
+            # TLS SNI and certificate-verification identity.
+            self.sock=self._tls_context.wrap_socket(raw,server_hostname=self.host)
+        except Exception:
+            raw.close()
+            raise
+
+def _host_header(hostname):
+    return "["+hostname+"]" if ":" in hostname else hostname
 
 def _read_json(method,url,payload=None,headers=None,timeout=7):
-    ok,reason=_public_url(url)
-    if not ok:
+    parsed,candidates,reason=_resolve_public_https(url)
+    if reason:
         return None,None,reason
     data=None if payload is None else _json.dumps(payload).encode()
     h={"User-Agent":"AION-External-Validator/0.7.1","Accept":"application/json"}
@@ -138,23 +164,31 @@ def _read_json(method,url,payload=None,headers=None,timeout=7):
         h["Content-Type"]="application/json"
     if headers:
         h.update(headers)
-    req=_ureq.Request(url,data=data,headers=h,method=method)
-    try:
-        with _AION_OPENER.open(req,timeout=timeout) as r:
+    h["Host"]=_host_header(parsed.hostname)
+    target=(parsed.path or "/")+("?"+parsed.query if parsed.query else "")
+    last_error=None
+    for candidate in candidates:
+        connection=_PinnedHTTPSConnection(parsed.hostname,candidate,timeout)
+        try:
+            connection.request(method,target,body=data,headers=h)
+            r=connection.getresponse()
             raw=r.read(_AION_MAX_EXTERNAL_BYTES+1)
             if len(raw)>_AION_MAX_EXTERNAL_BYTES:
                 return r.status,None,"response_too_large"
+            if 300 <= r.status < 400:
+                return r.status,None,"redirect_rejected"
+            if r.status >= 400:
+                body=raw.decode("utf-8","replace")
+                return r.status,None,"http_"+str(r.status)+":"+body[:300]
             try:
                 return r.status,_json.loads(raw.decode("utf-8","replace")),None
             except Exception:
                 return r.status,None,"non_json_response"
-    except _uerr.HTTPError as e:
-        raw=e.read(4096).decode("utf-8","replace")
-        if 300 <= e.code < 400:
-            return e.code,None,"redirect_rejected"
-        return e.code,None,"http_"+str(e.code)+":"+raw[:300]
-    except Exception as e:
-        return None,None,type(e).__name__+":"+str(e)[:240]
+        except Exception as e:
+            last_error=type(e).__name__+":"+str(e)[:240]
+        finally:
+            connection.close()
+    return None,None,last_error or "connection_failed"
 
 def _interface(card):
     if not isinstance(card,dict):
