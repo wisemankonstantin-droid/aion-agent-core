@@ -90,6 +90,8 @@ def test_matching_v1_returns_ranked_evidence_and_action():
     assert match["reasons"][0]["type"] == "exact_capability"
     assert match["next_action"]["body"]["need_id"] == need["id"]
     assert match["integrity"]["endpoint_liveness_verified"] is False
+    assert match["provider"]["route"]["availability"] == "declared_unverified"
+    assert match["provider"]["route"]["directly_callable"] is False
 
 
 def test_first_contact_is_useful_without_creating_membership():

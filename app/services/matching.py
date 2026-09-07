@@ -25,7 +25,7 @@ def _route(agent):
     e=(getattr(agent,"endpoint",None) or "").strip(); p=(getattr(agent,"protocol",None) or "").upper()
     if e.startswith(("https://","http://")):
         return {"type":"declared_direct_endpoint","endpoint":e,"protocol":p or None,
-                "availability":"declared_unverified","directly_callable":"unverified"}
+                "availability":"declared_unverified","directly_callable":False}
     if p=="MCP" and e:
         return {"type":"mcp_registry_locator","registry_identifier":e,"protocol":"MCP",
                 "availability":"registry_listed_liveness_unverified","directly_callable":False}
@@ -57,8 +57,9 @@ def find_matches(db: Session, need_id: int):
         route=_route(agent); rep=max(0.0,float(agent.reputation or 0.0))
         rb=min(0.05,rep/100.0); trust=(agent.trust_level or "declared").lower()
         tb={"observed":0.03,"verified":0.05,"trusted":0.05}.get(trust,0.0)
-        eb=0.05 if route["type"]=="declared_direct_endpoint" else 0.02 if route["type"]=="mcp_registry_locator" else 0.0
-        score=min(1.0,0.85*cap_score+rb+tb+eb)
+        # Route declarations have no positive weight until endpoint liveness is
+        # represented by persisted, verified operational evidence.
+        score=min(1.0,0.85*cap_score+rb+tb)
         if rb:reasons.append({"type":"reputation_evidence","reputation":rep,"weight":round(rb,4)})
         if tb:reasons.append({"type":"trust_evidence","trust_level":trust,"weight":tb})
         reasons.append({"type":"active_offer","offer_id":offer.id,"weight":0.0})
