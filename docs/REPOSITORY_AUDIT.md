@@ -51,33 +51,43 @@ base tag is still mutable; this is not a claim of bit-identical OS images.
 
 ## Environment and secret checks
 
-Names only: DATABASE_URL, AION_PUBLIC_URL, RENDER_EXTERNAL_URL, AION_REQUIRE_A2A,
-AION_JOIN_RATE_PER_MINUTE, AION_MCP_RATE_PER_MINUTE,
-AION_EXTERNAL_DISCOVERY_TIMEOUT, AION_RETURN_THRESHOLD_MINUTES,
-AION_ALLOWED_ORIGINS, AION_DISABLE_EXTERNAL_DISCOVERY, PYTHON_VERSION, PORT.
-The last two are deployment settings. .env.example has no values. Do not load
-blank numeric variables; leave optional settings absent for defaults.
+Repository/runtime names: DATABASE_URL, AION_APP_VERSION, AION_PUBLIC_URL,
+RENDER_EXTERNAL_URL, AION_REQUIRE_A2A, AION_JOIN_RATE_PER_MINUTE,
+AION_MCP_RATE_PER_MINUTE, AION_EXTERNAL_DISCOVERY_TIMEOUT,
+AION_RETURN_THRESHOLD_MINUTES, AION_ALLOWED_ORIGINS,
+AION_DISABLE_EXTERNAL_DISCOVERY, AION_OPERATED_EXTERNAL_IDS, PYTHON_VERSION and
+PORT. `.env.example` has no values. Do not load blank numeric variables; leave
+optional settings absent for defaults.
+
+The live service additionally retains historical source-patch variable names:
+AION_COMPOSITE_SMOKE, AION_ENABLE_FIRST_CONTACT, AION_FIRST_CONTACT_PATCH,
+AION_PATCH_B64, AION_V42_PATCH, AION_V4_DELTA, AION_V5_DELTA and AION_V6_DELTA.
+Their output has been recovered into direct files, so the reconciled build does
+not require these source carriers.
 
 Offline heuristic scan covers tracked/new files, nested ZIP members and all
 historical unique blobs for recognizable provider tokens, private keys,
 credential URLs and literal secrets. Initial result: zero findings, three
 historical blobs. Values are never printed. This is defense in depth, not a
 guarantee against arbitrary unrecognizable credentials. Ignore rules protect
-environment files, databases, virtualenvs and key files. No live secret values
-were retrieved. Live environment names require the pending Render selection.
+environment files, databases, virtualenvs and key files. Source-patch values
+were used only for recovery in an untracked workspace; database and credential
+values were not read or copied.
 
-## Production compatibility: critical drift
+## Production compatibility: recovered and awaiting review
 
 Public health and readiness report 0.7.1, healthy database and mounted A2A.
-Production exposes newer routes, including /identity-resolution, /first-contact,
-/offers/canonical, /needs/canonical, /version and /readiness. Recovered 0.6.2
-is therefore not equivalent to the current production application.
+Authenticated read-only Render inspection established the live service, linked
+Git commit, deploy ID, Python version, commands, environment names and database
+resource. The exact ZIP-plus-patch build chain was recovered and reproduced in
+an isolated tree. Its output is now direct source on
+`codex/recover-production-0.7.1`; it has not been merged or deployed.
 
-The ZIP's DEPLOY_RENDER.md described auto-deploy from GitHub with ZIP extraction;
-current Dashboard settings are unverified. Render MCP requires explicit user
-confirmation of My Workspace before inspection. No production change was made.
-Keep this normalization branch isolated until newer source is recovered.
-See DEPLOY_RENDER.md for target commands, cutover and rollback limitations.
+The recovered delta adds identity resolution, duplicate protection, first
+contact, canonical needs/offers, unique external funnel metrics, structured
+matching and verified external A2A interaction. Models and migrations are
+unchanged at head 0004. See `PRODUCTION_RECOVERY_0.7.1.md` for provenance,
+classification and database evidence.
 
 Live funnel snapshot: 302 machine-entry requests, 2 raw identity/activation rows,
 1 returning row, 1 estimated unique external activated/returning agent and 1
@@ -89,18 +99,22 @@ adoption. Public probes may increase request telemetry; no agents were created.
 - Untouched archive baseline: 40 passed, 1 failed. A2A test expected result.parts;
   pinned SDK source wraps the response in result.message. Corrected the test,
   preserving backend behavior; strengthened the live smoke response assertion.
-- Normalized source: 42 passed, no skips, with AION_REQUIRE_A2A=1.
+- Normalized 0.6.2 source: 42 passed, no skips, with AION_REQUIRE_A2A=1.
+- Reconciled 0.7.1 source: 50 passed, including identity/deduplication,
+  canonical rows, matching v1, first contact, external validation and a
+  forward migration path. The first run exposed stale 0.6.2 assertions and an
+  A2A attribution spoof regression; both were corrected and covered.
 - New startup test: fresh Alembic upgrade, repeated upgrade, schema check, real
   Uvicorn startup, mounted A2A and empty-database stats.
 - Readiness: 24/24; pip check: no broken requirements.
-- Live smoke: public GET routes respond, but version gate rejects 0.7.1 when
-  0.6.2 is expected. It stops before live protocol POSTs. Do not weaken this gate
-  to conceal source drift.
+- Live smoke now requires 0.7.1. It was not used to mutate production during
+  source recovery; public read-only probes confirmed health/readiness/version.
 - Upstream deprecation warnings remain. Docker is unavailable locally;
   PostgreSQL migration compatibility and Linux CI are not implied by SQLite tests.
 
-No new product features were introduced. The next critical task is source and
-deployment reconciliation with production 0.7.1, followed by identity/A2A work.
+No speculative product feature was introduced. Existing production behavior was
+recovered, and one server-controlled A2A attribution invariant was restored.
+The next gate is independent review; merge and deployment remain separate.
 
 ## Publication outcome
 

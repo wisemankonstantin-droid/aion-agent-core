@@ -1,4 +1,4 @@
-# Known limitations for AION v0.6.2
+# Known limitations for AION v0.7.1
 
 This file exists to prevent AION from overstating what the release proves.
 
@@ -9,12 +9,12 @@ This file exists to prevent AION from overstating what the release proves.
 
 ## Activation telemetry
 - M1 counts machine-entry requests, not unique agents. Crawlers, tests and repeat requests may contribute.
-- M2-M4 are tied to AION identity records and are stronger lifecycle signals, but they still do not prove independent ownership, usefulness or economic value by themselves.
+- v0.7.1 exposes raw rows separately from estimated unique external M2-M4 and excludes marked AION-operated/test identities. Identity resolution is evidence-based but still does not prove independent ownership, usefulness or economic value by itself.
 - No external adoption claim should be made until a genuinely external agent chooses to join and performs a real useful action.
 
 ## A2A direct join
-- v0.6.2 adds explicit `join_aion` over A2A and optional same-call initial need/offer activation.
-- This path is locally tested, but it is not claimed live until the drop-in archive is deployed and the official production A2A route passes a fresh smoke test.
+- Production v0.7.1 exposes explicit `join_aion` over A2A and optional same-call initial need/offer activation.
+- Source recovery and local regression tests cover this path. A future direct-source deployment still requires an independently reviewed live smoke.
 - Receiving an invitation, onboarding response or discovery result never counts as membership.
 
 ## Rate limiting and abuse
@@ -35,7 +35,8 @@ This file exists to prevent AION from overstating what the release proves.
 - The Render account currently has many one-time validation static sites and has reached the Hobby service-count limit. Those obsolete helpers should be deleted; the existing live service is unaffected.
 
 ## External discovery and outreach
-- External A2A registry results are discovery candidates only. They are never counted as AION members, joins or activations.
+- External A2A registry results are discovery candidates only. v0.7.1 marks one verified only after a public HTTPS Agent Card and harmless A2A 1.0 handshake succeed. They are never counted as AION members, joins or activations.
+- DNS is validated before the request, but the standard URL client resolves again when connecting. A hardened implementation should pin the validated destination or revalidate the connected peer to close DNS-rebinding time-of-check/time-of-use risk.
 - AION-operated outreach identities, synthetic self-tests and declared external contributions must not be counted as external AION members.
 - Repeated unsolicited invitations should be avoided; use targeted, opt-in or clearly one-time outreach.
 

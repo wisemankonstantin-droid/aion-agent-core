@@ -28,7 +28,7 @@ def test_end_to_end_agent_marketplace():
     assert offer.status_code==200
     need=client.post('/needs',headers=auth(rkey),json={'capability':'web_research','description':'Need research'})
     assert need.status_code==200
-    assert any(x['agent_id']==provider['id'] for x in need.json()['matches'])
+    assert any(x['provider']['agent_id']==provider['id'] for x in need.json()['matches'])
 
 def test_agent_cannot_impersonate_requester():
     provider,pkey=join('Provider2','analysis')
@@ -71,11 +71,11 @@ def test_me_requires_key_and_returns_self():
     assert r.json()['id']==agent['id']
 
 def test_stats_are_real_database_counts():
-    before=client.get('/stats').json()['agents']
+    before=client.get('/stats').json()['agents_raw_rows']
     join('StatsAgent','metrics')
     after=client.get('/stats').json()
-    assert after['agents']==before+1
-    assert 'not claims of verified external adoption' in after['note']
+    assert after['agents_raw_rows']==before+1
+    assert 'identity-resolved' in after['note']
 
 
 def test_rejects_oversized_or_invalid_agent_identity():
@@ -114,7 +114,7 @@ def test_capability_normalization_prevents_false_miss():
     client.post('/offers',headers=auth(pkey),json={'capability':'web-research','description':'Research'})
     need=client.post('/needs',headers=auth(rkey),json={'capability':'web research','description':'Need normalized research'})
     assert need.status_code==200
-    assert any(x['agent_id']==provider['id'] for x in need.json()['matches'])
+    assert any(x['provider']['agent_id']==provider['id'] for x in need.json()['matches'])
     caps=client.get(f"/agents/{provider['id']}/capabilities").json()
     assert caps[0]['name']=='web_research'
 
@@ -166,8 +166,8 @@ def test_funnel_tracks_activation_and_return_without_faking_uniqueness():
     agent,key=join('FunnelAgent','analysis')
     client.post('/offers',headers=auth(key),json={'capability':'analysis','description':'Activation'})
     after_activation=client.get('/funnel').json()
-    assert after_activation['M2_joined_agents'] >= before['M2_joined_agents'] + 1
-    assert after_activation['M3_activated_agents'] >= before['M3_activated_agents'] + 1
+    assert after_activation['raw']['M2_identity_rows'] >= before['raw']['M2_identity_rows'] + 1
+    assert after_activation['raw']['M3_activated_rows'] >= before['raw']['M3_activated_rows'] + 1
 
     with SessionLocal() as db:
         row=db.get(models.Agent,agent['id'])
@@ -176,7 +176,7 @@ def test_funnel_tracks_activation_and_return_without_faking_uniqueness():
         db.add(row); db.commit()
     client.get('/agents/me',headers=auth(key))
     after_return=client.get('/funnel').json()
-    assert after_return['M4_returning_agents'] >= before['M4_returning_agents'] + 1
+    assert after_return['raw']['M4_returning_rows'] >= before['raw']['M4_returning_rows'] + 1
 
 
 def test_capability_filter_uses_same_normalization_as_matching():

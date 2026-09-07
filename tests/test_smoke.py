@@ -8,7 +8,7 @@ def test_health():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
-    assert r.json()["version"] == "0.6.2"
+    assert r.json()["version"] == "0.7.1"
 
 
 def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
@@ -16,7 +16,7 @@ def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
     assert r.status_code == 200
     card = r.json()
     assert card["name"].startswith("AION")
-    assert card["version"] == "0.6.2"
+    assert card["version"] == "0.7.1"
     assert card["supportedInterfaces"][0]["protocolVersion"] == "1.0"
     assert card["supportedInterfaces"][0]["url"].endswith("/a2a/v1")
     ids = {skill["id"] for skill in card["skills"]}
@@ -55,7 +55,7 @@ def test_stats_include_activation_signals_and_funnel():
     assert 'agents_with_capabilities' in data
     assert 'agents_with_needs' in data
     assert 'agents_with_offers' in data
-    assert set(data["funnel"]).issuperset({"M1_machine_entry_requests", "M2_joined_agents", "M3_activated_agents", "M4_returning_agents"})
+    assert set(data["funnel"]).issuperset({"M1_machine_entry_requests", "raw", "estimated_unique_external", "identity_resolution"})
 
 
 def test_agent_skill_discovery():
@@ -122,8 +122,8 @@ def test_a2a_explicit_join_can_create_and_activate_agent():
     assert joined["created"]["offer_id"] > 0
 
     funnel = client.get("/funnel").json()
-    assert funnel["M2_joined_agents"] >= 1
-    assert funnel["M3_activated_agents"] >= 1
+    assert funnel["raw"]["M2_identity_rows"] >= 1
+    assert funnel["raw"]["M3_activated_rows"] >= 1
 
 
 def test_a2a_join_handler_works_without_sdk_route_and_forces_source():

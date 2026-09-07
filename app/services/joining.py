@@ -16,8 +16,18 @@ def join_agent(payload: schemas.AgentCreate, db: Session):
     """
     if not allow_join():
         raise HTTPException(status_code=429, detail=f"join rate limit exceeded ({configured_join_limit()}/minute)")
-    if db.scalar(select(models.Agent).where(models.Agent.external_id == payload.external_id)):
-        raise HTTPException(status_code=409, detail="external_id already exists")
+    from .identity_resolution import find_logical_duplicate
+    duplicate=find_logical_duplicate(payload,db)
+    if duplicate:
+        a=duplicate["agent"]
+        raise HTTPException(status_code=409,detail={
+          "code":"logical_identity_exists",
+          "existing_agent_id":a.id,
+          "existing_external_id":a.external_id,
+          "evidence":duplicate["evidence"],
+          "message":"A logical AION identity already exists; no new row or credential was created.",
+          "return_guidance":"Reuse the retained credential. If lost, report credential_lost; do not create another external_id."
+        })
 
     raw_key, key_hash = issue_agent_key()
     agent = models.Agent(
@@ -26,7 +36,7 @@ def join_agent(payload: schemas.AgentCreate, db: Session):
         description=payload.description,
         endpoint=payload.endpoint,
         protocol=payload.protocol,
-        acquisition_source=payload.acquisition_source,
+        acquisition_source=(payload.acquisition_source or payload.referrer or "direct")[:120],
         referrer=payload.referrer,
         owner_required=False,
         api_key_hash=key_hash,

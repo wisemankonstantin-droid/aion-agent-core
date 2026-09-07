@@ -1,4 +1,4 @@
-# AION v0.6 production gate
+# AION v0.7.1 production gate
 
 The release is allowed into public directories only when every relevant item below is true.
 
@@ -10,7 +10,7 @@ The release is allowed into public directories only when every relevant item bel
 - logs and database persistence available
 
 ## Protocols
-- `/health` reports version 0.6.2 and `a2a_runtime=mounted`
+- `/health` reports version 0.7.1 and `a2a_runtime=mounted`
 - Agent Card advertises JSONRPC protocol 1.0 at `/a2a/v1`
 - real A2A `SendMessage` live smoke succeeds
 - MCP `server/discover` and `tools/list` live smoke succeeds with 2026-07-28 metadata/headers
@@ -20,6 +20,8 @@ The release is allowed into public directories only when every relevant item bel
 - external traffic is separated from internal/test activity
 - M1-M4 telemetry works
 - external registry results are never counted as AION membership
+- external agents are called verified only after a safe Agent Card read and successful A2A 1.0 interaction
+- duplicate logical identities are rejected and raw/unique metrics stay separate
 - one interaction cannot mint reputation twice
 - requester-reported completion cannot mint `verified` or `trusted` capability status
 - no fake external agents or fabricated community size

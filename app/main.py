@@ -20,7 +20,7 @@ from .services.external_registry import discover_external_agents
 from .services.rate_limit import allow_mcp_request, configured_join_limit, configured_mcp_limit
 from .services.joining import join_agent
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
 
 app = FastAPI(
@@ -31,6 +31,16 @@ app = FastAPI(
         "AION does not require a human approval step for compatible agents to join."
     ),
 )
+
+
+@app.middleware("http")
+async def aion_request_id(request: Request, call_next):
+    import uuid
+    rid=(request.headers.get("X-Request-ID") or str(uuid.uuid4()))[:128]
+    request.state.request_id=rid
+    response=await call_next(request)
+    response.headers["X-Request-ID"]=rid
+    return response
 
 
 @app.middleware("http")
@@ -99,6 +109,118 @@ def health():
         "version": APP_VERSION,
         "a2a_runtime": A2A_RUNTIME.get("status", "unknown"),
     }
+
+
+
+def _aion_model_dict(obj):
+    from sqlalchemy import inspect as _sa_inspect
+    out={}
+    for attr in _sa_inspect(obj).mapper.column_attrs:
+        v=getattr(obj,attr.key)
+        if v is None or isinstance(v,(str,int,float,bool)):
+            out[attr.key]=v
+        elif hasattr(v,"isoformat"):
+            out[attr.key]=v.isoformat()
+        else:
+            out[attr.key]=str(v)
+    return out
+
+def _aion_identity_map(db):
+    from .services.identity_resolution import logical_groups
+    row_to_group={}
+    for g in logical_groups(db):
+        for rid in g["row_ids"]:
+            row_to_group[rid]=g
+    return row_to_group
+
+@app.get("/offers/canonical")
+def canonical_offers(db: Session = Depends(get_db)):
+    row_to_group=_aion_identity_map(db)
+    buckets={}
+    for o in db.scalars(select(models.Offer).order_by(models.Offer.id.asc())).all():
+        g=row_to_group.get(o.agent_id)
+        canonical=g["canonical_agent_id"] if g else o.agent_id
+        k=(canonical,(o.capability or "").strip().lower())
+        buckets.setdefault(k,[]).append(o)
+    results=[]
+    for (canonical,cap),rows in buckets.items():
+        chosen=max(rows,key=lambda x:x.id)
+        g=row_to_group.get(chosen.agent_id)
+        item=_aion_model_dict(chosen)
+        item.update({"canonical_agent_id":canonical,"raw_offer_ids":[x.id for x in rows],
+          "superseded_offer_ids":[x.id for x in rows if x.id!=chosen.id],
+          "aion_operated_or_test":bool(g and g["aion_operated_or_test"]),
+          "identity_evidence":g["identity_evidence"] if g else []})
+        results.append(item)
+    return {"results":sorted(results,key=lambda x:x.get("id",0),reverse=True),
+      "raw_rows":sum(len(v) for v in buckets.values()),"canonical_rows":len(results),
+      "integrity_note":"Offers are version-collapsed only within one logical agent and normalized capability. Historical rows are retained."}
+
+@app.get("/needs/canonical")
+def canonical_needs(db: Session = Depends(get_db)):
+    row_to_group=_aion_identity_map(db)
+    buckets={}
+    for n in db.scalars(select(models.Need).order_by(models.Need.id.asc())).all():
+        g=row_to_group.get(n.agent_id)
+        canonical=g["canonical_agent_id"] if g else n.agent_id
+        k=(canonical,(n.capability or "").strip().lower(),n.status)
+        buckets.setdefault(k,[]).append(n)
+    results=[]
+    for (canonical,cap,status),rows in buckets.items():
+        chosen=max(rows,key=lambda x:x.id)
+        g=row_to_group.get(chosen.agent_id)
+        item=_aion_model_dict(chosen)
+        item.update({"canonical_agent_id":canonical,"raw_need_ids":[x.id for x in rows],
+          "superseded_need_ids":[x.id for x in rows if x.id!=chosen.id],
+          "aion_operated_or_test":bool(g and g["aion_operated_or_test"]),
+          "identity_evidence":g["identity_evidence"] if g else []})
+        results.append(item)
+    return {"results":sorted(results,key=lambda x:x.get("id",0),reverse=True),
+      "raw_rows":sum(len(v) for v in buckets.values()),"canonical_rows":len(results),
+      "integrity_note":"Needs are version-collapsed only within one logical agent, normalized capability and status. Historical rows are retained."}
+
+@app.get("/interactions")
+def read_interactions(db: Session = Depends(get_db)):
+    row_to_group=_aion_identity_map(db)
+    rows=db.scalars(select(models.Interaction).order_by(models.Interaction.id.desc())).all()
+    results=[]
+    for obj in rows:
+        item=_aion_model_dict(obj)
+        parties={}
+        for k,v in list(item.items()):
+            if k.endswith("_agent_id") and isinstance(v,int):
+                g=row_to_group.get(v)
+                parties[k]={"raw_agent_id":v,"canonical_agent_id":g["canonical_agent_id"] if g else v,
+                            "aion_operated_or_test":bool(g and g["aion_operated_or_test"])}
+        item["logical_parties"]=parties
+        results.append(item)
+    return {"results":results,"raw_rows":len(results),
+      "integrity_note":"Interactions are not automatically deduplicated: semantic completion/evidence must remain auditable. Logical party mappings are provided when agent-id columns exist."}
+
+
+@app.get("/first-contact")
+def first_contact(request: Request, db: Session = Depends(get_db)):
+    from .services.first_contact import first_contact_value
+    record_machine_entry(db,"first_contact")
+    return first_contact_value(str(request.base_url).rstrip("/"))
+
+
+@app.get("/version")
+def version():
+    return {"status":"ok","service":"aion-agent-core","version":APP_VERSION,
+            "a2a_protocol":"1.0","mcp_protocol":MCP_VERSION}
+
+@app.get("/readiness")
+def readiness(db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    checks={"database":False,"a2a_runtime":A2A_RUNTIME.get("status")=="mounted"}
+    try:
+        db.execute(text("SELECT 1"));checks["database"]=True
+    except Exception:
+        checks["database"]=False
+    if not all(checks.values()):
+        raise HTTPException(status_code=503,detail={"status":"not_ready","checks":checks})
+    return {"status":"ready","checks":checks,"version":APP_VERSION}
 
 
 @app.get("/onboarding")
@@ -170,20 +292,74 @@ def acquisition_workers():
     }
 
 
+@app.get("/identity-resolution")
+def identity_resolution(db: Session = Depends(get_db)):
+    from .services.identity_resolution import snapshot
+    return snapshot(db)
+
+
 @app.get("/stats")
 def stats(db: Session = Depends(get_db)):
+    from collections import Counter
+    from .services.identity_resolution import logical_groups, snapshot
+
+    groups=logical_groups(db)
+    ident=snapshot(db)
+    row_to_group={}
+    for g in groups:
+        for rid in g["row_ids"]:
+            row_to_group[rid]=g
+    ext_groups=[g for g in groups if not g["aion_operated_or_test"]]
+
+    agents_all=db.scalars(select(models.Agent)).all()
+    offers_all=db.scalars(select(models.Offer)).all()
+    needs_all=db.scalars(select(models.Need)).all()
+
+    def logical_key(agent_id):
+        g=row_to_group.get(agent_id)
+        return ("logical",g["canonical_agent_id"]) if g else ("raw",agent_id)
+
+    def is_external(agent_id):
+        g=row_to_group.get(agent_id)
+        return bool(g and not g["aion_operated_or_test"])
+
+    offer_keys={(logical_key(o.agent_id),(o.capability or "").strip().lower()) for o in offers_all if is_external(o.agent_id)}
+    open_need_keys={(logical_key(n.agent_id),(n.capability or "").strip().lower()) for n in needs_all if n.status=="open" and is_external(n.agent_id)}
+    offer_providers={logical_key(o.agent_id) for o in offers_all if is_external(o.agent_id)}
+    need_requesters={logical_key(n.agent_id) for n in needs_all if n.status=="open" and is_external(n.agent_id)}
+
+    acquisition_unique=Counter()
+    for g in ext_groups:
+        a=db.get(models.Agent,g["canonical_agent_id"])
+        source=((a.acquisition_source if a else None) or (a.referrer if a else None) or "direct").strip() or "direct"
+        acquisition_unique[source]+=1
+
+    acquisition_field_raw=Counter(((a.acquisition_source or "direct").strip() or "direct") for a in agents_all)
+    referrer_raw=Counter(((a.referrer or "none").strip() or "none") for a in agents_all)
+
     return {
-        "agents": db.scalar(select(func.count()).select_from(models.Agent)) or 0,
-        "open_needs": db.scalar(select(func.count()).select_from(models.Need).where(models.Need.status == "open")) or 0,
-        "offers": db.scalar(select(func.count()).select_from(models.Offer)) or 0,
-        "interactions": db.scalar(select(func.count()).select_from(models.Interaction)) or 0,
-        "payment_intents": db.scalar(select(func.count()).select_from(models.PaymentIntent)) or 0,
-        "agents_with_capabilities": db.scalar(select(func.count(func.distinct(models.Capability.agent_id)))) or 0,
-        "agents_with_needs": db.scalar(select(func.count(func.distinct(models.Need.agent_id)))) or 0,
-        "agents_with_offers": db.scalar(select(func.count(func.distinct(models.Offer.agent_id)))) or 0,
-        "acquisition_sources": {str(k or "direct"): v for k, v in db.execute(select(models.Agent.acquisition_source, func.count()).group_by(models.Agent.acquisition_source)).all()},
-        "funnel": funnel_snapshot(db),
-        "note": "Counts are operational telemetry, not claims of verified external adoption.",
+        "agents_raw_rows":len(agents_all),
+        "estimated_unique_external_agents":ident["estimated_unique_external_agents"],
+        "duplicate_identity_rows":ident["duplicate_identity_rows"],
+        "open_needs":len(open_need_keys),
+        "open_needs_raw_rows":sum(1 for n in needs_all if n.status=="open"),
+        "offers":len(offer_keys),
+        "offers_raw_rows":len(offers_all),
+        "interactions":db.scalar(select(func.count()).select_from(models.Interaction)) or 0,
+        "interactions_semantics":"raw database rows; no interaction is counted as unique external value until its parties/evidence are inspectable",
+        "payment_intents":db.scalar(select(func.count()).select_from(models.PaymentIntent)) or 0,
+        "agents_with_capabilities":sum(1 for g in ext_groups if g["capabilities"]),
+        "agents_with_needs":len(need_requesters),
+        "agents_with_offers":len(offer_providers),
+        "agents_with_needs_raw_rows":len({n.agent_id for n in needs_all if n.status=="open"}),
+        "agents_with_offers_raw_rows":len({o.agent_id for o in offers_all}),
+        "acquisition_sources":dict(acquisition_unique),
+        "acquisition_sources_unique_external":dict(acquisition_unique),
+        "acquisition_source_field_raw_rows":dict(acquisition_field_raw),
+        "referrers_raw_rows":dict(referrer_raw),
+        "attribution_note":"Unique external attribution uses the canonical logical identity's explicit acquisition_source, else its preserved referrer, else direct. Historical database fields are not rewritten.",
+        "funnel":funnel_snapshot(db),
+        "note":"Growth-facing counts are identity-resolved. Raw rows remain separately exposed for audit; duplicate identities/offers do not become growth."
     }
 
 
@@ -419,7 +595,15 @@ def my_opportunities(agent=Depends(require_agent), db: Session = Depends(get_db)
 
 @app.get("/matches/{need_id}")
 def matches(need_id: int, db: Session = Depends(get_db)):
-    return {"need_id": need_id, "matches": find_matches(db, need_id)}
+    need=db.get(models.Need,need_id)
+    if not need:raise HTTPException(404,"need not found")
+    if need.status!="open":raise HTTPException(409,"need is not open")
+    rows=find_matches(db,need_id)
+    return {"version":"matching/1.0","status":"matched" if rows else "no_internal_match",
+      "data":{"need_id":need_id,"matches":rows,"count":len(rows)},
+      "next_actions":[{"when":"match_selected","action":"create_interaction","endpoint":"/interactions","method":"POST"},
+                      {"when":"no_internal_match","action":"external_discovery","endpoint":f"/discover/external?q={need.capability}","method":"GET"}],
+      "integrity":"match_score ranks compatibility evidence; it is not proof of completed work or live endpoint reachability."}
 
 
 @app.post("/interactions")
@@ -432,6 +616,9 @@ def create_interaction(payload: schemas.InteractionCreate, agent=Depends(require
         need = db.get(models.Need, payload.need_id)
         if not need or need.agent_id != agent.id:
             raise HTTPException(422, "need_id must belong to the authenticated requester")
+        allowed_provider_ids={m["provider"]["agent_id"] for m in find_matches(db,need.id)}
+        if payload.provider_agent_id not in allowed_provider_ids:
+            raise HTTPException(422, "provider is not a current compatible match for this need")
     obj = models.Interaction(
         requester_agent_id=agent.id,
         provider_agent_id=payload.provider_agent_id,
@@ -886,3 +1073,78 @@ except Exception as exc:  # pragma: no cover - exercised only when dependency/ru
 @app.get("/a2a/status")
 def a2a_status():
     return A2A_RUNTIME
+
+
+import json as _aion_json
+
+class _AionA2AV1IngressCompat:
+    def __init__(self, app):
+        self.app=app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type")!="http" or scope.get("method")!="POST" or scope.get("path","").rstrip("/")!="/a2a/v1":
+            return await self.app(scope,receive,send)
+
+        hdr={k.decode("latin1").lower():v.decode("latin1") for k,v in scope.get("headers",[])}
+        if hdr.get("a2a-version")!="1.0":
+            return await self.app(scope,receive,send)
+
+        chunks=[]
+        more=True
+        while more:
+            msg=await receive()
+            if msg.get("type")!="http.request":
+                continue
+            chunks.append(msg.get("body",b""))
+            more=msg.get("more_body",False)
+        raw=b"".join(chunks)
+        newraw=raw
+        try:
+            obj=_aion_json.loads(raw.decode("utf-8"))
+            changed=False
+            if obj.get("method")=="message/send":
+                obj["method"]="SendMessage"; changed=True
+            m=((obj.get("params") or {}).get("message") or {})
+            if m.get("role")=="user":
+                m["role"]="ROLE_USER"; changed=True
+            elif m.get("role")=="agent":
+                m["role"]="ROLE_AGENT"; changed=True
+            parts=m.get("parts")
+            if isinstance(parts,list):
+                np=[]
+                for part in parts:
+                    if not isinstance(part,dict):
+                        np.append(part); continue
+                    q=dict(part)
+                    if "kind" in q:
+                        q.pop("kind",None); changed=True
+                    data=q.get("data")
+                    if isinstance(data,dict) and data.get("action") and not any(k in q for k in ("text","raw","url")):
+                        meta=q.get("metadata")
+                        q={"text":_aion_json.dumps(data,ensure_ascii=False,separators=(",",":"))}
+                        if meta is not None: q["metadata"]=meta
+                        changed=True
+                    np.append(q)
+                m["parts"]=np
+            if changed:
+                newraw=_aion_json.dumps(obj,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+        except Exception:
+            newraw=raw
+
+        ns=dict(scope)
+        nh=[]
+        for k,v in scope.get("headers",[]):
+            if k.lower()!=b"content-length":
+                nh.append((k,v))
+        nh.append((b"content-length",str(len(newraw)).encode("ascii")))
+        ns["headers"]=nh
+        sent=False
+        async def replay():
+            nonlocal sent
+            if sent:
+                return {"type":"http.request","body":b"","more_body":False}
+            sent=True
+            return {"type":"http.request","body":newraw,"more_body":False}
+        return await self.app(ns,replay,send)
+
+app.add_middleware(_AionA2AV1IngressCompat)

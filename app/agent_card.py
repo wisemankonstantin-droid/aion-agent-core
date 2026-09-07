@@ -1,3 +1,4 @@
+import os
 def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
@@ -6,7 +7,7 @@ def get_agent_card(base_url: str):
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
-        "version": "0.6.2",
+        "version": os.getenv("AION_APP_VERSION", "0.7.1"),
         "documentationUrl": f"{base_url}/docs",
         "capabilities": {"streaming": False, "pushNotifications": False, "extendedAgentCard": False},
         "defaultInputModes": ["text/plain", "application/json"],

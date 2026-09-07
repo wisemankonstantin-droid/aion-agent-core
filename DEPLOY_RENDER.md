@@ -1,16 +1,18 @@
 # Render deployment gate
 
 Verified 2026-09-07: https://aion-agent-core-live.onrender.com/health reports
-v0.7.1 with A2A mounted. Recovered source is v0.6.2. Do not merge this branch
-into an auto-deployed branch or deploy it over the newer production service
-until its source has been recovered and compared.
+v0.7.1 with A2A mounted. The exact production patch chain has been recovered,
+applied to the 0.6.2 base and moved into direct files on
+`codex/recover-production-0.7.1`. Do not merge or deploy this review branch
+automatically.
 
-Historical instructions inside the ZIP describe a build extracting
-AION_Agent_Core_v0.6.0.zip into AION_Agent_Core_v0.6.0/. This is historical
-evidence, not a verified current Dashboard setting. The original ZIP is
-retained unchanged for compatibility, not as development source of truth.
+The live Dashboard build command was verified: it extracts the historical ZIP,
+appends a registry patch and executes four environment-backed source deltas.
+That mechanism produced the recovered files but is no longer the target build
+path. The original ZIP is retained unchanged as recovery evidence, not as the
+development source of truth. See `docs/PRODUCTION_RECOVERY_0.7.1.md`.
 
-## Target after source reconciliation
+## Reviewed direct-source target
 
 - Repository root (Render Root Directory blank).
 - Build: `python -m pip install --require-hashes -r requirements.txt`.
@@ -20,29 +22,28 @@ retained unchanged for compatibility, not as development source of truth.
 - AION_REQUIRE_A2A=1; verified AION_PUBLIC_URL or RENDER_EXTERNAL_URL.
 - Optional numeric variables must be valid numbers or absent, never empty.
 
-render.yaml is a root-source blueprint, not proof of live settings. Its resource
-names and free database plan are historical. Do not apply it to create replacement
-production resources; confirm current plans and backups before provisioning.
+render.yaml is a root-source blueprint, not a request to alter the existing live
+service. Do not apply it to create replacement production resources. The live
+service and database identities are recorded in the production recovery audit.
 
 ## Safe cutover
 
-1. In the correct Render workspace inspect live repository, branch, deployed
-   commit, rootDir, commands and environment names (never expose values).
-2. Recover v0.7.1 source and migrations. Preserve newer behavior and snapshot
-   the production database before any migration work.
-3. Test reconciled source in CI and a separate database, including upgrade
+1. Independently review the recovered source, provenance and structured diff.
+2. Reconfirm the production revision and snapshot the database before any
+   future migration work. This recovery adds no migration after head 0004.
+3. Test the reviewed source in CI and a separate PostgreSQL database, including upgrade
    compatibility, real startup and A2A/MCP/REST regressions.
 4. Update the existing service to root-source commands and deploy a reviewed
    commit only after these gates. Check health, protocols and persistence.
 5. Remove ZIP only once the direct-source deployment is verified. Git history
    and backup/pre-normalization-20260907 retain the original.
 
-Local tests cover fresh SQLite migrations, repeated upgrade and real Uvicorn;
-they do not prove compatibility with an unknown newer production database.
-The v0.6.2 live smoke intentionally rejects v0.7.1. Update version expectations
-only alongside recovery of that newer code.
+Local tests cover fresh SQLite migrations, forward upgrade from 0003 to 0004,
+repeated upgrade/check and real Uvicorn startup. A separate PostgreSQL rehearsal
+is still required before a future schema change. The live smoke now requires
+v0.7.1 and must only be run as part of a separately authorized deployment review.
 
 To inspect the original source use the backup tag; a separate recovery branch
 can be created with `git switch -c recovery/from-backup backup/pre-normalization-20260907`.
-This git backup is not a production database backup and is not a reason to
-roll production back to v0.6.2.
+This git backup is not a production database backup and is not a reason to roll
+production back.

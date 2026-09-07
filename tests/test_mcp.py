@@ -33,7 +33,7 @@ def test_mcp_discovery_and_tools_list():
     assert r.status_code == 200
     result = r.json()["result"]
     assert result["supportedVersions"] == [MCP_VERSION]
-    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.6.2"
+    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.7.1"
     r = rpc("tools/list")
     result = r.json()["result"]
     names = {t["name"] for t in result["tools"]}
@@ -65,7 +65,7 @@ def test_mcp_publish_need_gets_internal_match():
     requester = rpc("tools/call", {"name": "join_aion", "arguments": {"external_id": requester_ext, "name": "Requester"}}).json()["result"]["structuredContent"]
     r = rpc("tools/call", {"name": "publish_need", "arguments": {"capability": "web_research", "description": "need research"}}, bearer=requester["agent_key"])
     data = r.json()["result"]["structuredContent"]
-    assert any(m["agent_id"] == provider["agent"]["id"] for m in data["matches"])
+    assert any(m["provider"]["agent_id"] == provider["agent"]["id"] for m in data["matches"])
 
 
 def test_mcp_real_utility_surfaces():

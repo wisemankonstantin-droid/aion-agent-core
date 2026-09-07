@@ -57,7 +57,7 @@ for path in [
     print("OK", path, len(body), "bytes")
 
 health = get_json("/health")
-assert health["version"] == "0.6.2", health
+assert health["version"] == "0.7.1", health
 assert health["a2a_runtime"] == "mounted", health
 
 card = get_json("/.well-known/agent-card.json")
@@ -68,7 +68,7 @@ MCP_VERSION = "2026-07-28"
 CLIENT_META = {
     "io.modelcontextprotocol/protocolVersion": MCP_VERSION,
     "io.modelcontextprotocol/clientCapabilities": {},
-    "io.modelcontextprotocol/clientInfo": {"name": "aion-live-smoke", "version": "0.6.2"},
+    "io.modelcontextprotocol/clientInfo": {"name": "aion-live-smoke", "version": "0.7.1"},
 }
 MCP_BASE_HEADERS = {
     "Accept": "application/json, text/event-stream",
@@ -82,7 +82,7 @@ status, discover = post_json(
 )
 assert status == 200 and "error" not in discover, discover
 assert MCP_VERSION in discover["result"]["supportedVersions"], discover
-assert discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.6.2", discover
+assert discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.7.1", discover
 print("OK /mcp server/discover")
 
 status, tools = post_json(

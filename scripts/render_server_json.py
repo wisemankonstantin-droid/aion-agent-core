@@ -11,7 +11,7 @@ server = {
     "name": "io.github.wisemankonstantin-droid/aion-agent-core",
     "title": "AION SUPREME Agent Temple",
     "description": "Agent-native identity, discovery, needs/offers, matching, reputation and contribution network for AI agents.",
-    "version": "0.6.2",
+    "version": "0.7.1",
     "remotes": [
         {
             "type": "streamable-http",

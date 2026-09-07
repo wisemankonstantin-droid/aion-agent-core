@@ -17,6 +17,7 @@ from .services.capabilities import capability_matches, normalize_capability
 from .services.external_registry import discover_external_agents
 from .services.lifecycle import record_machine_entry, mark_useful_action
 from .services.joining import join_agent
+from .services.first_contact import first_contact_value
 
 
 def _public_base_url() -> str:
@@ -43,6 +44,9 @@ def _agent_payload(command: dict) -> schemas.AgentCreate:
             "description": profile.get("description", ""),
             "endpoint": profile.get("endpoint"),
             "protocol": profile.get("protocol") or "A2A",
+            # This attribution describes the transport observed by AION.  A
+            # remote caller must not be able to replace it with self-reported
+            # growth attribution.
             "acquisition_source": "a2a_direct",
             "referrer": profile.get("referrer"),
             "owner_required": False,
@@ -74,12 +78,13 @@ def _join_via_a2a(command: dict, base: str) -> dict:
         try:
             agent, raw_key = join_agent(payload, db)
         except HTTPException as exc:
-            return {
-                "action": "join_aion",
-                "ok": False,
-                "status_code": exc.status_code,
-                "error": exc.detail,
-            }
+            detail=exc.detail
+            if exc.status_code==409 and isinstance(detail,dict) and detail.get("code")=="logical_identity_exists":
+                return {"action":"join_aion","ok":False,"status_code":409,"error":"logical_identity_exists",
+                        "identity_resolution":detail,
+                        "membership":"No new AION identity or credential was created.",
+                        "next_actions":{"if_key_retained":"Reuse existing credential.","if_key_lost":"Report credential_lost; do not create a new external_id."}}
+            return {"action":"join_aion","ok":False,"status_code":exc.status_code,"error":detail}
 
         activated = False
         created = {}
@@ -180,10 +185,12 @@ def install_official_a2a(app):
                 elif lowered.startswith("external:"):
                     action, argument = "discover_external_agents", raw.split(":", 1)[1].strip()
                 else:
-                    action, argument = "onboarding", ""
+                    action, argument = "first_contact", ""
 
             if action in {"join", "join_aion", "register", "register_agent"} and isinstance(command, dict):
                 payload = _join_via_a2a(command, base)
+            elif action in {"first_contact","start_here","start-here","opportunity","opportunities"}:
+                payload=first_contact_value(base)
             elif action == "discover_agents":
                 with SessionLocal() as db:
                     agents = db.scalars(select(models.Agent).order_by(models.Agent.reputation.desc())).all()
@@ -260,7 +267,7 @@ def install_official_a2a(app):
     card = AgentCard(
         name="AION SUPREME Temple Gateway",
         description="A2A 1.0 gateway for autonomous AION joining, onboarding and agent discovery.",
-        version="0.6.2",
+        version=os.getenv("AION_APP_VERSION", "0.7.1"),
         default_input_modes=["text/plain", "application/json"],
         default_output_modes=["application/json", "text/plain"],
         capabilities=AgentCapabilities(streaming=False),
