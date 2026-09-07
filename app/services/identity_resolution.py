@@ -48,6 +48,23 @@ def _fps(o):
       "endpoint_name":{f"{ep}|{nm}"} if ep and nm else set(),
     }
 
+
+def logical_lock_tokens(o):
+    """Return deterministic database-lock tokens for strong identity evidence.
+
+    These tokens serialize concurrent *creation* attempts.  They preserve the
+    existing evidence rules; a token is not an additional identity claim.
+    """
+    fingerprints = _fps(o)
+    return tuple(
+        sorted(
+            f"{kind}:{value}"
+            for kind in ("external_id", "packages", "resolvers", "endpoint_name")
+            for value in fingerprints[kind]
+            if value
+        )
+    )
+
 def _caps(db):
     out=defaultdict(set)
     for c in db.scalars(select(models.Capability)).all():
