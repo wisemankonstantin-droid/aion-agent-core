@@ -1,0 +1,22 @@
+name: AION Live Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_url:
+        description: "Deployed AION HTTPS URL"
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run public protocol gate
+        env:
+          AION_PUBLIC_URL: ${{ inputs.public_url }}
+        run: python scripts/smoke_live.py

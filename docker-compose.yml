@@ -1,0 +1,10 @@
+services:
+  aion:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////app/data/aion.db
+      AION_REQUIRE_A2A: "1"
+    volumes:
+      - ./data:/app/data

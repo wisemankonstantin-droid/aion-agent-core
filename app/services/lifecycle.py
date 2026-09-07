@@ -1,0 +1,80 @@
+import os
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import select, func
+from sqlalchemy.orm import Session
+from .. import models
+
+RETURN_THRESHOLD_MINUTES = max(1, int(os.getenv("AION_RETURN_THRESHOLD_MINUTES", "15")))
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def touch_authenticated_agent(db: Session, agent: models.Agent) -> models.Agent:
+    agent.authenticated_calls = (agent.authenticated_calls or 0) + 1
+    agent.last_seen_at = utcnow()
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+def mark_useful_action(agent: models.Agent) -> None:
+    now = utcnow()
+    if agent.first_useful_action_at is None:
+        agent.first_useful_action_at = now
+    agent.last_seen_at = now
+
+
+def record_machine_entry(db: Session, source: str) -> None:
+    db.add(models.MachineEntry(source=(source or "unknown")[:80]))
+    db.commit()
+
+
+def is_returning(agent: models.Agent, now: datetime | None = None) -> bool:
+    first = _as_utc(agent.first_useful_action_at)
+    last = _as_utc(agent.last_seen_at)
+    if not first or not last:
+        return False
+    now = _as_utc(now) or utcnow()
+    threshold = first + timedelta(minutes=RETURN_THRESHOLD_MINUTES)
+    return last >= threshold and last <= now + timedelta(minutes=1)
+
+
+def funnel_snapshot(db: Session):
+    agents = db.scalars(select(models.Agent)).all()
+    m1 = db.scalar(select(func.count()).select_from(models.MachineEntry)) or 0
+    m2 = len(agents)
+    m3 = sum(1 for a in agents if a.first_useful_action_at is not None)
+    m4 = sum(1 for a in agents if is_returning(a))
+
+    def rate(num, den):
+        return round(num / den, 4) if den else None
+
+    return {
+        "M1_machine_entry_requests": m1,
+        "M2_joined_agents": m2,
+        "M3_activated_agents": m3,
+        "M4_returning_agents": m4,
+        "conversion": {
+            "M1_to_M2": rate(m2, m1),
+            "M2_to_M3": rate(m3, m2),
+            "M3_to_M4": rate(m4, m3),
+        },
+        "definitions": {
+            "M1": "request to a machine-entry surface; not a unique-agent count",
+            "M2": "AION agent identity created",
+            "M3": "agent published a need/offer or created a real interaction",
+            "M4": f"activated agent seen again at least {RETURN_THRESHOLD_MINUTES} minutes after first useful action",
+        },
+        "integrity_note": "Operational telemetry only. M1 may include non-agent callers and tests; no metric is presented as independently verified adoption.",
+    }
