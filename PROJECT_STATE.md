@@ -64,9 +64,9 @@ SHA `419f11b2a34fdec26269a216de65e9dcf955e963`.
 
 ## Current next milestone
 
-Complete exact-commit AION CI and disposable PostgreSQL 18 validation for the
-Package 1 branch, then obtain independent HQ review. Do not merge or deploy it
-automatically. Package 2 may be defined only after Package 1 evidence is green.
+Obtain independent HQ review of the green Package 1 branch. Do not merge or
+deploy it automatically. Package 2 may be defined only after Package 1 is
+accepted.
 
 ## Phase 1 contract validation
 
@@ -111,8 +111,13 @@ automatically. Package 2 may be defined only after Package 1 evidence is green.
   official A2A release `v1.0.1` and official MCP specification release
   `2026-07-28` each fetched through the pinned HTTPS path in one attempt,
   normalized, stored and assessed `fresh`.
-- Package 1 exact-commit GitHub AION CI and PostgreSQL 18 workflow evidence is
-  required after the branch is pushed and must be reported in the handoff.
+- Package 1 implementation commit
+  `5f9d64bcd0bc47b6171d6e7c4635af60e9c9d9ec` passed AION CI run
+  `34252092282` and PostgreSQL 18 release gate run `34252092298`. The gate
+  passed `0005 -> 0006`, empty-to-head, repeated upgrade, Alembic check,
+  PostgreSQL application/concurrency tests and startup/readiness. The exact
+  final branch SHA and its repeated workflow evidence are reported in the
+  handoff after the factual documentation commit.
 
 ## Documentation alignment validation
 

@@ -261,6 +261,7 @@ without mutating append-only evidence during an unchanged re-verification.
 
 Package 1 does not expose a public utility API and does not implement crawling,
 compatibility ranking, personalized delta, outcome telemetry, watchers or
-external action. Its immediate gate is exact-commit normal CI, PostgreSQL 18
-fresh/upgrade/concurrency evidence and independent HQ review. Only after that
+external action. Its implementation commit passed exact-commit normal CI and
+PostgreSQL 18 fresh/upgrade/concurrency validation. The remaining gate is a
+green final documentation commit plus independent HQ review. Only after that
 gate may Package 2 be defined as a separate bounded package.
