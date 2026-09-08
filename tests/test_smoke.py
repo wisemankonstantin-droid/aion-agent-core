@@ -48,7 +48,7 @@ def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
     assert card["supportedInterfaces"][0]["protocolVersion"] == "1.0"
     assert card["supportedInterfaces"][0]["url"].endswith("/a2a/v1")
     ids = {skill["id"] for skill in card["skills"]}
-    assert {"aion_first_contact", "join_aion", "aion_onboarding", "discover_aion_agents", "discover_external_agents"} <= ids
+    assert {"aion_first_contact", "aion_live_utility", "join_aion", "aion_onboarding", "discover_aion_agents", "discover_external_agents"} <= ids
     skills = {skill["id"]: skill for skill in card["skills"]}
     assert skills["aion_first_contact"]["examples"] == ["help", '{"action":"first_contact"}']
     assert skills["aion_onboarding"]["examples"] == ['{"action":"onboarding"}']

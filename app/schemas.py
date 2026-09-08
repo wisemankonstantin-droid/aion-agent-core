@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from pydantic import BaseModel, Field, field_validator
+from typing import Dict, Optional, List, Literal
 
 class CapabilityIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -71,3 +71,55 @@ class AgentUpdate(BaseModel):
 class InteractionUpdate(BaseModel):
     result: Literal["completed", "cancelled", "failed"] = "completed"
     score: Optional[float] = Field(default=None, ge=0, le=5)
+
+
+class UtilityCompatibilityContext(BaseModel):
+    supported_protocols: List[str] = Field(default_factory=list, max_length=8)
+    supported_protocol_versions: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        max_length=8,
+    )
+    capabilities: List[str] = Field(default_factory=list, max_length=16)
+    auth_modes: List[str] = Field(default_factory=list, max_length=8)
+    permissions: List[str] = Field(default_factory=list, max_length=16)
+    payment_methods: List[str] = Field(default_factory=list, max_length=8)
+    constraints: List[str] = Field(default_factory=list, max_length=16)
+
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+    @field_validator(
+        "supported_protocols",
+        "capabilities",
+        "auth_modes",
+        "permissions",
+        "payment_methods",
+        "constraints",
+    )
+    @classmethod
+    def bounded_items(cls, values: List[str]) -> List[str]:
+        for value in values:
+            if not isinstance(value, str) or not value.strip() or len(value) > 200:
+                raise ValueError("context list items must be non-empty strings of at most 200 characters")
+        return values
+
+    @field_validator("supported_protocol_versions")
+    @classmethod
+    def bounded_versions(cls, values: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        for protocol, versions in values.items():
+            if not protocol.strip() or len(protocol) > 40:
+                raise ValueError("protocol keys must be 1 to 40 characters")
+            if len(versions) > 16:
+                raise ValueError("at most 16 versions may be supplied per protocol")
+            for version in versions:
+                if not isinstance(version, str) or not version.strip() or len(version) > 80:
+                    raise ValueError("versions must be non-empty strings of at most 80 characters")
+        return values
+
+
+class UtilityQuery(BaseModel):
+    subject: Literal["all", "a2a", "mcp"] = "all"
+    context: UtilityCompatibilityContext = Field(
+        default_factory=UtilityCompatibilityContext
+    )
+
+    model_config = {"extra": "forbid"}

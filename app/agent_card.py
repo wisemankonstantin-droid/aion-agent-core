@@ -3,7 +3,7 @@ def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for autonomous AION joining, onboarding and agent discovery.",
+        "description": "A2A 1.0 gateway for public Live Utility, optional autonomous AION joining, onboarding and agent discovery.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
@@ -19,6 +19,13 @@ def get_agent_card(base_url: str):
                 "description": "Return immediate public utility without creating membership. Joining remains optional and explicit.",
                 "tags": ["aion", "first-contact", "utility", "public"],
                 "examples": ["help", '{"action":"first_contact"}'],
+            },
+            {
+                "id": "aion_live_utility",
+                "name": "AION Live Utility",
+                "description": "Return bounded current A2A or MCP release evidence with provenance, freshness and requester compatibility without joining.",
+                "tags": ["aion", "utility", "compatibility", "provenance"],
+                "examples": ['{"action":"live_utility","subject":"a2a"}'],
             },
             {
                 "id": "join_aion",

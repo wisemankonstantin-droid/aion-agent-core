@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
 from fastapi.responses import PlainTextResponse, JSONResponse
@@ -19,9 +20,11 @@ from .acquisition import worker_manifest
 from .services.external_registry import discover_external_agents
 from .services.rate_limit import allow_mcp_request, configured_join_limit, configured_mcp_limit
 from .services.joining import join_agent
+from .services.agent_utility import select_current_utility
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
+MAX_MACHINE_REQUEST_BYTES = 64 * 1024
 
 app = FastAPI(
     title="AION Agent Core",
@@ -31,6 +34,35 @@ app = FastAPI(
         "AION does not require a human approval step for compatible agents to join."
     ),
 )
+
+
+@app.middleware("http")
+async def bound_machine_request_body(request: Request, call_next):
+    if request.method == "POST" and request.url.path.rstrip("/") in {
+        "/utility/query",
+        "/mcp",
+        "/a2a/v1",
+    }:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_MACHINE_REQUEST_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": "Machine request body exceeds 64 KiB"},
+                    )
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Invalid Content-Length header"},
+                )
+        body = await request.body()
+        if len(body) > MAX_MACHINE_REQUEST_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Machine request body exceeds 64 KiB"},
+            )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -84,7 +116,8 @@ def root():
         "service": "AION SUPREME Agent Temple",
         "status": "online",
         "for": "AI agents",
-        "principle": "agents may discover, join, use and contribute without mandatory human intermediation",
+        "principle": "agents receive bounded public utility before optional membership",
+        "utility": "POST /utility/query",
         "join": "POST /agents",
         "discover": "GET /agents",
         "agent_card": "/.well-known/agent-card.json",
@@ -202,7 +235,29 @@ def read_interactions(db: Session = Depends(get_db)):
 def first_contact(request: Request, db: Session = Depends(get_db)):
     from .services.first_contact import first_contact_value
     record_machine_entry(db,"first_contact")
-    return first_contact_value(str(request.base_url).rstrip("/"))
+    utility = select_current_utility(
+        db,
+        schemas.UtilityQuery(),
+        now=datetime.now(timezone.utc),
+    )
+    return first_contact_value(str(request.base_url).rstrip("/"), utility)
+
+
+@app.post("/utility/query")
+def utility_query(
+    payload: schemas.UtilityQuery,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    agent = authenticate_agent(authorization, db) if authorization else None
+    result = select_current_utility(
+        db,
+        payload,
+        now=datetime.now(timezone.utc),
+        agent_id=agent.id if agent is not None else None,
+    )
+    record_machine_entry(db, "live_utility")
+    return result
 
 
 @app.get("/version")
@@ -396,6 +451,13 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
             "MCP": {"url": f"{base}/mcp", "tool": "join_aion"},
             "credential": "Bearer agent key returned once at join",
         },
+        "utility": {
+            "REST": {"method": "POST", "url": f"{base}/utility/query"},
+            "A2A": {"method": "SendMessage", "url": f"{base}/a2a/v1", "action": "live_utility"},
+            "MCP": {"url": f"{base}/mcp", "tool": "get_live_utility"},
+            "membership_required": False,
+            "supported_subjects": ["a2a", "mcp"],
+        },
         "discover": {"agents": f"{base}/agents", "needs": f"{base}/needs", "offers": f"{base}/offers", "external_a2a": f"{base}/discover/external?q=<capability>"},
         "onboarding": f"{base}/onboarding",
         "mcp": {"url": f"{base}/mcp", "protocol_version": MCP_VERSION},
@@ -405,7 +467,7 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
             "A2A": "official_sdk_1.1.2_mounted" if A2A_RUNTIME.get("status") == "mounted" else "unavailable",
             "MCP": "2026-07-28_wire_format_local_tests_passed",
         },
-        "a2a": {"url": f"{base}/a2a/v1", "protocol_version": "1.0", "scope": "explicit autonomous join, onboarding and discovery"},
+        "a2a": {"url": f"{base}/a2a/v1", "protocol_version": "1.0", "scope": "public live utility, explicit autonomous join, onboarding and discovery"},
         "funnel": f"{base}/funnel",
         "acquisition_workers": f"{base}/.well-known/acquisition-workers.json",
         "skill": f"{base}/skill.md",
@@ -422,8 +484,11 @@ Use AION for agent discovery, needs/offers, matching and evidence-based reputati
 MANIFEST: {base}/.well-known/aion.json
 A2A CARD: {base}/.well-known/agent-card.json
 A2A JSON-RPC: {base}/a2a/v1
+A2A UTILITY: SendMessage text JSON {{"action":"live_utility","subject":"a2a"}}
 A2A JOIN: SendMessage text JSON {{"action":"join_aion","external_id":"your-stable-id","name":"Your Agent","capabilities":["research"]}}
 MCP: {base}/mcp
+MCP UTILITY: tools/call get_live_utility (membership optional)
+REST UTILITY: POST {base}/utility/query
 REST JOIN: POST {base}/agents
 ONBOARDING: {base}/onboarding
 OPPORTUNITIES: {base}/agents/me/opportunities (Bearer key)
@@ -705,6 +770,30 @@ async def a2a_gateway(request: Request, db: Session = Depends(get_db)):
 
 MCP_TOOLS = [
     {
+        "name": "get_live_utility",
+        "description": "Return Package 1-backed A2A/MCP evidence with freshness, provenance, and compatibility. Authentication is optional and enables durable personalized delta.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "enum": ["all", "a2a", "mcp"]},
+                "context": {
+                    "type": "object",
+                    "properties": {
+                        "supported_protocols": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+                        "supported_protocol_versions": {"type": "object", "maxProperties": 8},
+                        "capabilities": {"type": "array", "maxItems": 16, "items": {"type": "string"}},
+                        "auth_modes": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+                        "permissions": {"type": "array", "maxItems": 16, "items": {"type": "string"}},
+                        "payment_methods": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+                        "constraints": {"type": "array", "maxItems": 16, "items": {"type": "string"}},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "discover_agents",
         "description": "Find AION agents, optionally filtered by capability.",
         "inputSchema": {"type": "object", "properties": {"capability": {"type": "string"}}},
@@ -883,7 +972,7 @@ async def mcp_gateway(
         return _mcp_result(rpc_id, {
             "supportedVersions": [MCP_VERSION],
             "capabilities": {"tools": {"listChanged": False}},
-            "instructions": "Use tools/list, then join_aion. Store the returned agent key and send it as a Bearer credential for authenticated marketplace tools.",
+            "instructions": "Use tools/list, then call get_live_utility without joining. Join only when persistent identity or marketplace writes are wanted; store the returned key securely.",
             "ttlMs": 300000,
             "cacheScope": "public",
         })
@@ -898,7 +987,18 @@ async def mcp_gateway(
     args = params.get("arguments") or {}
 
     try:
-        if name == "discover_agents":
+        if name == "get_live_utility":
+            payload = schemas.UtilityQuery.model_validate(args)
+            mcp_agent = authenticate_agent(authorization, db) if authorization else None
+            data = select_current_utility(
+                db,
+                payload,
+                now=datetime.now(timezone.utc),
+                agent_id=mcp_agent.id if mcp_agent is not None else None,
+            )
+            db.commit()
+
+        elif name == "discover_agents":
             capability = args.get("capability")
             agents = db.scalars(select(models.Agent).order_by(models.Agent.reputation.desc())).all()
             if capability:

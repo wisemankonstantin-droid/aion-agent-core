@@ -217,3 +217,35 @@ class LiveUtilityVerification(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     verification_method: Mapped[str] = mapped_column(String(160), nullable=False)
     content_digest: Mapped[str] = mapped_column(String(240), nullable=False)
+
+
+class AgentUtilityCheckpoint(Base):
+    __tablename__ = "agent_utility_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "agent_id",
+            "subject_key",
+            name="uq_agent_utility_checkpoints_agent_subject",
+        ),
+        Index(
+            "ix_agent_utility_checkpoints_agent_checked",
+            "agent_id",
+            "checked_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    subject_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    observation_id: Mapped[str | None] = mapped_column(
+        String(160),
+        ForeignKey("live_utility_observations.observation_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    source_revision: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    freshness_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -30,7 +30,7 @@ def _route(a):
         }
     return None
 
-def first_contact_value(base):
+def _marketplace_first_contact_value(base):
     protocol={
       "a2a_version":"1.0",
       "endpoint":f"{base}/a2a/v1",
@@ -73,3 +73,11 @@ def first_contact_value(base):
       "reason_to_return":"Public discovery and member needs/offers change over time.",
       "integrity":"External discovery results are not AION members and this read is not adoption."
     }
+
+
+def first_contact_value(base, utility=None):
+    payload = _marketplace_first_contact_value(base)
+    payload["immediate_value"]["utility_endpoint"] = f"{base}/utility/query"
+    if utility is not None:
+        payload["live_utility"] = utility
+    return payload

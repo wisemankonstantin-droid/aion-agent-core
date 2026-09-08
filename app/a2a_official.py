@@ -7,6 +7,7 @@ join command creates membership; first contact, discovery and onboarding do not.
 """
 import json
 import os
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -19,6 +20,7 @@ from .services.external_registry import discover_external_agents
 from .services.lifecycle import record_machine_entry, mark_useful_action
 from .services.joining import join_agent
 from .services.first_contact import first_contact_value
+from .services.agent_utility import select_current_utility
 
 
 def _public_base_url() -> str:
@@ -27,6 +29,24 @@ def _public_base_url() -> str:
         or os.getenv("RENDER_EXTERNAL_URL")
         or "http://127.0.0.1:8000"
     ).rstrip("/")
+
+
+def _utility_query_from_command(command: dict | None):
+    command = command or {}
+    try:
+        return schemas.UtilityQuery.model_validate(
+            {
+                "subject": command.get("subject", "all"),
+                "context": command.get("context", {}),
+            }
+        ), None
+    except ValidationError as exc:
+        return None, {
+            "action": "live_utility",
+            "status": "invalid_request",
+            "membership_required": False,
+            "errors": exc.errors(include_url=False),
+        }
 
 
 def _agent_payload(command: dict) -> schemas.AgentCreate:
@@ -191,7 +211,28 @@ def install_official_a2a(app):
             if action in {"join", "join_aion", "register", "register_agent"} and isinstance(command, dict):
                 payload = _join_via_a2a(command, base)
             elif action in {"first_contact","start_here","start-here","opportunity","opportunities"}:
-                payload=first_contact_value(base)
+                utility_query, utility_error = _utility_query_from_command(command)
+                if utility_error is not None:
+                    utility = utility_error
+                else:
+                    with SessionLocal() as db:
+                        utility = select_current_utility(
+                            db,
+                            utility_query,
+                            now=datetime.now(timezone.utc),
+                        )
+                payload=first_contact_value(base, utility)
+            elif action in {"live_utility", "utility", "compatibility"}:
+                utility_query, utility_error = _utility_query_from_command(command)
+                if utility_error is not None:
+                    payload = utility_error
+                else:
+                    with SessionLocal() as db:
+                        payload = select_current_utility(
+                            db,
+                            utility_query,
+                            now=datetime.now(timezone.utc),
+                        )
             elif action == "discover_agents":
                 with SessionLocal() as db:
                     agents = db.scalars(select(models.Agent).order_by(models.Agent.reputation.desc())).all()
@@ -271,7 +312,7 @@ def install_official_a2a(app):
 
     card = AgentCard(
         name="AION SUPREME Temple Gateway",
-        description="A2A 1.0 gateway for autonomous AION joining, onboarding and agent discovery.",
+        description="A2A 1.0 gateway for public Live Utility, optional autonomous AION joining, onboarding and agent discovery.",
         version=os.getenv("AION_APP_VERSION", "0.7.1"),
         default_input_modes=["text/plain", "application/json"],
         default_output_modes=["application/json", "text/plain"],
@@ -290,6 +331,13 @@ def install_official_a2a(app):
                 description="Return immediate public utility without creating membership. Joining remains optional and explicit.",
                 tags=["aion", "first-contact", "utility", "public"],
                 examples=["help", '{"action":"first_contact"}'],
+            ),
+            AgentSkill(
+                id="aion_live_utility",
+                name="AION Live Utility",
+                description="Return bounded current A2A or MCP release evidence with provenance, freshness, and requester compatibility without joining.",
+                tags=["aion", "utility", "compatibility", "provenance"],
+                examples=['{"action":"live_utility","subject":"a2a","context":{"supported_protocols":["a2a"],"supported_protocol_versions":{"a2a":["1.0.1"]}}}'],
             ),
             AgentSkill(
                 id="join_aion",

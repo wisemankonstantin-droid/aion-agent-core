@@ -3,16 +3,18 @@ import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text, select, func, event
 from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
-from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceTier
+from app.services import live_utility_store
+from app.services.agent_utility import select_current_utility
+from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
-from app.services.live_utility_sources import AdapterResponse
+from app.services.live_utility_sources import AdapterResponse, VERIFICATION_METHOD, configured_tier1_adapters
 from app.services.safe_http import FetchPolicy, FetchResult
 from fastapi import HTTPException
 
@@ -160,5 +162,84 @@ def test_postgres_concurrent_refresh_deduplicates_material_version():
         assert db.scalar(
             select(func.count()).select_from(models.LiveUtilityVerification).where(
                 models.LiveUtilityVerification.source_id == source_id
+            )
+        ) == 1
+
+
+def test_postgres_concurrent_personalized_delta_has_one_checkpoint():
+    token = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    adapter = configured_tier1_adapters()[0]
+    observation = SourceObservation(
+        observation_id="obs-pg-delta-" + token,
+        source_id=adapter.source.source_id,
+        subject_key=adapter.subject_key,
+        source_revision="v1.0.1",
+        previous_observation_id=None,
+        observed_at=now - timedelta(minutes=1),
+        verified_at=now,
+        valid_from=now - timedelta(minutes=1),
+        stale_after=now + timedelta(days=1),
+        expires_at=now + timedelta(days=2),
+        verification_method=VERIFICATION_METHOD,
+        content_digest="sha256:" + token,
+    )
+    with SessionLocal.begin() as db:
+        if live_utility_store.get_source(db, adapter.source.source_id) is None:
+            live_utility_store.register_source(db, adapter.source)
+        live_utility_store.append_observation(
+            db,
+            observation,
+            normalized_data={
+                "protocol": "a2a",
+                "version": "v1.0.1",
+                "official_url": "https://github.com/a2aproject/A2A/releases/tag/v1.0.1",
+            },
+        )
+        live_utility_store.append_verification(
+            db,
+            live_utility_store.VerificationRecord(
+                verification_id="verify-pg-delta-" + token,
+                source_id=observation.source_id,
+                subject_key=observation.subject_key,
+                observation_id=observation.observation_id,
+                verified_at=now,
+                valid_from=observation.valid_from,
+                stale_after=observation.stale_after,
+                expires_at=observation.expires_at,
+                verification_method=VERIFICATION_METHOD,
+                content_digest=observation.content_digest,
+            ),
+        )
+        agent = models.Agent(
+            external_id="pg-delta-" + token,
+            name="PG Delta " + token,
+            api_key_hash="pg-delta-hash-" + token,
+        )
+        db.add(agent)
+        db.flush()
+        agent_id = agent.id
+
+    query = schemas.UtilityQuery(subject="a2a")
+
+    def worker():
+        with SessionLocal.begin() as db:
+            result = select_current_utility(
+                db,
+                query,
+                now=now + timedelta(seconds=1),
+                agent_id=agent_id,
+            )
+            return result["results"][0]["personalized_delta"]["status"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = {future.result() for future in [pool.submit(worker), pool.submit(worker)]}
+
+    assert statuses == {"baseline_created", "unchanged"}
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(models.AgentUtilityCheckpoint).where(
+                models.AgentUtilityCheckpoint.agent_id == agent_id,
+                models.AgentUtilityCheckpoint.subject_key == adapter.subject_key,
             )
         ) == 1
