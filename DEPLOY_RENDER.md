@@ -1,10 +1,34 @@
-# Render production cutover runbook
+# Render production status and historical cutover runbook
 
-This runbook prepares a controlled direct-source cutover of the existing Render
-service. It does not authorize a merge, a Render configuration change, a
-database mutation, or a deployment.
+## CURRENT PRODUCTION STATUS
 
-## Fixed release and production references
+The controlled direct-source cutover is complete and production is live.
+
+- Main SHA: `419f11b2a34fdec26269a216de65e9dcf955e963`
+- Current deploy: `dep-dafuu3v40ujc73d3fks0`
+- Status: live
+- Branch: `main`
+- AutoDeploy: OFF (`autoDeployTrigger: off`)
+- Root Directory: blank
+- Build Command: `python -m pip install --require-hashes -r requirements.txt`
+- Start Command: `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+Production builds direct tracked source from GitHub main. A push or merge is not
+permission to deploy, and AutoDeploy must not be enabled without a separately
+authorized production change.
+
+## Historical release and cutover evidence
+
+The remaining Phase A-E material records the completed cutover and its rollback
+plan. It is historical evidence and must not be interpreted as an instruction
+to repeat the already completed cutover. Terms such as “current” and “existing”
+below describe the pre-cutover checkpoint at which the runbook was written.
+
+This runbook prepared the controlled direct-source cutover of the existing
+Render service. It did not itself authorize a merge, Render configuration
+change, database mutation or deployment.
+
+### Fixed release and production references
 
 - Release branch: `codex/postgres-release-gate-0.7.1`
 - Reviewed release SHA: `6d5124fe9fd76578136288c5177fcc1a2f416a6c`
@@ -19,7 +43,7 @@ The current service build extracts the historical ZIP and applies environment
 backed source patches. The direct-source release keeps the ZIP as recovery
 evidence, but does not execute it or use it as application source.
 
-## Phase A - pre-cutover
+### Phase A - pre-cutover
 
 1. Record the live service ID, exact active deploy ID, deployed Git SHA, branch,
    Root Directory, complete Build Command, complete Start Command, AutoDeploy
@@ -43,7 +67,7 @@ evidence, but does not execute it or use it as application source.
 8. Freeze unrelated changes to `main` and obtain explicit authorization for
    the coordinated Render change, merge, and deployment window.
 
-## Phase B - Render configuration change
+### Phase B - Render configuration change
 
 Change the existing service; do not create another service or database.
 
@@ -62,7 +86,7 @@ verification. If any old variable affects direct-source runtime, resolve that
 conflict before cutover rather than deleting rollback evidence during the
 deployment window.
 
-## Phase C - source cutover
+### Phase C - source cutover
 
 Because AutoDeploy currently follows `main`, use this order:
 
@@ -87,7 +111,7 @@ AutoDeploy is disabled, but it prevents a production build or deploy combining
 the new main source with the historical ZIP/patch command. It also prevents an
 unintended deployment before rollback preparation is complete.
 
-## Phase D - post-deploy verification
+### Phase D - post-deploy verification
 
 Immediately verify the new deploy ID and deployed Git SHA, then check:
 
@@ -108,7 +132,7 @@ Use `python scripts/smoke_live.py` or the existing GitHub **Live Gate** against
 clearly identified test identities and avoid destructive traffic. Record every
 result and the deployed SHA.
 
-## Phase E - rollback conditions and procedure
+### Phase E - rollback conditions and procedure
 
 Rollback is required for any of these conditions:
 

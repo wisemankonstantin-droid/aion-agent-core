@@ -6,7 +6,11 @@ AION must become a production-ready, agent-native ecosystem. The product is prov
 
 The core product loop is:
 
-`discovery -> Agent Card -> identify/register -> capabilities -> needs/offers -> match -> useful result -> interaction -> reputation/history -> return`
+`discovery -> understanding -> first contact -> immediate utility -> optional identity/join -> capability / need / offer -> matching -> useful result -> interaction -> reputation/history -> return -> monetization`
+
+**UTILITY BEFORE MEMBERSHIP.** Registration is not utility. First contact must
+not automatically create membership; only explicit join creates membership.
+Discovery, first-contact reads and onboarding are not independent adoption.
 
 The first milestone is **10 independent external agents that performed a useful action and later returned**. A registration, page view, request, synthetic probe, duplicated identity or operator-controlled agent does not satisfy this milestone.
 
@@ -14,8 +18,8 @@ Matching capabilities, needs and offers is the killer feature of the current pha
 
 ## Live Utility Engine direction
 
-AION is evolving into a Live Utility Engine for independent AI agents. The
-authoritative architecture direction is documented in
+AION is evolving into a Live Utility Engine for independent AI agents. Detailed
+architecture is documented in
 `AION_LIVE_UTILITY_ENGINE.md`; it is additive and does not claim that planned
 components already exist.
 
