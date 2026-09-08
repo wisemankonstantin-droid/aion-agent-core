@@ -38,26 +38,37 @@ onboarding -> explicit join`. Only explicit join creates membership. Discovery,
 first-contact and onboarding traffic are not membership or independent
 adoption.
 
-The source registry, freshness engine, versioned knowledge graph, compatibility
-engine, personalized delta, outcome telemetry, utility ranking, watchers and
-safe action layer are planned architecture; they are not currently implemented.
-Do not scale acquisition until an independent external agent obtains a useful
-current result, completes a successful action and voluntarily returns.
+This branch implements the Phase 1 pure internal contract slice: bounded source
+registry contracts, immutable versioned source-observation/provenance contracts
+and deterministic freshness evaluation. It has no persistence, crawler, remote
+retrieval, public REST/MCP/A2A integration, compatibility ranking, personalized
+delta, outcome telemetry, watchers or safe action layer. Do not scale
+acquisition until an independent external agent obtains a useful current result,
+completes a successful action and voluntarily returns. No production deployment
+occurred for this contract-only branch.
 
 ## Current next milestone
 
-Finish this architecture/source-of-truth documentation alignment. Then, in a
-separately authorized implementation task, design the minimum durable Phase 1
-contracts for:
+Obtain independent review of the implemented Phase 1 contract slice. If it is
+accepted, make a separately bounded persistence/data-model decision for:
 
 - a bounded source registry;
 - versioned observations with evidence and provenance; and
 - freshness evaluation with explicit stale-state behavior.
 
-Use no more than two Tier 1 source fixtures for the first slice. Do not combine
-that task with broad crawling, compatibility ranking, personalized delta,
-outcome telemetry or external action. Any persistence change requires a
-reviewed migration and the established database release gates.
+Do not combine that decision with broad crawling, compatibility ranking,
+personalized delta, outcome telemetry or external action. Any persistence
+change requires a reviewed migration and the established database release gates.
+
+## Phase 1 contract validation
+
+- `python -m pytest -q tests/test_live_utility.py`: 25 passed.
+- `python -m pytest -q tests/test_source_integrity.py tests/test_live_utility.py`:
+  29 passed.
+- `python -m pytest -q`: 101 passed, 3 PostgreSQL-only tests skipped.
+- `python scripts/readiness.py`: all 26 local readiness checks passed.
+- `python scripts/check_secrets.py`: 92 files scanned, 0 findings.
+- `git diff --check`: passed.
 
 ## Documentation alignment validation
 

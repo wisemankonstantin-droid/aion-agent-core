@@ -249,11 +249,14 @@ one broad change.
 
 ## Next bounded milestone
 
-The next recommended engineering task is the first slice of Phase 1: define and
-implement the minimum durable contracts for a source registry, versioned source
-observations/provenance and freshness evaluation, exercised against at most two
-Tier 1 source fixtures. It should emit no remote actions, perform no broad
-crawling, and defer compatibility ranking, personalized delta and outcome
-telemetry. Any required schema migration must be designed and tested in a
-separately authorized implementation task under the existing database safety
-gate.
+The first pure-contract slice of Phase 1 now exists on its current branch: an
+in-process source registry, versioned source-observation/provenance contracts
+and deterministic freshness evaluation, exercised against no more than two Tier
+1 fixtures. It has no persistence, remote retrieval, crawler or public API
+integration.
+
+The next recommended engineering task is independent review followed, if
+accepted, by a separately bounded persistence/data-model decision for those
+contracts. It must continue to defer broad crawling, compatibility ranking,
+personalized delta, outcome telemetry and external action. Any schema migration
+must be designed and tested under the existing database safety gate.
