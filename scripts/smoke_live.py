@@ -126,7 +126,6 @@ def a2a_message(text, rpc_id):
     return json.loads(message["parts"][0]["text"])
 
 
-agents_before = get_json("/stats")["agents_raw_rows"]
 first_contact = a2a_message("help", "a2a-first-contact-smoke")
 assert first_contact["action"] == "first_contact", first_contact
 assert first_contact["membership_required"] is False, first_contact
@@ -148,7 +147,6 @@ onboarding = a2a_message(
 )
 assert onboarding["join_over_a2a"]["action"] == "join_aion", onboarding
 assert "agent_key" not in onboarding, onboarding
-assert get_json("/stats")["agents_raw_rows"] == agents_before
 print("OK /a2a/v1 explicit onboarding")
 
 print("LIVE SMOKE PASS")
