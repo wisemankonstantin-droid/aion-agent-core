@@ -46,6 +46,26 @@ jobs:
               exit 1
               ;;
           esac
+          PROD_CONNECTION_URL="$(python3 - <<'PY'
+          import os
+          import sys
+          import urllib.parse
+
+          expected_internal = "dpg-daei1sv40ujc73faqr70-a"
+          expected_external = expected_internal + ".frankfurt-postgres.render.com"
+          parsed = urllib.parse.urlsplit(os.environ["PROD_DATABASE_URL"])
+          if parsed.hostname not in {expected_internal, expected_external}:
+              raise SystemExit("Production database URL host is not the expected Render resource")
+          if parsed.hostname == expected_internal:
+              userinfo = parsed.netloc.rsplit("@", 1)[0]
+              port = f":{parsed.port}" if parsed.port else ""
+              netloc = f"{userinfo}@{expected_external}{port}"
+              parsed = parsed._replace(netloc=netloc)
+          sys.stdout.write(urllib.parse.urlunsplit(parsed))
+          PY
+          )"
+          export PROD_CONNECTION_URL
+          echo "::add-mask::$PROD_CONNECTION_URL"
 
           timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
           backup_name="aion-production-${timestamp}-pre-direct-source-cutover.dump"
@@ -81,9 +101,9 @@ jobs:
           export QUERY
           production_query() {
             docker run --rm --network host \
-              -e PROD_DATABASE_URL -e PGOPTIONS -e PGSSLMODE -e QUERY \
+              -e PROD_CONNECTION_URL -e PGOPTIONS -e PGSSLMODE -e QUERY \
               postgres:18 sh -ceu \
-              'psql "$PROD_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "$QUERY"'
+              'psql "$PROD_CONNECTION_URL" -X -v ON_ERROR_STOP=1 -Atqc "$QUERY"'
           }
 
           QUERY='SELECT version();'
@@ -113,10 +133,10 @@ jobs:
           echo "Production read-only validation: PASS"
 
           docker run --rm --network host \
-            -e PROD_DATABASE_URL -e PGOPTIONS -e PGSSLMODE \
+            -e PROD_CONNECTION_URL -e PGOPTIONS -e PGSSLMODE \
             -e BACKUP_NAME="$backup_name" -v "$work_dir:/backup" \
             postgres:18 sh -ceu \
-            'pg_dump --format=custom --no-owner --no-acl --file="/backup/$BACKUP_NAME" "$PROD_DATABASE_URL"'
+            'pg_dump --format=custom --no-owner --no-acl --file="/backup/$BACKUP_NAME" "$PROD_CONNECTION_URL"'
 
           test -s "$dump_path"
           docker run --rm -e BACKUP_NAME="$backup_name" -v "$work_dir:/backup:ro" \
