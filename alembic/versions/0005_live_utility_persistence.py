@@ -43,12 +43,10 @@ def upgrade():
             "expires_after_seconds >= stale_after_seconds",
             name="ck_live_utility_sources_window_order",
         ),
-    )
-    op.create_index(
-        "ix_live_utility_sources_source_id",
-        "live_utility_sources",
-        ["source_id"],
-        unique=True,
+        sa.UniqueConstraint(
+            "source_id",
+            name="uq_live_utility_sources_source_id",
+        ),
     )
 
     op.create_table(
@@ -94,12 +92,10 @@ def upgrade():
             "previous_observation_id IS NULL OR previous_observation_id != observation_id",
             name="ck_live_utility_observations_not_self_referential",
         ),
-    )
-    op.create_index(
-        "ix_live_utility_observations_observation_id",
-        "live_utility_observations",
-        ["observation_id"],
-        unique=True,
+        sa.UniqueConstraint(
+            "observation_id",
+            name="uq_live_utility_observations_observation_id",
+        ),
     )
     op.create_index(
         "ix_live_utility_observations_source_id",
@@ -122,13 +118,5 @@ def downgrade():
         "ix_live_utility_observations_source_id",
         table_name="live_utility_observations",
     )
-    op.drop_index(
-        "ix_live_utility_observations_observation_id",
-        table_name="live_utility_observations",
-    )
     op.drop_table("live_utility_observations")
-    op.drop_index(
-        "ix_live_utility_sources_source_id",
-        table_name="live_utility_sources",
-    )
     op.drop_table("live_utility_sources")

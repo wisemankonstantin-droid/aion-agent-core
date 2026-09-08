@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -104,7 +104,7 @@ class LiveUtilitySource(Base):
             "expires_after_seconds >= stale_after_seconds",
             name="ck_live_utility_sources_window_order",
         ),
-        Index("ix_live_utility_sources_source_id", "source_id", unique=True),
+        UniqueConstraint("source_id", name="uq_live_utility_sources_source_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -138,10 +138,9 @@ class LiveUtilityObservation(Base):
             "previous_observation_id IS NULL OR previous_observation_id != observation_id",
             name="ck_live_utility_observations_not_self_referential",
         ),
-        Index(
-            "ix_live_utility_observations_observation_id",
+        UniqueConstraint(
             "observation_id",
-            unique=True,
+            name="uq_live_utility_observations_observation_id",
         ),
         Index("ix_live_utility_observations_source_id", "source_id"),
         Index(

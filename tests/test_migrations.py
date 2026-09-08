@@ -43,9 +43,29 @@ def test_existing_0004_database_upgrades_to_live_utility_head(tmp_path):
         source_indexes = connection.execute(
             "PRAGMA index_list('live_utility_sources')"
         ).fetchall()
+        source_unique_index_columns = {
+            tuple(
+                row[2]
+                for row in connection.execute(
+                    f"PRAGMA index_info('{index[1]}')"
+                ).fetchall()
+            )
+            for index in source_indexes
+            if index[2] == 1
+        }
         observation_indexes = connection.execute(
             "PRAGMA index_list('live_utility_observations')"
         ).fetchall()
+        observation_unique_index_columns = {
+            tuple(
+                row[2]
+                for row in connection.execute(
+                    f"PRAGMA index_info('{index[1]}')"
+                ).fetchall()
+            )
+            for index in observation_indexes
+            if index[2] == 1
+        }
         observation_foreign_keys = connection.execute(
             "PRAGMA foreign_key_list('live_utility_observations')"
         ).fetchall()
@@ -61,14 +81,8 @@ def test_existing_0004_database_upgrades_to_live_utility_head(tmp_path):
 
     assert revision == "0005_live_utility_persistence"
     assert {"agents", "machine_entries", "live_utility_sources", "live_utility_observations"} <= tables
-    assert any(
-        row[1] == "ix_live_utility_sources_source_id" and row[2] == 1
-        for row in source_indexes
-    )
-    assert any(
-        row[1] == "ix_live_utility_observations_observation_id" and row[2] == 1
-        for row in observation_indexes
-    )
+    assert ("source_id",) in source_unique_index_columns
+    assert ("observation_id",) in observation_unique_index_columns
     assert {
         "ix_live_utility_observations_source_id",
         "ix_live_utility_observations_source_subject_observed",
