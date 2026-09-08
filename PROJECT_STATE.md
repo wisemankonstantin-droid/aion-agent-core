@@ -3,8 +3,8 @@
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Repository main at task start:**
-  `153a6dcf8a747e5185dbd65371bf9d702294ffdc`.
+- **Repository main at Package 1 task start:**
+  `4a161933d37162947eaa3d08a1035f8c7cfa8def`.
 - **Production deployed SHA:**
   `419f11b2a34fdec26269a216de65e9dcf955e963`.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
@@ -41,25 +41,32 @@ onboarding -> explicit join`. Only explicit join creates membership. Discovery,
 first-contact and onboarding traffic are not membership or independent
 adoption.
 
-Repository main contains the Phase 1 pure internal contracts: bounded source
-registry contracts, immutable versioned source-observation/provenance contracts
-and deterministic freshness evaluation. This feature branch adds durable source
-persistence and append-only observation/provenance persistence through separate
-SQLAlchemy models and an internal store, plus additive migration
-`0005_live_utility_persistence`.
+Repository main contains the Phase 1 pure contracts and durable persistence
+through migration `0005_live_utility_persistence`. Package 1 is implemented on
+branch `codex/package-1-live-utility-data-engine` from main SHA
+`4a161933d37162947eaa3d08a1035f8c7cfa8def`; the exact final branch SHA is an
+external Git fact reported after push because a commit cannot contain its own
+hash.
 
-The persistence groundwork has no crawler, remote retrieval, public
-REST/MCP/A2A integration, compatibility ranking, personalized delta, outcome
-telemetry, watchers or safe action layer. No production migration or deployment
-occurred; production remains on deployed SHA `419f11b2a34fdec26269a216de65e9dcf955e963`.
+Package 1 adds two explicitly configured Tier-1 release adapters for the
+official A2A and Model Context Protocol GitHub projects, a shared hardened HTTPS
+transport, adapter-specific normalization, canonical content digests,
+material-version deduplication and lineage, structured field changes, persisted
+verification evidence, deterministic refresh decisions and restart-safe current
+state. Migration `0006_live_utility_data` adds normalized observation data and
+the `live_utility_verifications` evidence table.
+
+This remains an internal data engine. It has no crawler, broad search, public
+REST/MCP/A2A utility surface, first-contact integration, compatibility ranking,
+personalized delta, outcome telemetry, watcher automation or action layer. No
+production migration or deployment occurred; production remains on deployed
+SHA `419f11b2a34fdec26269a216de65e9dcf955e963`.
 
 ## Current next milestone
 
-Obtain independent review of the durable Phase 1 persistence slice and passing
-PostgreSQL 18 workflow evidence for its exact commit. Do not merge or deploy it
-automatically. If accepted, define a separately bounded next slice; do not
-combine it with broad crawling, compatibility ranking, personalized delta,
-outcome telemetry or external action.
+Complete exact-commit AION CI and disposable PostgreSQL 18 validation for the
+Package 1 branch, then obtain independent HQ review. Do not merge or deploy it
+automatically. Package 2 may be defined only after Package 1 evidence is green.
 
 ## Phase 1 contract validation
 
@@ -81,11 +88,31 @@ outcome telemetry or external action.
 - Disposable SQLite fresh-to-head, repeated `upgrade head`, exact revision and
   `alembic check`: passed; head is `0005_live_utility_persistence` with no schema
   drift.
-- `python scripts/readiness.py`: all 29 local readiness checks passed.
+- `python scripts/readiness.py`: all 28 local readiness checks passed.
 - `python scripts/check_secrets.py`: 95 files scanned, 0 findings.
 - `python -m compileall -q app tests scripts`: passed.
 - Workflow YAML parsing and `git diff --check`: passed.
-- PostgreSQL 18 workflow validation: pending feature-branch push.
+- Exact persistence head `4a161933d37162947eaa3d08a1035f8c7cfa8def`
+  passed AION CI run `34243034700`, PostgreSQL 18 release gate run
+  `34243034819`, and resulting-main AION CI run `34244216770`.
+
+## Package 1 local and controlled-source validation
+
+- Targeted Live Utility, hardened transport, migration and regression suite:
+  90 passed.
+- Full local suite: 148 passed, 4 PostgreSQL-only tests skipped.
+- Disposable SQLite `0005 -> 0006` and empty-to-head upgrades, repeated
+  `upgrade head`, exact head `0006_live_utility_data` and `alembic check`:
+  passed with no schema drift.
+- `python scripts/readiness.py`: all 30 local readiness checks passed.
+- `python scripts/check_secrets.py`: 103 files scanned, 0 findings.
+- Compile, workflow YAML and `git diff --check`: passed.
+- Controlled real-source verification at `2026-09-08T16:23:50.067733+00:00`:
+  official A2A release `v1.0.1` and official MCP specification release
+  `2026-07-28` each fetched through the pinned HTTPS path in one attempt,
+  normalized, stored and assessed `fresh`.
+- Package 1 exact-commit GitHub AION CI and PostgreSQL 18 workflow evidence is
+  required after the branch is pushed and must be reported in the handoff.
 
 ## Documentation alignment validation
 

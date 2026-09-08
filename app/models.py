@@ -172,3 +172,48 @@ class LiveUtilityObservation(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     verification_method: Mapped[str | None] = mapped_column(String(160), nullable=True)
     content_digest: Mapped[str] = mapped_column(String(240), nullable=False)
+    normalized_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class LiveUtilityVerification(Base):
+    __tablename__ = "live_utility_verifications"
+    __table_args__ = (
+        CheckConstraint(
+            "valid_from <= stale_after",
+            name="ck_live_utility_verifications_valid_stale_order",
+        ),
+        CheckConstraint(
+            "stale_after <= expires_at",
+            name="ck_live_utility_verifications_stale_expires_order",
+        ),
+        UniqueConstraint(
+            "verification_id",
+            name="uq_live_utility_verifications_verification_id",
+        ),
+        Index(
+            "ix_live_utility_verifications_source_subject_verified",
+            "source_id",
+            "subject_key",
+            "verified_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    verification_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_id: Mapped[str] = mapped_column(
+        String(160),
+        ForeignKey("live_utility_sources.source_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    subject_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    observation_id: Mapped[str] = mapped_column(
+        String(160),
+        ForeignKey("live_utility_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    stale_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verification_method: Mapped[str] = mapped_column(String(160), nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(240), nullable=False)

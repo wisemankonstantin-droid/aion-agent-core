@@ -3,12 +3,17 @@ import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text, select, func, event
 from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
+from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceTier
+from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
+from app.services.live_utility_sources import AdapterResponse
+from app.services.safe_http import FetchPolicy, FetchResult
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(os.getenv("AION_POSTGRES_GATE") != "1", reason="disposable PostgreSQL gate only")
@@ -84,3 +89,76 @@ def test_database_capability_insert_failure_rolls_back_identity():
         event.remove(models.Capability, "before_insert", fail)
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(models.Agent).where(models.Agent.external_id == token)) == 0
+
+
+class _ConcurrentReleaseAdapter:
+    subject_key = "a2a.concurrent_release"
+    fetch_policy = FetchPolicy(max_attempts=1)
+
+    def __init__(self, source_id, barrier=None):
+        self.barrier = barrier
+        self.source = SourceDefinition(
+            source_id=source_id,
+            display_name="Concurrent official fixture",
+            tier=SourceTier.TIER_1,
+            source_kind="postgres_gate_fixture",
+            canonical_locator="https://official.example/releases/latest",
+            refresh_policy=RefreshPolicy(
+                strategies=frozenset({RefreshStrategy.TTL, RefreshStrategy.DEMAND_DRIVEN}),
+                stale_after_seconds=60,
+                expires_after_seconds=120,
+            ),
+        )
+
+    def retrieve(self):
+        if self.barrier is not None:
+            self.barrier.wait(timeout=10)
+        return AdapterResponse(FetchResult(200, b"fixture", None, 1), {"version": "v1"})
+
+    def normalize(self, payload):
+        return dict(payload)
+
+    def source_revision(self, normalized):
+        return normalized["version"]
+
+
+def test_postgres_concurrent_refresh_deduplicates_material_version():
+    source_id = "pg-refresh-" + uuid.uuid4().hex
+    utility_engine = LiveUtilityEngine((_ConcurrentReleaseAdapter(source_id),))
+    with SessionLocal.begin() as db:
+        utility_engine.ensure_sources(db)
+
+    now = datetime(2026, 9, 8, 12, tzinfo=timezone.utc)
+    barrier = threading.Barrier(2)
+
+    def worker():
+        independent_engine = LiveUtilityEngine(
+            (_ConcurrentReleaseAdapter(source_id, barrier),)
+        )
+        with SessionLocal.begin() as db:
+            return independent_engine.refresh_source(
+                db,
+                source_id=source_id,
+                now=now,
+                demand=True,
+            ).status
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(worker) for _ in range(2)]
+        statuses = {future.result() for future in futures}
+
+    assert statuses == {
+        RefreshStatus.REFRESHED_CHANGED,
+        RefreshStatus.REFRESHED_UNCHANGED,
+    }
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(models.LiveUtilityObservation).where(
+                models.LiveUtilityObservation.source_id == source_id
+            )
+        ) == 1
+        assert db.scalar(
+            select(func.count()).select_from(models.LiveUtilityVerification).where(
+                models.LiveUtilityVerification.source_id == source_id
+            )
+        ) == 1

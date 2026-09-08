@@ -249,15 +249,18 @@ one broad change.
 
 ## Next bounded milestone
 
-The pure-contract slice of Phase 1 exists on repository main: an in-process
-source registry, versioned source-observation/provenance contracts and
-deterministic freshness evaluation. Durable source and append-only observation
-persistence now exists on its feature branch through separate ORM and domain
-layers plus additive migration `0005_live_utility_persistence`. It has no remote
-retrieval, crawler or public API integration.
+The pure contracts and durable Phase 1 persistence exist on repository main.
+Package 1 is implemented on branch
+`codex/package-1-live-utility-data-engine`: two bounded official protocol-release
+sources, shared pinned HTTPS retrieval, adapter-specific structured
+normalization, durable normalized material versions, separate verification
+evidence, deduplication, lineage, structured change detection, deterministic
+refresh execution and restart-safe current-state evaluation. Additive migration
+`0006_live_utility_data` provides the storage that `0005` could not represent
+without mutating append-only evidence during an unchanged re-verification.
 
-The immediate gate is independent review plus successful PostgreSQL 18 upgrade
-and fresh-path workflow evidence for the exact persistence commit. If accepted,
-the next engineering task must be separately bounded and continue to defer broad
-crawling, compatibility ranking, personalized delta, outcome telemetry and
-external action.
+Package 1 does not expose a public utility API and does not implement crawling,
+compatibility ranking, personalized delta, outcome telemetry, watchers or
+external action. Its immediate gate is exact-commit normal CI, PostgreSQL 18
+fresh/upgrade/concurrency evidence and independent HQ review. Only after that
+gate may Package 2 be defined as a separate bounded package.

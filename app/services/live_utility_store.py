@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Mapping
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,6 +24,39 @@ from app.services.live_utility import (
     SourceObservation,
     SourceTier,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationRecord:
+    verification_id: str
+    source_id: str
+    subject_key: str
+    observation_id: str
+    verified_at: datetime
+    valid_from: datetime
+    stale_after: datetime
+    expires_at: datetime
+    verification_method: str
+    content_digest: str
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "verification_id",
+            "source_id",
+            "subject_key",
+            "observation_id",
+            "verification_method",
+            "content_digest",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be a non-empty string")
+        for field_name in ("verified_at", "valid_from", "stale_after", "expires_at"):
+            value = getattr(self, field_name)
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{field_name} must be timezone-aware")
+        if self.valid_from > self.stale_after or self.stale_after > self.expires_at:
+            raise ValueError("verification freshness window is invalid")
 
 
 def _as_aware_utc(value: datetime | None) -> datetime | None:
@@ -109,7 +146,12 @@ def list_sources(
     return tuple(_source_to_domain(row) for row in db.scalars(statement))
 
 
-def append_observation(db: Session, observation: SourceObservation) -> SourceObservation:
+def append_observation(
+    db: Session,
+    observation: SourceObservation,
+    *,
+    normalized_data: Mapping[str, object] | None = None,
+) -> SourceObservation:
     """Append one immutable evidence record after bounded lineage validation."""
 
     if db.scalar(
@@ -161,6 +203,9 @@ def append_observation(db: Session, observation: SourceObservation) -> SourceObs
         expires_at=observation.expires_at,
         verification_method=observation.verification_method,
         content_digest=observation.content_digest,
+        normalized_data=(
+            None if normalized_data is None else deepcopy(dict(normalized_data))
+        ),
     )
     db.add(row)
     db.flush()
@@ -174,6 +219,123 @@ def get_observation(db: Session, observation_id: str) -> SourceObservation | Non
         )
     )
     return None if row is None else _observation_to_domain(row)
+
+
+def get_normalized_observation(
+    db: Session,
+    observation_id: str,
+) -> tuple[SourceObservation, dict[str, object] | None] | None:
+    row = db.scalar(
+        select(models.LiveUtilityObservation).where(
+            models.LiveUtilityObservation.observation_id == observation_id
+        )
+    )
+    if row is None:
+        return None
+    data = None if row.normalized_data is None else deepcopy(row.normalized_data)
+    return _observation_to_domain(row), data
+
+
+def get_latest_normalized_observation(
+    db: Session,
+    *,
+    source_id: str,
+    subject_key: str,
+) -> tuple[SourceObservation, dict[str, object] | None] | None:
+    row = db.scalar(
+        select(models.LiveUtilityObservation)
+        .where(
+            models.LiveUtilityObservation.source_id == source_id,
+            models.LiveUtilityObservation.subject_key == subject_key,
+        )
+        .order_by(
+            models.LiveUtilityObservation.observed_at.desc(),
+            models.LiveUtilityObservation.id.desc(),
+        )
+        .limit(1)
+    )
+    if row is None:
+        return None
+    data = None if row.normalized_data is None else deepcopy(row.normalized_data)
+    return _observation_to_domain(row), data
+
+
+def append_verification(db: Session, record: VerificationRecord) -> VerificationRecord:
+    existing = db.scalar(
+        select(models.LiveUtilityVerification.id).where(
+            models.LiveUtilityVerification.verification_id == record.verification_id
+        )
+    )
+    if existing is not None:
+        raise ValueError(f"duplicate verification_id: {record.verification_id}")
+    observation = db.scalar(
+        select(models.LiveUtilityObservation).where(
+            models.LiveUtilityObservation.observation_id == record.observation_id
+        )
+    )
+    if observation is None:
+        raise ValueError(f"unknown observation_id: {record.observation_id}")
+    if observation.source_id != record.source_id:
+        raise ValueError("verification source does not match observation")
+    if observation.subject_key != record.subject_key:
+        raise ValueError("verification subject does not match observation")
+    if observation.content_digest != record.content_digest:
+        raise ValueError("verification digest does not match observation")
+    observed_at = _as_aware_utc(observation.observed_at)
+    if record.verified_at < observed_at:
+        raise ValueError("verification cannot predate observation")
+    if record.valid_from > record.stale_after or record.stale_after > record.expires_at:
+        raise ValueError("verification freshness window is invalid")
+
+    row = models.LiveUtilityVerification(
+        verification_id=record.verification_id,
+        source_id=record.source_id,
+        subject_key=record.subject_key,
+        observation_id=record.observation_id,
+        verified_at=record.verified_at,
+        valid_from=record.valid_from,
+        stale_after=record.stale_after,
+        expires_at=record.expires_at,
+        verification_method=record.verification_method,
+        content_digest=record.content_digest,
+    )
+    db.add(row)
+    db.flush()
+    return record
+
+
+def get_latest_verification(
+    db: Session,
+    *,
+    source_id: str,
+    subject_key: str,
+) -> VerificationRecord | None:
+    row = db.scalar(
+        select(models.LiveUtilityVerification)
+        .where(
+            models.LiveUtilityVerification.source_id == source_id,
+            models.LiveUtilityVerification.subject_key == subject_key,
+        )
+        .order_by(
+            models.LiveUtilityVerification.verified_at.desc(),
+            models.LiveUtilityVerification.id.desc(),
+        )
+        .limit(1)
+    )
+    if row is None:
+        return None
+    return VerificationRecord(
+        verification_id=row.verification_id,
+        source_id=row.source_id,
+        subject_key=row.subject_key,
+        observation_id=row.observation_id,
+        verified_at=_as_aware_utc(row.verified_at),
+        valid_from=_as_aware_utc(row.valid_from),
+        stale_after=_as_aware_utc(row.stale_after),
+        expires_at=_as_aware_utc(row.expires_at),
+        verification_method=row.verification_method,
+        content_digest=row.content_digest,
+    )
 
 
 def list_observations(

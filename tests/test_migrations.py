@@ -17,16 +17,54 @@ def _alembic(root, database_url, *args):
     )
 
 
-def test_existing_0004_database_upgrades_to_live_utility_head(tmp_path):
+def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "upgrade-path.db"
     url = "sqlite:///" + database.as_posix()
 
-    _alembic(root, url, "upgrade", "0004_reputation_idempotency")
+    _alembic(root, url, "upgrade", "0005_live_utility_persistence")
     with sqlite3.connect(database) as connection:
         connection.execute(
             "INSERT INTO machine_entries (source, created_at) VALUES (?, ?)",
             ("migration-sentinel", "2026-09-08 12:00:00"),
+        )
+        connection.execute(
+            """INSERT INTO live_utility_sources
+            (source_id, display_name, tier, source_kind, canonical_locator,
+             refresh_strategies, stale_after_seconds, expires_after_seconds, enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "migration-source",
+                "Migration source",
+                "tier_1",
+                "fixture",
+                "fixture:migration",
+                '["ttl"]',
+                60,
+                120,
+                1,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO live_utility_observations
+            (observation_id, source_id, subject_key, source_revision,
+             previous_observation_id, observed_at, verified_at, valid_from,
+             stale_after, expires_at, verification_method, content_digest)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "migration-observation",
+                "migration-source",
+                "protocol.release",
+                "v1",
+                None,
+                "2026-09-08 12:00:00",
+                "2026-09-08 12:00:00",
+                "2026-09-08 12:00:00",
+                "2026-09-08 12:01:00",
+                "2026-09-08 12:02:00",
+                "fixture",
+                "sha256:migration",
+            ),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
@@ -78,9 +116,39 @@ def test_existing_0004_database_upgrades_to_live_utility_head(tmp_path):
         sentinel = connection.execute(
             "SELECT source FROM machine_entries WHERE source='migration-sentinel'"
         ).fetchone()
+        observation_sentinel = connection.execute(
+            "SELECT content_digest, normalized_data FROM live_utility_observations "
+            "WHERE observation_id='migration-observation'"
+        ).fetchone()
+        verification_sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='live_utility_verifications'"
+        ).fetchone()[0]
+        verification_indexes = connection.execute(
+            "PRAGMA index_list('live_utility_verifications')"
+        ).fetchall()
+        verification_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list('live_utility_verifications')"
+        ).fetchall()
+        verification_unique_index_columns = {
+            tuple(
+                row[2]
+                for row in connection.execute(
+                    f"PRAGMA index_info('{index[1]}')"
+                ).fetchall()
+            )
+            for index in verification_indexes
+            if index[2] == 1
+        }
 
-    assert revision == "0005_live_utility_persistence"
-    assert {"agents", "machine_entries", "live_utility_sources", "live_utility_observations"} <= tables
+    assert revision == "0006_live_utility_data"
+    assert {
+        "agents",
+        "machine_entries",
+        "live_utility_sources",
+        "live_utility_observations",
+        "live_utility_verifications",
+    } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
     assert {
@@ -94,6 +162,16 @@ def test_existing_0004_database_upgrades_to_live_utility_head(tmp_path):
     assert "ck_live_utility_sources_window_order" in source_sql
     assert "ck_live_utility_observations_verified_order" in observation_sql
     assert sentinel == ("migration-sentinel",)
+    assert observation_sentinel == ("sha256:migration", None)
+    assert "ck_live_utility_verifications_stale_expires_order" in verification_sql
+    assert ("verification_id",) in verification_unique_index_columns
+    assert "ix_live_utility_verifications_source_subject_verified" in {
+        row[1] for row in verification_indexes
+    }
+    assert {row[2] for row in verification_foreign_keys} == {
+        "live_utility_sources",
+        "live_utility_observations",
+    }
 
 
 def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
@@ -114,5 +192,9 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0005_live_utility_persistence"
-    assert {"live_utility_sources", "live_utility_observations"} <= tables
+    assert revision == "0006_live_utility_data"
+    assert {
+        "live_utility_sources",
+        "live_utility_observations",
+        "live_utility_verifications",
+    } <= tables
