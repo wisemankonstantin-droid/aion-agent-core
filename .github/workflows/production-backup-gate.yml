@@ -1,0 +1,265 @@
+name: Production database encrypted backup gate
+
+on:
+  push:
+    branches: [ops/production-backup-gate-0.7.1]
+
+permissions:
+  contents: read
+
+jobs:
+  backup-and-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: aion_restore
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aion_restore"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Dump, verify, restore, compare, and encrypt
+        id: backup
+        shell: bash
+        env:
+          PROD_DATABASE_URL: ${{ secrets.AION_PROD_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          if [ -z "${PROD_DATABASE_URL:-}" ]; then
+            echo "::error::Required repository secret AION_PROD_DATABASE_URL is unavailable"
+            exit 1
+          fi
+          case "$PROD_DATABASE_URL" in
+            *dpg-daei1sv40ujc73faqr70-a*) ;;
+            *)
+              echo "::error::Production database URL does not identify the expected Render resource"
+              exit 1
+              ;;
+          esac
+
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_name="aion-production-${timestamp}-pre-direct-source-cutover.dump"
+          encrypted_name="${backup_name}.gpg"
+          work_dir="$RUNNER_TEMP/aion-production-backup-${GITHUB_RUN_ID}"
+          artifact_dir="$work_dir/artifact"
+          dump_path="$work_dir/$backup_name"
+          decrypted_path="$work_dir/round-trip.dump"
+          passphrase_path="$work_dir/passphrase"
+          production_counts="$work_dir/production-counts"
+          restored_counts="$work_dir/restored-counts"
+          manifest_path="$artifact_dir/backup-manifest.txt"
+          encrypted_path="$artifact_dir/$encrypted_name"
+          mkdir -p "$artifact_dir"
+
+          cleanup_plaintext() {
+            rm -f "$dump_path" "$decrypted_path" "$passphrase_path" \
+              "$production_counts" "$restored_counts"
+          }
+          trap cleanup_plaintext EXIT
+
+          client_version="$(docker run --rm postgres:18 pg_dump --version)"
+          restore_client_version="$(docker run --rm postgres:18 pg_restore --version)"
+          psql_client_version="$(docker run --rm postgres:18 psql --version)"
+          case "$client_version" in
+            *" 18."*) ;;
+            *) echo "::error::pg_dump client is not PostgreSQL 18"; exit 1 ;;
+          esac
+          echo "PostgreSQL client validation: PASS ($client_version)"
+
+          export PGOPTIONS='-c default_transaction_read_only=on'
+          export PGSSLMODE=require
+          export QUERY
+          production_query() {
+            docker run --rm --network host \
+              -e PROD_DATABASE_URL -e PGOPTIONS -e PGSSLMODE -e QUERY \
+              postgres:18 sh -ceu \
+              'psql "$PROD_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "$QUERY"'
+          }
+
+          QUERY='SELECT version();'
+          production_version="$(production_query)"
+          QUERY='SHOW server_version_num;'
+          production_version_num="$(production_query)"
+          if [ "${production_version_num:0:2}" != "18" ]; then
+            echo "::error::Production PostgreSQL major version is not 18"
+            exit 1
+          fi
+          QUERY='SELECT version_num FROM alembic_version;'
+          production_alembic="$(production_query)"
+          if [ "$production_alembic" != "0004_reputation_idempotency" ]; then
+            echo "::error::Unexpected production Alembic revision"
+            exit 1
+          fi
+          QUERY="SELECT name || '=' || row_count FROM (VALUES
+            (1, 'agents', (SELECT count(*) FROM agents)),
+            (2, 'capabilities', (SELECT count(*) FROM capabilities)),
+            (3, 'needs', (SELECT count(*) FROM needs)),
+            (4, 'offers', (SELECT count(*) FROM offers)),
+            (5, 'interactions', (SELECT count(*) FROM interactions)),
+            (6, 'reputation_events', (SELECT count(*) FROM reputation_events)),
+            (7, 'payment_intents', (SELECT count(*) FROM payment_intents))
+          ) AS counts(ord, name, row_count) ORDER BY ord;"
+          production_query > "$production_counts"
+          echo "Production read-only validation: PASS"
+
+          docker run --rm --network host \
+            -e PROD_DATABASE_URL -e PGOPTIONS -e PGSSLMODE \
+            -e BACKUP_NAME="$backup_name" -v "$work_dir:/backup" \
+            postgres:18 sh -ceu \
+            'pg_dump --format=custom --no-owner --no-acl --file="/backup/$BACKUP_NAME" "$PROD_DATABASE_URL"'
+
+          test -s "$dump_path"
+          docker run --rm -e BACKUP_NAME="$backup_name" -v "$work_dir:/backup:ro" \
+            postgres:18 sh -ceu 'pg_restore --list "/backup/$BACKUP_NAME" >/dev/null'
+          plaintext_size="$(stat -c '%s' "$dump_path")"
+          plaintext_sha256="$(sha256sum "$dump_path" | awk '{print $1}')"
+          echo "Custom-format dump and pg_restore archive listing: PASS"
+
+          restore_database_url='postgresql://postgres@127.0.0.1:5432/aion_restore'
+          docker run --rm --network host -e RESTORE_DATABASE_URL="$restore_database_url" \
+            -e BACKUP_NAME="$backup_name" -v "$work_dir:/backup:ro" \
+            postgres:18 sh -ceu \
+            'pg_restore --exit-on-error --no-owner --no-acl --dbname="$RESTORE_DATABASE_URL" "/backup/$BACKUP_NAME"'
+
+          restore_query() {
+            docker run --rm --network host -e RESTORE_DATABASE_URL="$restore_database_url" \
+              -e QUERY postgres:18 sh -ceu \
+              'psql "$RESTORE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "$QUERY"'
+          }
+          QUERY='SELECT version_num FROM alembic_version;'
+          restored_alembic="$(restore_query)"
+          if [ "$restored_alembic" != "0004_reputation_idempotency" ]; then
+            echo "::error::Restored Alembic revision differs from expected head"
+            exit 1
+          fi
+          QUERY="SELECT name || '=' || row_count FROM (VALUES
+            (1, 'agents', (SELECT count(*) FROM agents)),
+            (2, 'capabilities', (SELECT count(*) FROM capabilities)),
+            (3, 'needs', (SELECT count(*) FROM needs)),
+            (4, 'offers', (SELECT count(*) FROM offers)),
+            (5, 'interactions', (SELECT count(*) FROM interactions)),
+            (6, 'reputation_events', (SELECT count(*) FROM reputation_events)),
+            (7, 'payment_intents', (SELECT count(*) FROM payment_intents))
+          ) AS counts(ord, name, row_count) ORDER BY ord;"
+          restore_query > "$restored_counts"
+          cmp --silent "$production_counts" "$restored_counts"
+          QUERY="SELECT CASE WHEN current_database() = 'aion_restore'
+            AND (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public') > 0
+            THEN 'PASS' ELSE 'FAIL' END;"
+          schema_sanity="$(restore_query)"
+          if [ "$schema_sanity" != "PASS" ]; then
+            echo "::error::Restored database schema sanity check failed"
+            exit 1
+          fi
+          echo "Isolated PostgreSQL 18 restore and aggregate count comparison: PASS"
+
+          python3 - "$passphrase_path" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import sys
+
+          material = (
+              os.environ["PROD_DATABASE_URL"]
+              + "\0AION_PRODUCTION_BACKUP_V1"
+          ).encode("utf-8")
+          pathlib.Path(sys.argv[1]).write_text(hashlib.sha256(material).hexdigest())
+          PY
+          chmod 600 "$passphrase_path"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "$passphrase_path" --symmetric --cipher-algo AES256 \
+            --output "$encrypted_path" "$dump_path"
+          test -s "$encrypted_path"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "$passphrase_path" --decrypt \
+            --output "$decrypted_path" "$encrypted_path"
+          decrypted_sha256="$(sha256sum "$decrypted_path" | awk '{print $1}')"
+          if [ "$decrypted_sha256" != "$plaintext_sha256" ]; then
+            echo "::error::Encrypted backup round-trip checksum mismatch"
+            exit 1
+          fi
+          encrypted_size="$(stat -c '%s' "$encrypted_path")"
+          encrypted_sha256="$(sha256sum "$encrypted_path" | awk '{print $1}')"
+          echo "AES256 encryption round-trip verification: PASS"
+
+          cat > "$manifest_path" <<EOF
+          utc_timestamp=$timestamp
+          postgres_client=$client_version
+          pg_restore_client=$restore_client_version
+          psql_client=$psql_client_version
+          production_postgresql_version=$production_version
+          production_alembic_revision=$production_alembic
+          plaintext_dump_size_bytes=$plaintext_size
+          plaintext_dump_sha256=$plaintext_sha256
+          encrypted_backup_size_bytes=$encrypted_size
+          encrypted_backup_sha256=$encrypted_sha256
+          pg_restore_list=PASS
+          isolated_restore_rehearsal=PASS
+          core_table_count_comparison=PASS
+          encryption_round_trip=PASS
+          production_source_sha=078aa55d144adaefa53a93e5411e7a24401d066a
+          expected_cutover_pr_head=ad75d1ae48cc1756cb68c402e8079af1a89241ed
+          EOF
+          chmod 600 "$manifest_path" "$encrypted_path"
+
+          rm -f "$dump_path" "$decrypted_path" "$passphrase_path" \
+            "$production_counts" "$restored_counts"
+          if find "$work_dir" -type f -name '*.dump' -print -quit | grep -q .; then
+            echo "::error::Plaintext dump remains after encryption"
+            exit 1
+          fi
+          artifact_file_count="$(find "$artifact_dir" -maxdepth 1 -type f | wc -l)"
+          if [ "$artifact_file_count" -ne 2 ]; then
+            echo "::error::Artifact directory contains unexpected files"
+            exit 1
+          fi
+
+          {
+            echo "backup_name=$encrypted_name"
+            echo "encrypted_path=$encrypted_path"
+            echo "manifest_path=$manifest_path"
+            echo "client_version=$client_version"
+            echo "production_version=$production_version"
+            echo "production_alembic=$production_alembic"
+            echo "plaintext_size=$plaintext_size"
+            echo "plaintext_sha256=$plaintext_sha256"
+            echo "encrypted_size=$encrypted_size"
+            echo "encrypted_sha256=$encrypted_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Production backup gate"
+            echo "- PostgreSQL client: $client_version"
+            echo "- Production PostgreSQL: $production_version"
+            echo "- Production Alembic: $production_alembic"
+            echo "- Plaintext size before removal: $plaintext_size bytes"
+            echo "- Plaintext SHA-256: $plaintext_sha256"
+            echo "- Encrypted size: $encrypted_size bytes"
+            echo "- Encrypted SHA-256: $encrypted_sha256"
+            echo "- pg_restore --list: PASS"
+            echo "- Isolated restore: PASS"
+            echo "- Core table count comparison: PASS"
+            echo "- Encryption round trip: PASS"
+            echo "- Persisted backup payload: encrypted archive only"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: aion-production-pre-cutover-backup-${{ github.run_id }}
+          path: |
+            ${{ steps.backup.outputs.encrypted_path }}
+            ${{ steps.backup.outputs.manifest_path }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
