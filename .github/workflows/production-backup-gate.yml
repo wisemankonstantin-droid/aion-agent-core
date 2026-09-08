@@ -10,7 +10,7 @@ permissions:
 jobs:
   backup-and-restore:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:18
@@ -25,6 +25,47 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Discover runner egress IPv4
+        id: runner_network
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw_ipv4="$(curl -fsS --retry 3 https://api.ipify.org)"
+          runner_ipv4="$(python3 - "$raw_ipv4" <<'PY'
+          import ipaddress
+          import sys
+
+          raw = sys.argv[1]
+          if raw != raw.strip() or any(character.isspace() for character in raw):
+              raise SystemExit("Public IP response contains whitespace")
+          address = ipaddress.ip_address(raw)
+          if address.version != 4:
+              raise SystemExit("GitHub runner did not return an IPv4 address")
+          print(address)
+          PY
+          )"
+          runner_cidr="${runner_ipv4}/32"
+          echo "runner_cidr=$runner_cidr" >> "$GITHUB_OUTPUT"
+          echo "TEMPORARY_RENDER_CIDR=$runner_cidr"
+          echo "::notice title=Temporary Render CIDR::$runner_cidr"
+          {
+            echo "## ACTION REQUIRED — temporary Render database access"
+            echo
+            echo "Add this exact CIDR to the Render PostgreSQL inbound IP allow list:"
+            echo
+            echo "\`$runner_cidr\`"
+            echo
+            echo "Database: \`aion-agent-db\`"
+            echo
+            echo "Description suggestion: \`GitHub backup gate temporary\`"
+            echo
+            echo "**DO NOT use 0.0.0.0/0.**"
+            echo
+            echo "The workflow will automatically continue when access becomes available."
+            echo
+            echo "Remove this temporary CIDR from Render after the backup gate completes."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dump, verify, restore, compare, and encrypt
         id: backup
@@ -98,13 +139,30 @@ jobs:
 
           export PGOPTIONS='-c default_transaction_read_only=on'
           export PGSSLMODE=require
+          export PGCONNECT_TIMEOUT=3
           export QUERY
           production_query() {
             docker run --rm --network host \
-              -e PROD_CONNECTION_URL -e PGOPTIONS -e PGSSLMODE -e QUERY \
+              -e PROD_CONNECTION_URL -e PGOPTIONS -e PGSSLMODE \
+              -e PGCONNECT_TIMEOUT -e QUERY \
               postgres:18 sh -ceu \
               'psql "$PROD_CONNECTION_URL" -X -v ON_ERROR_STOP=1 -Atqc "$QUERY"'
           }
+
+          access_ready=false
+          QUERY='SELECT 1;'
+          for _attempt in $(seq 1 120); do
+            if production_query >/dev/null 2>&1; then
+              access_ready=true
+              echo "Production database access detected: PASS"
+              break
+            fi
+            sleep 10
+          done
+          if [ "$access_ready" != "true" ]; then
+            echo "::error::Temporary Render CIDR was not authorized before timeout"
+            exit 1
+          fi
 
           QUERY='SELECT version();'
           production_version="$(production_query)"
