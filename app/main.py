@@ -36,33 +36,75 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def bound_machine_request_body(request: Request, call_next):
-    if request.method == "POST" and request.url.path.rstrip("/") in {
-        "/utility/query",
-        "/mcp",
-        "/a2a/v1",
-    }:
-        content_length = request.headers.get("content-length")
-        if content_length:
+class _BoundMachineRequestBody:
+    _PATHS = {"/utility/query", "/mcp", "/a2a/v1"}
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope.get("type") != "http"
+            or scope.get("method") != "POST"
+            or scope.get("path", "").rstrip("/") not in self._PATHS
+        ):
+            return await self.app(scope, receive, send)
+
+        content_lengths = [
+            value
+            for name, value in scope.get("headers", [])
+            if name.lower() == b"content-length"
+        ]
+        if content_lengths:
             try:
+                if len(content_lengths) != 1:
+                    raise ValueError
+                content_length = content_lengths[0].decode("ascii")
+                if not content_length or not content_length.isdigit():
+                    raise ValueError
                 if int(content_length) > MAX_MACHINE_REQUEST_BYTES:
-                    return JSONResponse(
+                    response = JSONResponse(
                         status_code=413,
                         content={"detail": "Machine request body exceeds 64 KiB"},
                     )
-            except ValueError:
-                return JSONResponse(
+                    return await response(scope, receive, send)
+            except (UnicodeDecodeError, ValueError):
+                response = JSONResponse(
                     status_code=400,
                     content={"detail": "Invalid Content-Length header"},
                 )
-        body = await request.body()
-        if len(body) > MAX_MACHINE_REQUEST_BYTES:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": "Machine request body exceeds 64 KiB"},
-            )
-    return await call_next(request)
+                return await response(scope, receive, send)
+
+        body_bytes = 0
+        buffered_messages = []
+        while True:
+            message = await receive()
+            if message.get("type") != "http.request":
+                buffered_messages.append(message)
+                break
+            chunk = message.get("body", b"")
+            body_bytes += len(chunk)
+            if body_bytes > MAX_MACHINE_REQUEST_BYTES:
+                response = JSONResponse(
+                    status_code=413,
+                    content={"detail": "Machine request body exceeds 64 KiB"},
+                )
+                return await response(scope, receive, send)
+            buffered_messages.append(message)
+            if not message.get("more_body", False):
+                break
+
+        replay_index = 0
+
+        async def replay_bounded_body():
+            nonlocal replay_index
+            if replay_index < len(buffered_messages):
+                message = buffered_messages[replay_index]
+                replay_index += 1
+                return message
+            return await receive()
+
+        return await self.app(scope, replay_bounded_body, send)
 
 
 @app.middleware("http")
@@ -1248,3 +1290,4 @@ class _AionA2AV1IngressCompat:
         return await self.app(ns,replay,send)
 
 app.add_middleware(_AionA2AV1IngressCompat)
+app.add_middleware(_BoundMachineRequestBody)

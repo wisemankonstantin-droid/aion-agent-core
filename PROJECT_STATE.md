@@ -77,6 +77,15 @@ deploy it automatically. Package 3 must not start until Package 2 is accepted.
 
 ## Package 2 validation
 
+- The HQ corrective security fix replaces post-buffering body measurement with
+  an outer ASGI request-stream limiter for `POST /utility/query`, `POST /mcp`
+  and `POST /a2a/v1`. It rejects malformed or declared-over-limit lengths
+  before reading, stops on the first streamed byte above 64 KiB, and replays
+  successfully bounded ASGI messages to the existing handlers unchanged.
+- Corrective targeted REST, MCP, A2A and request-stream tests: 44 passed.
+- Corrective full local suite: 186 passed, 5 PostgreSQL-only tests skipped.
+- Corrective readiness reported all local checks true; secret scan inspected
+  109 files with 0 findings; compile, dependency and diff checks passed.
 - Targeted utility, transport, A2A, MCP and migration suite: 49 passed.
 - Full local suite: 173 passed, 5 PostgreSQL-only tests skipped.
 - Controlled real-source machine proof used a temporary local database and the
