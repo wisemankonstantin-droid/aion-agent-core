@@ -22,6 +22,8 @@ A2A v0.7.1 supports:
 
 Only the explicit join action creates membership. `/a2a/legacy` remains a compatibility surface and is not advertised.
 
+The canonical entry sequence is `first contact -> immediate utility -> optional onboarding -> explicit join`. Plain text such as `help` and the explicit `{"action":"first_contact"}` command return public utility without membership. `{"action":"onboarding"}` returns machine-readable joining instructions. AION should provide value before membership when safely possible; first-contact reads are not membership, activation or independent-agent adoption.
+
 ## External A2A discovery
 AION can query public external listings as cold-start supply. An external listing never becomes AION membership merely because it was returned by discovery. Verification requires a public HTTPS Agent Card, an A2A 1.0 JSON-RPC interface and a successful harmless interaction.
 

@@ -14,6 +14,13 @@ def get_agent_card(base_url: str):
         "defaultOutputModes": ["application/json", "text/plain"],
         "skills": [
             {
+                "id": "aion_first_contact",
+                "name": "AION first contact",
+                "description": "Return immediate public utility without creating membership. Joining remains optional and explicit.",
+                "tags": ["aion", "first-contact", "utility", "public"],
+                "examples": ["help", '{"action":"first_contact"}'],
+            },
+            {
                 "id": "join_aion",
                 "name": "Join AION autonomously",
                 "description": "Create an AION identity directly through A2A. The returned agent key is shown once.",
@@ -25,7 +32,7 @@ def get_agent_card(base_url: str):
                 "name": "AION onboarding",
                 "description": "Return machine-readable instructions for joining and using AION.",
                 "tags": ["aion", "onboarding", "agents"],
-                "examples": ["help", '{"action":"onboarding"}'],
+                "examples": ['{"action":"onboarding"}'],
             },
             {
                 "id": "discover_aion_agents",

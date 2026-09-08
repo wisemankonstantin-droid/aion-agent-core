@@ -52,6 +52,7 @@ for path in [
     "/funnel",
     "/.well-known/agent-card.json",
     "/a2a/status",
+    "/readiness",
 ]:
     body = get_bytes(path)
     print("OK", path, len(body), "bytes")
@@ -59,6 +60,12 @@ for path in [
 health = get_json("/health")
 assert health["version"] == "0.7.1", health
 assert health["a2a_runtime"] == "mounted", health
+
+readiness = get_json("/readiness")
+assert readiness["status"] == "ready", readiness
+assert readiness["version"] == "0.7.1", readiness
+assert readiness["checks"]["database"] is True, readiness
+assert readiness["checks"]["a2a_runtime"] is True, readiness
 
 card = get_json("/.well-known/agent-card.json")
 interfaces = card.get("supportedInterfaces") or []
@@ -96,28 +103,52 @@ for required in {"join_aion", "publish_need", "publish_offer", "get_opportunitie
     assert required in tool_names, (required, tool_names)
 print("OK /mcp tools/list")
 
-message_id = "aion-smoke-" + uuid.uuid4().hex
-status, a2a = post_json(
-    "/a2a/v1",
-    {
-        "jsonrpc": "2.0",
-        "id": "a2a-smoke",
-        "method": "SendMessage",
-        "params": {
-            "message": {
-                "messageId": message_id,
-                "role": "ROLE_USER",
-                "parts": [{"text": "help"}],
-            }
+def a2a_message(text, rpc_id):
+    status, response = post_json(
+        "/a2a/v1",
+        {
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "method": "SendMessage",
+            "params": {
+                "message": {
+                    "messageId": "aion-smoke-" + uuid.uuid4().hex,
+                    "role": "ROLE_USER",
+                    "parts": [{"text": text}],
+                }
+            },
         },
-    },
-    {"A2A-Version": "1.0"},
+        {"A2A-Version": "1.0"},
+    )
+    assert status == 200 and "error" not in response, response
+    assert "result" in response, response
+    message = response["result"]["message"]
+    return json.loads(message["parts"][0]["text"])
+
+
+agents_before = get_json("/stats")["agents_raw_rows"]
+first_contact = a2a_message("help", "a2a-first-contact-smoke")
+assert first_contact["action"] == "first_contact", first_contact
+assert first_contact["membership_required"] is False, first_contact
+assert first_contact["join_is_optional"] is True, first_contact
+assert first_contact["source"] in {
+    "aion_open_need",
+    "aion_public_offer",
+    "aion_external_discovery",
+}, first_contact
+assert isinstance(first_contact.get("immediate_value"), dict) and any(
+    value not in (None, "", [], {}) for value in first_contact["immediate_value"].values()
+), first_contact
+assert "agent_key" not in first_contact, first_contact
+print("OK /a2a/v1 first contact")
+
+onboarding = a2a_message(
+    json.dumps({"action": "onboarding"}, separators=(",", ":")),
+    "a2a-onboarding-smoke",
 )
-assert status == 200 and "error" not in a2a, a2a
-assert "result" in a2a, a2a
-message = a2a["result"]["message"]
-onboarding = json.loads(message["parts"][0]["text"])
 assert onboarding["join_over_a2a"]["action"] == "join_aion", onboarding
-print("OK /a2a/v1 SendMessage")
+assert "agent_key" not in onboarding, onboarding
+assert get_json("/stats")["agents_raw_rows"] == agents_before
+print("OK /a2a/v1 explicit onboarding")
 
 print("LIVE SMOKE PASS")

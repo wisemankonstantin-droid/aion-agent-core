@@ -1,8 +1,9 @@
 """Official A2A 1.0 route integration.
 
-AION keeps discovery public and also exposes an explicit opt-in join action so
-an autonomous A2A peer can create its own identity without switching protocols.
-Only an explicit join command creates membership; discovery traffic never does.
+AION gives generic first contact immediate public value, exposes explicit
+onboarding, and provides an explicit opt-in join action so an autonomous A2A
+peer can create its own identity without switching protocols. Only an explicit
+join command creates membership; first contact, discovery and onboarding do not.
 """
 import json
 import os
@@ -250,13 +251,17 @@ def install_official_a2a(app):
                         "MCP": f"{base}/mcp",
                     },
                     "commands": [
+                        "help",
+                        '{"action":"first_contact"}',
+                        '{"action":"onboarding"}',
                         '{"action":"join_aion","external_id":"my-agent","name":"My Agent","capabilities":["research"]}',
                         '{"action":"discover_agents","capability":"web_research"}',
                         '{"action":"discover_external_agents","query":"web_research"}',
                         "discover:web_research",
                         "external:web_research",
                     ],
-                    "important": "Only an explicit join_aion command creates membership. Discovery/onboarding calls do not.",
+                    "progression": "first contact -> immediate utility -> optional onboarding -> explicit join",
+                    "important": "Only an explicit join_aion command creates membership. First-contact, discovery and onboarding calls do not.",
                 }
 
             await event_queue.enqueue_event(new_text_message(json.dumps(payload, ensure_ascii=False)))
@@ -280,6 +285,13 @@ def install_official_a2a(app):
         ],
         skills=[
             AgentSkill(
+                id="aion_first_contact",
+                name="AION first contact",
+                description="Return immediate public utility without creating membership. Joining remains optional and explicit.",
+                tags=["aion", "first-contact", "utility", "public"],
+                examples=["help", '{"action":"first_contact"}'],
+            ),
+            AgentSkill(
                 id="join_aion",
                 name="Join AION autonomously",
                 description="Create an AION identity directly through A2A. The returned agent key is shown once.",
@@ -291,7 +303,7 @@ def install_official_a2a(app):
                 name="AION onboarding",
                 description="Return machine-readable instructions for joining and using AION.",
                 tags=["aion", "onboarding", "agents"],
-                examples=["help", '{"action":"onboarding"}'],
+                examples=['{"action":"onboarding"}'],
             ),
             AgentSkill(
                 id="discover_aion_agents",

@@ -1,7 +1,35 @@
+import json
+import uuid
+
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
+
+def _a2a_message(text):
+    from app.main import A2A_RUNTIME
+
+    if A2A_RUNTIME.get("status") != "mounted":
+        pytest.skip("a2a-sdk not installed in this local test environment")
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "contract-test",
+        "method": "SendMessage",
+        "params": {
+            "message": {
+                "messageId": "msg-" + uuid.uuid4().hex,
+                "role": "ROLE_USER",
+                "parts": [{"text": text}],
+            }
+        },
+    }
+    response = client.post("/a2a/v1", json=payload, headers={"A2A-Version": "1.0"})
+    assert response.status_code == 200, response.text
+    rpc = response.json()
+    assert "error" not in rpc, rpc
+    return json.loads(rpc["result"]["message"]["parts"][0]["text"])
 
 
 def test_health():
@@ -20,7 +48,31 @@ def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
     assert card["supportedInterfaces"][0]["protocolVersion"] == "1.0"
     assert card["supportedInterfaces"][0]["url"].endswith("/a2a/v1")
     ids = {skill["id"] for skill in card["skills"]}
-    assert {"join_aion", "aion_onboarding", "discover_aion_agents", "discover_external_agents"} <= ids
+    assert {"aion_first_contact", "join_aion", "aion_onboarding", "discover_aion_agents", "discover_external_agents"} <= ids
+    skills = {skill["id"]: skill for skill in card["skills"]}
+    assert skills["aion_first_contact"]["examples"] == ["help", '{"action":"first_contact"}']
+    assert skills["aion_onboarding"]["examples"] == ['{"action":"onboarding"}']
+    assert skills["join_aion"]["examples"] == [
+        '{"action":"join_aion","external_id":"my-agent","name":"My Agent","capabilities":["research"]}'
+    ]
+
+
+def test_a2a_first_contact_and_onboarding_do_not_create_membership():
+    agents_before = client.get("/stats").json()["agents_raw_rows"]
+
+    for text in ("help", '{"action":"first_contact"}'):
+        first_contact = _a2a_message(text)
+        assert first_contact["action"] == "first_contact"
+        assert first_contact["membership_required"] is False
+        assert first_contact["join_is_optional"] is True
+        assert isinstance(first_contact["immediate_value"], dict)
+        assert first_contact["immediate_value"]
+        assert "agent_key" not in first_contact
+
+    onboarding = _a2a_message('{"action":"onboarding"}')
+    assert onboarding["join_over_a2a"]["action"] == "join_aion"
+    assert "agent_key" not in onboarding
+    assert client.get("/stats").json()["agents_raw_rows"] == agents_before
 
 
 def test_a2a_runtime_status_is_explicit():
@@ -76,9 +128,6 @@ def test_a2a_version_guard_rejects_old_or_missing_version():
 
 
 def test_a2a_explicit_join_can_create_and_activate_agent():
-    import json
-    import uuid
-    import pytest
     from app.main import A2A_RUNTIME
     if A2A_RUNTIME.get("status") != "mounted":
         pytest.skip("a2a-sdk not installed in this local test environment")
