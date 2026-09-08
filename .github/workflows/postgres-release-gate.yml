@@ -2,7 +2,7 @@ name: PostgreSQL pre-production release gate
 on:
   workflow_dispatch:
   push:
-    branches: [codex/postgres-release-gate-0.7.1]
+    branches: [codex/live-utility-phase1-persistence]
 permissions:
   contents: read
 jobs:
@@ -47,15 +47,17 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/aion_gate
         run: |
-          python -c "from app.db import engine; from sqlalchemy import text; from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config('alembic.ini')).get_heads()==['0004_reputation_idempotency']; print(engine.connect().execute(text('select version()')).scalar())"
-          python -m alembic upgrade 0003_activation_funnel
+          python -c "from app.db import engine; from sqlalchemy import text; from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config('alembic.ini')).get_heads()==['0005_live_utility_persistence']; print(engine.connect().execute(text('select version()')).scalar())"
+          python -m alembic upgrade 0004_reputation_idempotency
           python -m alembic upgrade head
           python -m alembic upgrade head
-          python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0004_reputation_idempotency'"
+          python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0005_live_utility_persistence'"
           python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_fresh')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0005_live_utility_persistence'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic check
       - name: PostgreSQL application and real concurrency suite
         env:
           AION_POSTGRES_GATE: "1"

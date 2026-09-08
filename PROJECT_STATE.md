@@ -3,7 +3,10 @@
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Main SHA:** `419f11b2a34fdec26269a216de65e9dcf955e963`.
+- **Repository main at task start:**
+  `153a6dcf8a747e5185dbd65371bf9d702294ffdc`.
+- **Production deployed SHA:**
+  `419f11b2a34fdec26269a216de65e9dcf955e963`.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
@@ -38,27 +41,25 @@ onboarding -> explicit join`. Only explicit join creates membership. Discovery,
 first-contact and onboarding traffic are not membership or independent
 adoption.
 
-This branch implements the Phase 1 pure internal contract slice: bounded source
+Repository main contains the Phase 1 pure internal contracts: bounded source
 registry contracts, immutable versioned source-observation/provenance contracts
-and deterministic freshness evaluation. It has no persistence, crawler, remote
-retrieval, public REST/MCP/A2A integration, compatibility ranking, personalized
-delta, outcome telemetry, watchers or safe action layer. Do not scale
-acquisition until an independent external agent obtains a useful current result,
-completes a successful action and voluntarily returns. No production deployment
-occurred for this contract-only branch.
+and deterministic freshness evaluation. This feature branch adds durable source
+persistence and append-only observation/provenance persistence through separate
+SQLAlchemy models and an internal store, plus additive migration
+`0005_live_utility_persistence`.
+
+The persistence groundwork has no crawler, remote retrieval, public
+REST/MCP/A2A integration, compatibility ranking, personalized delta, outcome
+telemetry, watchers or safe action layer. No production migration or deployment
+occurred; production remains on deployed SHA `419f11b2a34fdec26269a216de65e9dcf955e963`.
 
 ## Current next milestone
 
-Obtain independent review of the implemented Phase 1 contract slice. If it is
-accepted, make a separately bounded persistence/data-model decision for:
-
-- a bounded source registry;
-- versioned observations with evidence and provenance; and
-- freshness evaluation with explicit stale-state behavior.
-
-Do not combine that decision with broad crawling, compatibility ranking,
-personalized delta, outcome telemetry or external action. Any persistence
-change requires a reviewed migration and the established database release gates.
+Obtain independent review of the durable Phase 1 persistence slice and passing
+PostgreSQL 18 workflow evidence for its exact commit. Do not merge or deploy it
+automatically. If accepted, define a separately bounded next slice; do not
+combine it with broad crawling, compatibility ranking, personalized delta,
+outcome telemetry or external action.
 
 ## Phase 1 contract validation
 
@@ -69,6 +70,22 @@ change requires a reviewed migration and the established database release gates.
 - `python scripts/readiness.py`: all 26 local readiness checks passed.
 - `python scripts/check_secrets.py`: 92 files scanned, 0 findings.
 - `git diff --check`: passed.
+
+## Phase 1 persistence validation
+
+- `python -m pytest -q tests/test_live_utility.py tests/test_live_utility_persistence.py`:
+  50 passed.
+- `python -m pytest -q tests/test_migrations.py`: 2 passed; both the additive
+  `0004 -> 0005` path with sentinel preservation and fresh-to-head path passed.
+- `python -m pytest -q`: 127 passed, 3 PostgreSQL-only tests skipped.
+- Disposable SQLite fresh-to-head, repeated `upgrade head`, exact revision and
+  `alembic check`: passed; head is `0005_live_utility_persistence` with no schema
+  drift.
+- `python scripts/readiness.py`: all 29 local readiness checks passed.
+- `python scripts/check_secrets.py`: 95 files scanned, 0 findings.
+- `python -m compileall -q app tests scripts`: passed.
+- Workflow YAML parsing and `git diff --check`: passed.
+- PostgreSQL 18 workflow validation: pending feature-branch push.
 
 ## Documentation alignment validation
 

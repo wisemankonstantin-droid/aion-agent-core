@@ -249,14 +249,15 @@ one broad change.
 
 ## Next bounded milestone
 
-The first pure-contract slice of Phase 1 now exists on its current branch: an
-in-process source registry, versioned source-observation/provenance contracts
-and deterministic freshness evaluation, exercised against no more than two Tier
-1 fixtures. It has no persistence, remote retrieval, crawler or public API
-integration.
+The pure-contract slice of Phase 1 exists on repository main: an in-process
+source registry, versioned source-observation/provenance contracts and
+deterministic freshness evaluation. Durable source and append-only observation
+persistence now exists on its feature branch through separate ORM and domain
+layers plus additive migration `0005_live_utility_persistence`. It has no remote
+retrieval, crawler or public API integration.
 
-The next recommended engineering task is independent review followed, if
-accepted, by a separately bounded persistence/data-model decision for those
-contracts. It must continue to defer broad crawling, compatibility ranking,
-personalized delta, outcome telemetry and external action. Any schema migration
-must be designed and tested under the existing database safety gate.
+The immediate gate is independent review plus successful PostgreSQL 18 upgrade
+and fresh-path workflow evidence for the exact persistence commit. If accepted,
+the next engineering task must be separately bounded and continue to defer broad
+crawling, compatibility ranking, personalized delta, outcome telemetry and
+external action.

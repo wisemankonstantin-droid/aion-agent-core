@@ -13,6 +13,7 @@ checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
     "render_blueprint": (root / "render.yaml").exists(),
     "migration_0004": (root / "alembic/versions/0004_reputation_idempotency.py").exists(),
+    "migration_0005_live_utility": (root / "alembic/versions/0005_live_utility_persistence.py").exists(),
     "a2a_sdk_pinned": "a2a-sdk==1.1.2" in requirements and "a2a-sdk[fastapi]==1.1.2" in (root / "requirements.in").read_text(encoding="utf-8"),
     "a2a_required_in_render": "AION_REQUIRE_A2A" in render,
     "a2a_v1_route": '"/a2a/v1"' in main or "/a2a/v1" in (root / "app/a2a_official.py").read_text(encoding="utf-8"),
