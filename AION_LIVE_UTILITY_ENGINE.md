@@ -2,11 +2,11 @@
 
 ## Status and scope
 
-This document defines the next product and architecture direction for AION. It
-is additive to `AION_DIRECTIVE.md` and does not claim that the systems described
-below are implemented. The current FastAPI, SQLAlchemy, Alembic, A2A and MCP
-architecture remains authoritative until a bounded, reviewed change replaces a
-specific part of it.
+This document defines the product and architecture direction for AION. It is
+additive to `AION_DIRECTIVE.md`. Implemented Package 1 and Package 2 boundaries
+are stated explicitly below; later roadmap items remain direction, not claims.
+The current FastAPI, SQLAlchemy, Alembic, A2A and MCP architecture remains
+authoritative until a bounded, reviewed change replaces a specific part of it.
 
 AION is evolving into a **Live Utility Engine for independent AI agents**. Its
 purpose is to provide current, evidenced, compatible and actionable utility,
@@ -247,21 +247,40 @@ Each phase requires a bounded hypothesis, threat model, resource budget,
 targeted tests and an explicit non-goal list. Do not implement several phases in
 one broad change.
 
-## Next bounded milestone
+## Implemented Package 1 and Package 2 boundary
 
-The pure contracts and durable Phase 1 persistence exist on repository main.
-Package 1 is implemented on branch
-`codex/package-1-live-utility-data-engine`: two bounded official protocol-release
-sources, shared pinned HTTPS retrieval, adapter-specific structured
-normalization, durable normalized material versions, separate verification
-evidence, deduplication, lineage, structured change detection, deterministic
-refresh execution and restart-safe current-state evaluation. Additive migration
-`0006_live_utility_data` provides the storage that `0005` could not represent
-without mutating append-only evidence during an unchanged re-verification.
+Package 1 is accepted and merged on repository main. It provides two bounded
+official protocol-release sources, shared pinned HTTPS retrieval, structured
+normalization, durable material versions and verification evidence,
+deduplication, lineage, structured change detection, deterministic refresh and
+restart-safe current state through migration `0006_live_utility_data`.
 
-Package 1 does not expose a public utility API and does not implement crawling,
-compatibility ranking, personalized delta, outcome telemetry, watchers or
-external action. Its implementation commit passed exact-commit normal CI and
-PostgreSQL 18 fresh/upgrade/concurrency validation. The remaining gate is a
-green final documentation commit plus independent HQ review. Only after that
-gate may Package 2 be defined as a separate bounded package.
+Package 2 is implemented for independent review on
+`codex/package-2-agent-utility-compatibility`. One shared service reads only the
+configured A2A and MCP Package 1 subjects and returns bounded evidence-aware
+results. The same service backs anonymous first contact, `POST /utility/query`,
+the A2A `live_utility` action and MCP `get_live_utility` tool. Request metadata
+cannot select a URL or trigger retrieval.
+
+Compatibility V1 has four explainable states: `compatible`, `incompatible`,
+`unknown` and `partially_compatible`. Exact declared current-version support is
+compatible; omitted evidence stays unknown; protocol support without version
+evidence is partial; a missing protocol or version mismatch is incompatible.
+This is release/version reasoning, not proof of endpoint interoperability.
+
+Fresh verified observations may be current and consequentially eligible.
+Stale, expired, unverified and not-yet-valid observations are returned only as
+explicit last-known evidence with warnings and no current value. Source tier
+and verification remain separate fields. Declared external endpoints are not
+used or upgraded in trust.
+
+Authenticated existing agents receive a durable per-subject delta comparing
+observation, source revision, freshness and eligibility with their prior
+checkpoint. Anonymous requests remain useful and create no checkpoint or Agent
+membership. Migration `0007_agent_utility_checkpoints` is additive and stores
+only this minimal history with PostgreSQL advisory-lock serialization.
+
+Package 2 does not add arbitrary search, crawling, embeddings, endpoint calls,
+actions, outcome verification, ranking, payments or Package 3 execution. The
+next gate is independent Package 2 review; Package 3 must not start or deploy
+automatically.

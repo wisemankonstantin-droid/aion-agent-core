@@ -1,10 +1,10 @@
-# Project checkpoint — 2026-09-08
+# Project checkpoint — 2026-09-09
 
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Repository main at Package 1 task start:**
-  `4a161933d37162947eaa3d08a1035f8c7cfa8def`.
+- **Repository main at Package 2 task start:**
+  `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
   `419f11b2a34fdec26269a216de65e9dcf955e963`.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
@@ -41,12 +41,10 @@ onboarding -> explicit join`. Only explicit join creates membership. Discovery,
 first-contact and onboarding traffic are not membership or independent
 adoption.
 
-Repository main contains the Phase 1 pure contracts and durable persistence
-through migration `0005_live_utility_persistence`. Package 1 is implemented on
-branch `codex/package-1-live-utility-data-engine` from main SHA
-`4a161933d37162947eaa3d08a1035f8c7cfa8def`; the exact final branch SHA is an
-external Git fact reported after push because a commit cannot contain its own
-hash.
+Repository main contains the Phase 1 contracts, durable persistence and the
+accepted Package 1 data engine through migration `0006_live_utility_data`.
+Package 1 was independently reviewed and merged at main SHA
+`d5257c539dc2bf86411297aca8b787933a1bed42`.
 
 Package 1 adds two explicitly configured Tier-1 release adapters for the
 official A2A and Model Context Protocol GitHub projects, a shared hardened HTTPS
@@ -56,17 +54,41 @@ verification evidence, deterministic refresh decisions and restart-safe current
 state. Migration `0006_live_utility_data` adds normalized observation data and
 the `live_utility_verifications` evidence table.
 
-This remains an internal data engine. It has no crawler, broad search, public
-REST/MCP/A2A utility surface, first-contact integration, compatibility ranking,
-personalized delta, outcome telemetry, watcher automation or action layer. No
-production migration or deployment occurred; production remains on deployed
-SHA `419f11b2a34fdec26269a216de65e9dcf955e963`.
+Package 2 is implemented for review on branch
+`codex/package-2-agent-utility-compatibility`. It adds a shared bounded utility
+selection service over Package 1, anonymous REST/first-contact, A2A and MCP
+machine surfaces, explicit provenance/freshness/verification output,
+deterministic A2A/MCP protocol-version compatibility and durable per-agent
+subject checkpoints through additive migration
+`0007_agent_utility_checkpoints`. Its final pushed head is reported externally
+because a commit cannot contain its own hash.
+
+Package 2 does not perform remote action, arbitrary invocation or requester-
+selected retrieval. Anonymous utility creates no Agent identity. Only an
+authenticated existing agent receives a durable personalized delta; anonymous
+results explicitly report that limitation. Production remains on deployed SHA
+`419f11b2a34fdec26269a216de65e9dcf955e963`, with no Package 2 production
+migration or deployment.
 
 ## Current next milestone
 
-Obtain independent HQ review of the green Package 1 branch. Do not merge or
-deploy it automatically. Package 2 may be defined only after Package 1 is
-accepted.
+Obtain independent HQ review of the green Package 2 branch. Do not merge or
+deploy it automatically. Package 3 must not start until Package 2 is accepted.
+
+## Package 2 validation
+
+- Targeted utility, transport, A2A, MCP and migration suite: 49 passed.
+- Full local suite: 173 passed, 5 PostgreSQL-only tests skipped.
+- Controlled real-source machine proof used a temporary local database and the
+  public REST utility surface. Official A2A `v1.0.1` and MCP `2026-07-28`
+  observations were fresh, source-observation verified, compatible and
+  consequentially eligible; no Agent membership was created.
+- SQLite `0006 -> 0007`, older-to-head and fresh-to-head paths, repeated upgrade
+  and Alembic schema check passed. Head is
+  `0007_agent_utility_checkpoints`.
+- Readiness, secret scan, compile, workflow YAML and diff checks are required on
+  the final branch head. Exact-commit normal CI and PostgreSQL 18 gate results
+  are reported in the final handoff after push.
 
 ## Phase 1 contract validation
 
@@ -157,6 +179,11 @@ accepted.
 - Reputation completion is requester-reported. Payment records are intents,
   not verified settlement.
 - A2A task storage and rate limits are process-local.
+- Compatibility V1 is deterministic protocol/release-version comparison for
+  A2A and MCP only. It does not prove runtime interoperability or endpoint
+  callability.
+- Personalized Delta V1 records only per-agent A2A/MCP observation revision,
+  freshness and eligibility checkpoints. It is not a generic news feed.
 - Synthetic probes validate behavior but do not prove independent adoption,
   activation, retention or revenue.
 - Historical metrics and database rows must not be presented as product proof.
