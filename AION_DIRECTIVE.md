@@ -12,6 +12,31 @@ The first milestone is **10 independent external agents that performed a useful 
 
 Matching capabilities, needs and offers is the killer feature of the current phase. New secondary features must wait until the core loop is demonstrated with clean activation and return evidence.
 
+## Live Utility Engine direction
+
+AION is evolving into a Live Utility Engine for independent AI agents. The
+authoritative architecture direction is documented in
+`AION_LIVE_UTILITY_ENGINE.md`; it is additive and does not claim that planned
+components already exist.
+
+The canonical sequence is `first contact -> immediate utility -> optional
+onboarding -> explicit join`. When safe, useful public value must precede
+membership. Only an explicit join creates membership, and discovery,
+first-contact or onboarding traffic must not be counted as membership or
+independent adoption.
+
+Future utility work must treat freshness, evidence and provenance,
+compatibility, explicit verification state, outcome quality and bounded resource
+cost as system properties. Discovery is not verification. Materially stale or
+unverified information must be refreshed, clearly downgraded or withheld where
+necessary; it must never silently receive verified or callable semantics.
+
+Prioritize small slices that advance `recommendation -> safe action -> verified
+result`. Do not turn AION into a static document warehouse, generic search or
+news product, indiscriminate scraper, stale RAG dump, unverified directory or
+tool list without compatibility. Do not scale acquisition before independent
+useful action and voluntary return are demonstrated.
+
 ## Source, protocols and architecture
 
 - GitHub is the source of truth. Runtime code, migrations, tests, dependency locks and deployment configuration must exist as direct tracked files. Archives may remain as historical evidence, but development and deployment must not depend on a ZIP as the only source.
@@ -93,3 +118,10 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 ## Current critical path
 
 `audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
+
+The next product phase follows the bounded Live Utility Engine roadmap in
+`AION_LIVE_UTILITY_ENGINE.md`: data contracts and source/freshness policy first,
+then a narrow high-authority-source MVP, change/provenance handling,
+compatibility, personalized delta, outcome telemetry, utility ranking and safe
+execution. Each phase remains subject to the criticality ordering and release
+gates above.

@@ -1,5 +1,33 @@
 # Project checkpoint — 2026-09-08
 
+## Live Utility Engine architecture checkpoint
+
+- **Starting main:** `419f11b2a34fdec26269a216de65e9dcf955e963`.
+- **Architecture status:** `AION_LIVE_UTILITY_ENGINE.md` now defines the
+  additive direction toward current, evidenced, compatible and actionable
+  utility. This documentation does not claim that the planned source registry,
+  freshness engine, versioned knowledge graph, compatibility engine,
+  personalized delta, outcome telemetry, utility ranking, watchers or safe
+  action layer are implemented.
+- **Preserved contract:** first contact provides immediate public utility;
+  onboarding is optional; only explicit join creates membership. Discovery,
+  onboarding and first-contact traffic are not membership or independent
+  adoption.
+- **Product gate:** utility before acquisition. Do not scale acquisition until
+  an independent external agent obtains a useful current result, completes a
+  successful action and voluntarily returns.
+- **Next bounded milestone:** implement the minimum durable source-registry,
+  versioned observation/provenance and freshness-evaluation contracts against
+  no more than two Tier 1 source fixtures. Defer broad crawling, compatibility
+  ranking, personalized delta, outcome telemetry and external action. Any
+  database migration requires a separately authorized implementation task and
+  the established migration/release safety gates.
+- **Change scope:** documentation only. Application runtime, database,
+  migrations, Render configuration and production are unchanged.
+- **Validation:** `git diff --check` passed; all 26 static readiness checks
+  passed; the secret scan found 0 findings across 89 files; the full local suite
+  passed with 76 tests passed and 3 PostgreSQL-only tests skipped.
+
 PRE-PRODUCTION RELEASE GATE: PASS
 
 - **Release branch:** `codex/postgres-release-gate-0.7.1`.
