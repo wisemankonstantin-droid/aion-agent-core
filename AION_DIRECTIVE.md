@@ -8,13 +8,33 @@ The core product loop is:
 
 `discovery -> understanding -> first contact -> immediate utility -> optional identity/join -> capability / need / offer -> matching -> useful result -> interaction -> reputation/history -> return -> monetization`
 
+The commercial flywheel is:
+
+`utility -> monetizable value -> revenue -> more utility -> more agents -> more revenue`
+
+AION must create real value and capture part of that value economically. Revenue
+is a first-class product requirement because sustainable infrastructure,
+engineering, acquisition, reliability and future Temple projects require
+sustainable revenue. Utility before membership does not mean unlimited free
+utility: public value should establish understanding, initial value and trust,
+while higher-cost or higher-value services may be paid.
+
 **UTILITY BEFORE MEMBERSHIP.** Registration is not utility. First contact must
 not automatically create membership; only explicit join creates membership.
 Discovery, first-contact reads and onboarding are not independent adoption.
 
 The first milestone is **10 independent external agents that performed a useful action and later returned**. A registration, page view, request, synthetic probe, duplicated identity or operator-controlled agent does not satisfy this milestone.
 
-Matching capabilities, needs and offers is the killer feature of the current phase. New secondary features must wait until the core loop is demonstrated with clean activation and return evidence.
+The North Star metric is **VUO — Verified Useful Outcome**: a real useful
+outcome delivered to an independent external agent and verified with explicit
+evidence. Registrations, traffic, API calls, synthetic probes and test agents
+are not VUOs. Supporting measures include VUO per week, agents with a VUO,
+repeat VUO rate, cost per VUO, paid VUO rate, revenue per VUO and, where
+measurable, gross margin per VUO.
+
+Package 3's next killer proof is one narrow real capability path from request to
+verified outcome. New secondary features must wait until this core loop is
+demonstrated with clean outcome and return evidence.
 
 ## Live Utility Engine direction
 
@@ -51,19 +71,32 @@ useful action and voluntary return are demonstrated.
 
 ## Identity, discovery and metrics
 
+- AION is agent-owner neutral, model-neutral and vendor-neutral. Unknown human
+  or company ownership does not make an agent fake and must not block normal
+  permitted utility. Agents built with OpenAI, Anthropic, Google, open-source,
+  local, custom or future systems remain eligible on equal terms.
+- Identity strength must be proportional to the operation. Do not require KYC,
+  passport, company identity or owner identification merely to provide normal
+  permitted utility. Stronger evidence may be required where abuse, Sybil
+  resistance, reputation, rewards, legal obligations or consequential risk
+  justify it.
 - Identity resolution and deduplication are mandatory. Use stable external identifiers, durable package identity, canonical resolvers or another strong proof. A display name or capability similarity alone is insufficient.
 - Reject creation of a second logical identity when strong evidence identifies an existing agent. Preserve auditable raw rows and provide credential recovery guidance instead of silently issuing a new identity.
 - An external URL, registry hit or declared Agent Card is a candidate, not a working external agent. Validate a public, safe endpoint, supported protocol and harmless interaction before recording it as verified.
 - Product metrics use unique independent external agents. Keep raw traffic and raw database rows visible, label estimates, exclude AION-operated and test identities, and never convert unknown traffic into adoption.
 - Never fabricate, round up or selectively present growth. Synthetic agents and probes validate software; they do not establish market growth, activation or retention.
 - Do not scale acquisition until independent activation and return have been demonstrated. Optimize the real path from discovery to useful result before distribution volume.
+- Anti-abuse controls protect reputation, payments, metrics, infrastructure and
+  rewards from Sybil activity, self-dealing, duplicate economic events,
+  malicious traffic and other abuse. They must not treat legitimate agents as
+  suspect merely because their owner, model or vendor is unknown.
 
 ## Security and reliability
 
 Every material change must consider:
 
 - authentication, authorization and identity impersonation;
-- secret handling, logs and repository history;
+- data minimization, secret handling, logs and repository history;
 - input limits, rate limits and resource exhaustion;
 - SSRF, redirects, DNS changes and untrusted external content;
 - replay, idempotency, race conditions and duplicate writes;
@@ -74,6 +107,13 @@ Every material change must consider:
 - backup, forward migration and rollback without destructive downgrade.
 
 Reliability claims require evidence from the real startup path, readiness checks and relevant protocol flows. Process-local state and in-memory limits must be documented as such.
+
+Before AION handles consequential third-party operations, collect only the data
+needed for the operation. Do not log secrets or store credentials casually.
+Action credentials should use least privilege, narrow scopes, revocation and
+short-lived access where possible, and secret references instead of broad
+plaintext exposure. This protects operations; it is not a reason to identify a
+human owner unnecessarily.
 
 ## Database safety
 
@@ -97,9 +137,39 @@ Work is Done only when:
 
 Passing synthetic tests proves implementation behavior only. It does not prove independent adoption, useful external outcomes or retention.
 
+**ZERO KNOWN DEFECTS AT PACKAGE CLOSE.** A package is not Done while a known,
+reproducible security, concurrency, database-correctness, regression, logic,
+documentation or invariant defect remains. A documented, deliberate
+current-scope limitation is acceptable; a broken promised invariant is not.
+The normal package gate is:
+
+`implement -> targeted tests -> full tests -> Codex red team -> CI -> PostgreSQL gate when relevant -> HQ independent review -> corrective fixes -> revalidation -> Done`
+
 ## Machine payments
 
 Monetization follows useful action, not registration. A payment intent is not a settled payment. Any machine-payment flow must bind payer, payee, purpose, amount, authorization, idempotency and settlement evidence; handle replay, failure and refund states; and keep financial claims auditable. Do not claim machine-payment completion until a real rail and settlement have been verified.
+
+When an agent already possesses a payment capability accepted by the selected
+rail, AION must not add a redundant owner-authorization ceremony. AION checks
+the requested amount, valid payment capability, idempotency, payment result and
+real settlement evidence when settlement is claimed. External rail restrictions
+and legally required controls remain external constraints; they must not be
+misrepresented as universal AION product requirements.
+
+## Strategic position and moat
+
+AION is a neutral cross-platform utility, compatibility, trust, routing and
+verified-outcome layer for agents. It does not aim to replace large agent
+runtimes or cloud platforms, and it is not another generic MCP or A2A registry.
+Protocols are infrastructure; verified useful outcomes are the value.
+
+AION's durable moat must emerge from real usage: verified outcome and
+reliability history, a cross-platform compatibility graph, trust evidence,
+economic routing and distribution. Source code and protocol endpoints alone are
+not a moat, and data must never be invented to simulate one. Mature reputation
+should be contextual to agent, capability, protocol, evidence, recency and
+verified outcomes rather than reduced to one global number. Do not overbuild
+reputation before real outcomes exist.
 
 ## Decision discipline
 
@@ -123,9 +193,8 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 
 `audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
 
-The next product phase follows the bounded Live Utility Engine roadmap in
-`AION_LIVE_UTILITY_ENGINE.md`: data contracts and source/freshness policy first,
-then a narrow high-authority-source MVP, change/provenance handling,
-compatibility, personalized delta, outcome telemetry, utility ranking and safe
-execution. Each phase remains subject to the criticality ordering and release
-gates above.
+The accepted delivery sequence and current package status are defined in
+`AION_MASTER_DELIVERY_ROADMAP.md`. Package 3 is next and must prove one narrow
+real `find -> verify -> invoke -> verify outcome` loop rather than abstract
+action infrastructure. Each package remains subject to the criticality ordering
+and release gates above.

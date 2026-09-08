@@ -3,6 +3,8 @@
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.
+- **Current repository main:**
+  `88bc6fae247a5bb454d435380c24d665ba48f512`.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
@@ -26,9 +28,15 @@
   `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 - **Database:** Render PostgreSQL `aion-agent-db`
   (`dpg-daei1sv40ujc73faqr70-a`), PostgreSQL 18, Frankfurt. The public external
-  `ipAllowList` is empty.
+  `ipAllowList` is empty. The current free plan externally reports an
+  expiration date of **2026-10-06**. This is a mandatory Package 4 production-
+  planning risk: durability, backup and reliable uptime must be resolved before
+  AION is relied on as a commercial production service.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
+- **Repository Alembic head:** `0007_agent_utility_checkpoints`.
+- **Production boundary:** Package 2 has not been deployed or migrated in
+  production. Production remains on the SHA above and AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -41,9 +49,10 @@ onboarding -> explicit join`. Only explicit join creates membership. Discovery,
 first-contact and onboarding traffic are not membership or independent
 adoption.
 
-Repository main contains the Phase 1 contracts, durable persistence and the
-accepted Package 1 data engine through migration `0006_live_utility_data`.
-Package 1 was independently reviewed and merged at main SHA
+Package 0 is **Done**. Repository main contains the Phase 1 contracts, durable
+persistence and the accepted Package 1 data engine through migration
+`0006_live_utility_data`.
+Package 1 is **Done**. It was independently reviewed and merged at main SHA
 `d5257c539dc2bf86411297aca8b787933a1bed42`.
 
 Package 1 adds two explicitly configured Tier-1 release adapters for the
@@ -54,14 +63,14 @@ verification evidence, deterministic refresh decisions and restart-safe current
 state. Migration `0006_live_utility_data` adds normalized observation data and
 the `live_utility_verifications` evidence table.
 
-Package 2 is implemented for review on branch
-`codex/package-2-agent-utility-compatibility`. It adds a shared bounded utility
+Package 2 is **Done** with zero known defects. HQ independently reviewed and
+accepted it, including the corrective request-stream security fix, and it was fast-forwarded into main at
+`88bc6fae247a5bb454d435380c24d665ba48f512`. It adds a shared bounded utility
 selection service over Package 1, anonymous REST/first-contact, A2A and MCP
 machine surfaces, explicit provenance/freshness/verification output,
 deterministic A2A/MCP protocol-version compatibility and durable per-agent
 subject checkpoints through additive migration
-`0007_agent_utility_checkpoints`. Its final pushed head is reported externally
-because a commit cannot contain its own hash.
+`0007_agent_utility_checkpoints`.
 
 Package 2 does not perform remote action, arbitrary invocation or requester-
 selected retrieval. Anonymous utility creates no Agent identity. Only an
@@ -72,8 +81,10 @@ migration or deployment.
 
 ## Current next milestone
 
-Obtain independent HQ review of the green Package 2 branch. Do not merge or
-deploy it automatically. Package 3 must not start until Package 2 is accepted.
+Package 3 is **Next** and **Not Started**. Its primary proof is one narrow real
+`request -> find -> verify -> invoke -> verify outcome -> save history` loop,
+as defined in `AION_MASTER_DELIVERY_ROADMAP.md`. This strategy-alignment work
+does not authorize Package 3 implementation or production deployment.
 
 ## Package 2 validation
 
@@ -95,9 +106,10 @@ deploy it automatically. Package 3 must not start until Package 2 is accepted.
 - SQLite `0006 -> 0007`, older-to-head and fresh-to-head paths, repeated upgrade
   and Alembic schema check passed. Head is
   `0007_agent_utility_checkpoints`.
-- Readiness, secret scan, compile, workflow YAML and diff checks are required on
-  the final branch head. Exact-commit normal CI and PostgreSQL 18 gate results
-  are reported in the final handoff after push.
+- Accepted final Package 2 SHA
+  `88bc6fae247a5bb454d435380c24d665ba48f512` passed AION CI run
+  `34286807720` and PostgreSQL 18 release gate run `34286807680`. After the
+  fast-forward merge, the same exact SHA passed main AION CI run `34288863432`.
 
 ## Phase 1 contract validation
 
@@ -152,6 +164,9 @@ deploy it automatically. Package 3 must not start until Package 2 is accepted.
 
 ## Documentation alignment validation
 
+- Post-Package-2 strategy alignment: source-integrity suite 4 passed;
+  `scripts/check_secrets.py` scanned 110 files with 0 findings; and
+  `git diff --check` passed.
 - `git diff --check`: passed.
 - `python scripts/check_secrets.py`: 90 files scanned, 0 findings.
 - `python -m pytest -q tests/test_source_integrity.py`: 4 passed.

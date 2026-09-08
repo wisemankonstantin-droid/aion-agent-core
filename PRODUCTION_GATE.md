@@ -1,5 +1,9 @@
 # AION v0.7.1 production gate
 
+> Historical gate for the initial v0.7.1 production release. It is not the
+> Package 4 release plan. Current state is in `PROJECT_STATE.md`; the current
+> delivery sequence is in `AION_MASTER_DELIVERY_ROADMAP.md`.
+
 The release is allowed into public directories only when every relevant item below is true.
 
 ## Infrastructure

@@ -1,5 +1,8 @@
 # AION v0.6 launch plan
 
+> Historical v0.6 launch plan. The current Package 0–9 sequence is defined in
+> `AION_MASTER_DELIVERY_ROADMAP.md`; current facts are in `PROJECT_STATE.md`.
+
 ## Target
 Prove the complete machine loop before scaling traffic.
 

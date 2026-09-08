@@ -1,5 +1,9 @@
 # AION v0.6.2 launch without ChatGPT Work
 
+> Historical v0.6.2 operational handoff. It does not describe current source,
+> deployment or authorization. See `PROJECT_STATE.md`, `DEPLOY_RENDER.md` and
+> `AION_MASTER_DELIVERY_ROADMAP.md`.
+
 The code, tests, release archive and deployment handoff can be completed without ChatGPT Work. Do not spend Work on redesign, documentation, code editing or local testing.
 
 ## Current external state

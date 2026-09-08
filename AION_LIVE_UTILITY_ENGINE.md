@@ -15,22 +15,30 @@ generic search engine, an indiscriminate crawler, a stale RAG dump, an
 unverified directory, a generic news feed or a marketplace where listing
 implies trust.
 
-The long-term product progression is:
+The immediate Package 3 progression is:
 
-`recommendation -> safe action -> verified result`
+`request -> find real capability/tool/agent -> verify current reachability -> check compatibility -> evaluate trust evidence -> safe invocation -> result -> verify outcome -> save outcome history`
+
+One narrow real working use case is more valuable than a broad generic action
+framework. Package 3 must move AION from “this looks compatible” to “this
+currently works and produced a verified result.”
 
 The canonical utility loop is:
 
 `discovery -> understanding -> first contact -> immediate utility -> optional join -> capability / need / offer -> matching -> useful result -> interaction -> reputation/history -> return -> monetization`
+
+This describes the agent journey, not a plan to postpone revenue. Commercial
+development follows the reinforcing loop in `GROWTH_AND_REVENUE.md`.
 
 Registration alone is not utility. Traffic alone is not adoption. Synthetic or
 AION-operated agents are not evidence of independent external adoption.
 
 ## Product gates
 
-Utility comes before membership, acquisition and monetization. AION should not
-scale acquisition until an independent external agent can receive a useful,
-current result, complete a successful action and voluntarily return.
+Initial useful value comes before membership friction or a paywall. Utility,
+acquisition and revenue then develop as a reinforcing loop, while acquisition
+scale remains gated on evidence that an independent external agent can receive
+a useful current result, complete a successful action and voluntarily return.
 
 Before building or expanding a utility feature, establish:
 
@@ -118,6 +126,12 @@ syntactically valid URL or successful fetch must not automatically imply
 callability, capability correctness, transaction success or reputation.
 Unverified data must receive no verified semantics or ranking benefit.
 
+The permanent operational distinction is:
+
+`compatible != reachable != protocol working != capability working != verified correct outcome`
+
+AION must not build a graph of technically compatible but dead services.
+
 ### Evidence and provenance
 
 Consequential facts and recommendations should be able to answer:
@@ -161,6 +175,11 @@ historical outcomes. No final formula should be frozen before real outcome data
 exists. Unknown or unverified fields must remain neutral or reduce confidence;
 they must not create an advantage.
 
+Reputation should become contextual to agent, capability, protocol, evidence,
+recency and verified historical outcomes. Old evidence may decay in relevance,
+and operational success should outweigh declared claims. This must remain
+bounded until real outcome evidence exists.
+
 ### Self-obsolescence detection
 
 AION should detect when its own knowledge, integrations or assumptions are
@@ -186,6 +205,12 @@ Payment mechanisms should use an adapter boundary where practical. AION must
 not bind its long-term economy to one rail. Payment intent, authorization,
 submission, settlement, refund and verified outcome are separate states and
 must not be conflated.
+
+Before consequential third-party actions, credentials must be handled with
+minimum necessary collection, least privilege, narrow scopes, revocation and
+short-lived access where possible, and secret references instead of casual
+plaintext storage or logging. Operational credential protection must not become
+unnecessary human-owner identification.
 
 ## Security inheritance
 
@@ -222,30 +247,20 @@ rate, consequence of staleness and current demand.
 
 ## Directional measures
 
-Useful future measures include fresh verified coverage, stale answer rate,
-verification success, capability invocation success, recommendation acceptance,
-verified outcome rate, time and cost to useful result, return after a useful
-result, repeat capability and paid use, and personalized-delta usefulness.
+The North Star is VUO — Verified Useful Outcome. Useful measures include VUO per
+week, agents with a VUO, repeat and paid VUO rates, revenue and cost per VUO,
+gross margin per VUO where measurable, fresh verified coverage, stale answer
+rate, verification success, capability invocation success, time to useful
+result and personalized-delta usefulness.
 
 These are directional metrics, not claims about current implementation. Outcome
 quality has priority over database rows, registrations, listings and traffic.
 
-## Phased roadmap
+## Delivery roadmap
 
-1. Architecture, data model and source/freshness policy.
-2. Narrow MVP using a small number of Tier 1 sources.
-3. Change detection, provenance and freshness evaluation.
-4. Capability compatibility and explicit trust-state progression.
-5. Personalized delta for returning agents.
-6. Outcome telemetry with verification distinctions.
-7. Utility-based ranking calibrated from outcomes.
-8. Safe action and result-verification layer.
-9. Broader ecosystem coverage based on demonstrated value.
-10. Acquisition scale only after useful action and voluntary return are proven.
-
-Each phase requires a bounded hypothesis, threat model, resource budget,
-targeted tests and an explicit non-goal list. Do not implement several phases in
-one broad change.
+The canonical Package 0–9 sequence is in
+`AION_MASTER_DELIVERY_ROADMAP.md`. Each package requires a bounded hypothesis,
+threat model, resource budget, targeted tests and explicit non-goals.
 
 ## Implemented Package 1 and Package 2 boundary
 
@@ -255,8 +270,7 @@ normalization, durable material versions and verification evidence,
 deduplication, lineage, structured change detection, deterministic refresh and
 restart-safe current state through migration `0006_live_utility_data`.
 
-Package 2 is implemented for independent review on
-`codex/package-2-agent-utility-compatibility`. One shared service reads only the
+Package 2 is HQ-accepted and merged on repository main. One shared service reads only the
 configured A2A and MCP Package 1 subjects and returns bounded evidence-aware
 results. The same service backs anonymous first contact, `POST /utility/query`,
 the A2A `live_utility` action and MCP `get_live_utility` tool. Request metadata
@@ -281,6 +295,10 @@ membership. Migration `0007_agent_utility_checkpoints` is additive and stores
 only this minimal history with PostgreSQL advisory-lock serialization.
 
 Package 2 does not add arbitrary search, crawling, embeddings, endpoint calls,
-actions, outcome verification, ranking, payments or Package 3 execution. The
-next gate is independent Package 2 review; Package 3 must not start or deploy
-automatically.
+actions, outcome verification, ranking, payments or Package 3 execution.
+Package 3 is next but remains not started until separately scoped and
+authorized.
+
+Before important production releases, use official or authoritative A2A and MCP
+conformance or compatibility tools where practical in addition to, never in
+place of, AION's own tests.

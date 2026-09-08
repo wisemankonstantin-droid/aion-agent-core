@@ -4,7 +4,8 @@
 
 The controlled direct-source cutover is complete and production is live.
 
-- Main SHA: `419f11b2a34fdec26269a216de65e9dcf955e963`
+- Repository main: `88bc6fae247a5bb454d435380c24d665ba48f512`
+- Production deployed SHA: `419f11b2a34fdec26269a216de65e9dcf955e963`
 - Current deploy: `dep-dafuu3v40ujc73d3fks0`
 - Status: live
 - Branch: `main`
@@ -12,6 +13,12 @@ The controlled direct-source cutover is complete and production is live.
 - Root Directory: blank
 - Build Command: `python -m pip install --require-hashes -r requirements.txt`
 - Start Command: `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Package 2 is merged to repository main but has not been deployed or migrated
+  in production.
+- The Render PostgreSQL free plan externally reports expiration on
+  **2026-10-06**. Database durability, backup and reliable uptime are a
+  mandatory Package 4 production-planning issue; this record does not authorize
+  an upgrade or configuration change.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

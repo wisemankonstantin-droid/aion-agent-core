@@ -5,12 +5,14 @@
 1. `PROJECT_STATE.md`.
 2. `AION_DIRECTIVE.md`.
 3. `AGENTS.md`.
-4. `AION_LIVE_UTILITY_ENGINE.md` when Live Utility or product architecture work
+4. `AION_MASTER_DELIVERY_ROADMAP.md` when package planning, sequencing or scope
    is relevant.
-5. `GROWTH_AND_REVENUE.md` when acquisition, retention, monetization, metrics or
+5. `AION_LIVE_UTILITY_ENGINE.md` when Live Utility or product architecture work
+   is relevant.
+6. `GROWTH_AND_REVENUE.md` when acquisition, retention, monetization, metrics or
    product economics are relevant.
-6. `DEPLOY_RENDER.md` when deployment or release work is relevant.
-7. `MACHINE_PROTOCOLS.md` when protocol behavior is relevant.
+7. `DEPLOY_RENDER.md` when deployment or release work is relevant.
+8. `MACHINE_PROTOCOLS.md` when protocol behavior is relevant.
 
 ## Execution rules
 
@@ -25,6 +27,9 @@
 9. Synthetic/test agents and AION-operated identities are not real external growth.
 10. Never commit credentials, local databases, agent keys or populated environment files. Run the repository secret scan before committing.
 11. Follow BLOCKER -> CRITICAL -> HIGH -> MEDIUM -> LOW. Continue useful authorized work autonomously; follow the execution rules in AION_DIRECTIVE.md.
+12. A package is not Done while a known reproducible defect or violated promised invariant remains. Distinguish defects from explicit current-scope limitations and follow the package gate in `AION_DIRECTIVE.md`.
+13. Keep identity requirements proportional to the operation. Unknown owner, model or vendor is not evidence that an agent is fake; protect consequential operations without adding irrelevant owner-identification friction.
+14. Do not begin the next package until the current package is accepted and `PROJECT_STATE.md` identifies the next authorized scope.
 
 Validation from repository root (Python 3.12):
 ```sh
