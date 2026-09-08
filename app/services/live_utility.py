@@ -229,12 +229,12 @@ def evaluate_freshness(observation: SourceObservation, now: datetime) -> Freshne
             eligible_for_consequential_use=False,
             reason="observation validity has expired",
         )
-    if observation.verified_at is None:
+    if observation.verified_at is None or observation.verified_at > now:
         return FreshnessAssessment(
             FreshnessState.UNVERIFIED,
             refresh_required=True,
             eligible_for_consequential_use=False,
-            reason="observation has no verification evidence",
+            reason="verification evidence is missing or not yet effective",
         )
     if now >= observation.stale_after:
         return FreshnessAssessment(

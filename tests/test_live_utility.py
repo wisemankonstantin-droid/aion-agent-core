@@ -176,6 +176,28 @@ def test_unverified_observation_requires_refresh_and_is_not_eligible():
     assert assessment.eligible_for_consequential_use is False
 
 
+def test_future_verification_evidence_is_not_yet_effective():
+    assessment = evaluate_freshness(
+        _observation(verified_at=BASE_TIME + timedelta(seconds=30)), BASE_TIME
+    )
+
+    assert assessment.state is FreshnessState.UNVERIFIED
+    assert assessment.refresh_required is True
+    assert assessment.eligible_for_consequential_use is False
+    assert "not yet effective" in assessment.reason
+
+
+def test_verification_is_effective_at_its_exact_boundary():
+    verified_at = BASE_TIME + timedelta(seconds=30)
+    assessment = evaluate_freshness(
+        _observation(verified_at=verified_at), verified_at
+    )
+
+    assert assessment.state is FreshnessState.FRESH
+    assert assessment.refresh_required is False
+    assert assessment.eligible_for_consequential_use is True
+
+
 def test_verified_observation_is_fresh_before_stale_boundary():
     assessment = evaluate_freshness(_observation(), BASE_TIME + timedelta(seconds=59))
 
