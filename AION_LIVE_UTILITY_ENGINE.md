@@ -54,10 +54,12 @@ release-evidence foundation using `LiveUtilitySource`,
 history. Together they do not implement the complete Data & Learning Plane,
 agent-evidence intake, gap analysis or commercial-opportunity detection.
 
-**Package 3B implementation candidate:** one bounded, operator-invoked cycle
+**Package 3B HQ-accepted implementation:** one bounded, operator-invoked cycle
 turns selected inputs into minimal continuous learning and knowledge
-self-update. It is pending HQ review, not merged and not deployed. The
-canonical package boundaries are in `AION_MASTER_DELIVERY_ROADMAP.md`.
+self-update. It has passed independent HQ review with zero known reproducible defects.
+Production deployment remains separate and has not occurred; live merge/main
+status must be verified directly from GitHub. The canonical package boundaries
+are in `AION_MASTER_DELIVERY_ROADMAP.md`.
 
 ## Product gates
 
@@ -293,7 +295,7 @@ changes, new discovery mechanisms, payment standards, registry changes,
 security advisories and material ecosystem shifts. It must remain selective,
 bounded and production-usable rather than becoming a general crawler.
 
-The implementation candidate watches exactly the configured official A2A and
+The accepted implementation watches exactly the configured official A2A and
 MCP release sources. Each one-shot cycle considers at most two sources,
 refreshes sequentially, permits at most two attempts per source and four per
 cycle, inherits the 256,000-byte hardened response cap, has a 40-second work
@@ -390,7 +392,7 @@ a bounded operator-funded experiment. It must have a monetary ceiling and
 maximum frequency. No execution may begin with unknown maximum cost, and no
 recursive child may exceed its parent's `MAX_TOTAL_SPEND`.
 
-For the Package 3B candidate, maximum paid external spend is exactly zero.
+For the Package 3B implementation, maximum paid external spend is exactly zero.
 Configured public Tier-1 release reads are bounded zero/near-zero external-
 monetary-cost operations; this does not claim internal compute has no cost.
 There is no paid fallback or operator-funded experiment in V1.

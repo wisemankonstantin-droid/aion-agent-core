@@ -14,7 +14,7 @@ and `GET /actions/{action_id}`. The POST requires `Idempotency-Key` and
 discovered-candidate identifier. Callers cannot supply a URL, headers,
 credentials, remote method or message body.
 
-The Package 3B implementation candidate adds authenticated
+The HQ-accepted Package 3B implementation adds authenticated
 `POST /learning/evidence`. It requires `Idempotency-Key`, accepts only a bounded
 schema and is covered by the outer 64 KiB streaming body limiter.
 

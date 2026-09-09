@@ -46,7 +46,7 @@
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
-- **Package 3B candidate Alembic head:** `0009_continuous_learning_v1`.
+- **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
 - **Production boundary:** Package 3 has not been deployed or migrated in
   production. Production remains on the SHA above and AutoDeploy remains OFF.
 
@@ -113,7 +113,7 @@ The **AION Data & Learning Plane** is now defined directionally as the planned
 persistent intelligence/evidence layer behind the Live Utility Engine. Package
 3 captures bounded request, selection, reachability/callability, invocation,
 result, verification, outcome, failure, duration, attempt and economic evidence
-from its first real action. The Package 3B candidate adds a minimal Continuous
+from its first real action. The HQ-accepted Package 3B implementation adds a minimal Continuous
 Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
 bounded agent-evidence intake and demand/gap/opportunity signals.
 
@@ -124,10 +124,11 @@ digests and byte/timing counters without raw remote response bodies.
 Callability proof leaves `capability_verified=false`; controlled fixtures are
 not independent adoption or external VUO evidence.
 
-## Current Package 3B implementation candidate
+## Current Package 3B implementation
 
-Package 3B is an **implementation candidate pending HQ review**. It is not
-merged and not deployed. The candidate adds a one-shot bounded learning cycle,
+Package 3B is **implemented and independently HQ-accepted with zero known
+reproducible defects**. Production deployment remains separate and has not
+occurred. The accepted implementation adds a one-shot bounded learning cycle,
 durable selected-source watch/circuit coordination, authenticated REST/MCP
 agent-evidence intake, and deterministic demand/gap opportunity candidates.
 It watches only the configured official A2A and MCP release sources and reuses
@@ -157,7 +158,7 @@ REST and MCP share one authenticated service. No independent adoption,
 production learning operation, external VUO, payment, revenue or commercial
 opportunity proof is claimed.
 
-Package 3B candidate validation at this checkpoint:
+Package 3B validation at this checkpoint:
 
 - the initial Package 3B candidate at
   `5fb5915ba63db63baad9ffd1e5184132ffcfcfbc` passed AION CI run
@@ -174,8 +175,11 @@ Package 3B candidate validation at this checkpoint:
 - corrective full local suite: 295 passed, 10 PostgreSQL-only tests skipped;
 - SQLite fresh-to-head and `0008 -> 0009` upgrade paths, repeated upgrade and
   Alembic schema check passed; and
-- exact corrective-SHA AION CI and PostgreSQL 18 release-gate results remain
-  required before this candidate is handed back to HQ.
+- the HQ corrective commit `8e6b4a19263dcb687d20d6240f8752779685b90d`
+  passed AION CI run `34382094903` and PostgreSQL 18 pre-production release
+  gate run `34382094918` on that exact SHA; HQ independently re-reviewed the
+  four prior blockers and accepted Package 3B with zero known reproducible
+  defects. Live merge/main status must be verified directly from GitHub.
 
 ## Pre-Package-3 audit-correction validation
 

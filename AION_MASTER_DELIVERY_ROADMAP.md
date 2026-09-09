@@ -84,7 +84,7 @@ this V1 implementation.
 
 ### Package 3B — Continuous Learning & Self-Update Engine V1
 
-**Implementation candidate; pending HQ review; not merged; not deployed.**
+**Implemented; independently HQ accepted with zero known reproducible defects. Production deployment remains separate and has not occurred. Live merge/main status must be verified directly from GitHub.**
 
 Build the smallest production-usable learning layer around the proven utility
 path. It includes four bounded loops:

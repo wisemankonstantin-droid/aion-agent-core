@@ -287,6 +287,8 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 
 The accepted delivery sequence and current package status are defined in
 `AION_MASTER_DELIVERY_ROADMAP.md`. Package 3 is HQ-accepted, merged and not
-deployed. The Economic Constitution alignment precedes Package 3B, which has an
-unmerged, undeployed implementation candidate pending HQ review. Each package
-remains subject to the criticality ordering and release gates above.
+deployed. The Economic Constitution alignment is HQ-accepted and merged.
+Package 3B is implemented and independently HQ-accepted with zero known
+reproducible defects; production deployment remains separate and has not
+occurred. Live merge/main status must be verified directly from GitHub. Each
+package remains subject to the criticality ordering and release gates above.
