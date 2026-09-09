@@ -9,6 +9,7 @@ requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 models = (root / "app/models.py").read_text(encoding="utf-8")
 external_registry = (root / "app/services/external_registry.py").read_text(encoding="utf-8")
+action_engine = (root / "app/services/action_engine.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -17,6 +18,7 @@ checks = {
     "migration_0005_live_utility": (root / "alembic/versions/0005_live_utility_persistence.py").exists(),
     "migration_0006_live_utility_data": (root / "alembic/versions/0006_live_utility_data.py").exists(),
     "migration_0007_agent_utility_checkpoints": (root / "alembic/versions/0007_agent_utility_checkpoints.py").exists(),
+    "migration_0008_action_outcome_evidence": (root / "alembic/versions/0008_action_outcome_evidence.py").exists(),
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
     "mcp_live_utility": '"name": "get_live_utility"' in main,
@@ -33,6 +35,12 @@ checks = {
         "from app.services import safe_http as _safe_http" in external_registry
         and '"interaction_contacted": False' in external_registry
         and '"verified_outcome": False' in external_registry
+    ),
+    "package_3_safe_action": (
+        '@app.post("/actions/verify-callability")' in main
+        and '"name": "verify_external_callability"' in main
+        and "ACTION_MAX_POST_ATTEMPTS = 1" in action_engine
+        and "a2a_nonce_roundtrip_v1" in action_engine
     ),
     "identity_resolution": (root / "app/services/identity_resolution.py").exists() and '@app.get("/identity-resolution")' in main,
     "first_contact": (root / "app/services/first_contact.py").exists() and '@app.get("/first-contact")' in main,

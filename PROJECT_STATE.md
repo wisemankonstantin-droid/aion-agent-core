@@ -41,7 +41,7 @@
   AION is relied on as a commercial production service.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
-- **Repository Alembic head:** `0007_agent_utility_checkpoints`.
+- **Package 3 candidate Alembic head:** `0008_action_outcome_evidence`.
 - **Production boundary:** Package 2 has not been deployed or migrated in
   production. Production remains on the SHA above and AutoDeploy remains OFF.
 
@@ -93,14 +93,15 @@ external-agent invocation, bounded request work and cache state, and corrected
 the repository-state documentation model. Resulting-main AION CI run
 `34315606416` passed on that exact SHA.
 
-## Current next milestone
+## Current Package 3 implementation candidate
 
-Package 3 remains **Next** and **Not Started**. The bounded legacy external-
-discovery blocker cluster was corrected, independently accepted and merged
-before Package 3.
-Package 3's primary proof remains one narrow real
-`request -> find -> verify -> invoke -> verify outcome -> save history` loop,
-as defined in `AION_MASTER_DELIVERY_ROADMAP.md`.
+Package 3 is now **implemented on a dedicated candidate branch and pending HQ
+review**. It is not accepted, merged or deployed. The candidate implements one
+narrow authenticated and explicitly authorized public/no-credential A2A
+callability action: bounded discovery, deterministic safe selection, one fixed
+server-generated nonce challenge, verification and durable correlated history.
+REST and MCP use one service. A2A inbound action exposure is deliberately not
+included in V1; credentials are never placed in A2A message content.
 
 The **AION Data & Learning Plane** is now defined directionally as the planned
 persistent intelligence/evidence layer behind the Live Utility Engine. Package
@@ -110,12 +111,14 @@ from its first real action. Package 3B is planned as a minimal Continuous
 Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
 bounded agent-evidence intake and demand/gap/opportunity signals.
 
-This is architecture direction, not implemented functionality. The implemented
-data engine remains the Package 1/2 bounded A2A/MCP release-evidence system.
-There is no implemented Package 3 action plane, outcome-history system,
-continuous-learning engine, agent-evidence intake, gap analyzer or commercial-
-opportunity engine. This alignment does not authorize Package 3, deployment or
-production mutation.
+The broader Data & Learning Plane remains architecture direction. Package 3
+adds only four bounded evidence boundaries: ActionRun, ActionAttempt,
+ActionOutcome and ActionVerification. There is no continuous-learning engine,
+agent-evidence intake, gap analyzer or commercial-opportunity engine. Migration
+`0008_action_outcome_evidence` is additive and stores normalized evidence,
+digests and byte/timing counters without raw remote response bodies.
+Callability proof leaves `capability_verified=false`; controlled fixtures are
+not independent adoption or external VUO evidence.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -130,6 +133,21 @@ production mutation.
   with 0 findings; compile, dependency and diff checks passed.
 - No database model, migration or database-concurrency behavior changed. The
   repository Alembic head remains `0007_agent_utility_checkpoints`.
+
+## Package 3 candidate validation
+
+- Targeted action, request-boundary, hardened-transport, external-security and
+  migration suite: 89 passed.
+- Full local suite: 245 passed, 6 PostgreSQL-only tests skipped.
+- SQLite fresh-to-head and `0007 -> 0008` paths, repeated upgrade and Alembic
+  schema check passed. The candidate head is
+  `0008_action_outcome_evidence`.
+- The controlled end-to-end responder proof exercised bounded discovery,
+  requester-scoped claim, one official A2A `SendMessage`, nonce verification,
+  four durable evidence boundaries and restart-safe retrieval. It is a test
+  fixture, not independent adoption or a commercial VUO.
+- Normal CI and the PostgreSQL 18 release gate remain required on the exact
+  final candidate SHA before HQ review. Production remains untouched.
 
 ## Package 2 validation
 

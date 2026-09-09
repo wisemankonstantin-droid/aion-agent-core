@@ -11,6 +11,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
+from app.services import action_engine
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -241,5 +242,100 @@ def test_postgres_concurrent_personalized_delta_has_one_checkpoint():
             select(func.count()).select_from(models.AgentUtilityCheckpoint).where(
                 models.AgentUtilityCheckpoint.agent_id == agent_id,
                 models.AgentUtilityCheckpoint.subject_key == adapter.subject_key,
+            )
+        ) == 1
+
+
+def test_postgres_concurrent_action_claim_posts_at_most_once(monkeypatch):
+    token = uuid.uuid4().hex
+    with SessionLocal.begin() as db:
+        agent = models.Agent(
+            external_id="pg-action-" + token,
+            name="PG Action " + token,
+            api_key_hash="pg-action-hash-" + token,
+        )
+        db.add(agent)
+        db.flush()
+        requester_id = agent.id
+
+    candidate = {
+        "identifier": "external:pg-fixture",
+        "source": "postgres-gate-fixture",
+        "url": "https://card.example/.well-known/agent-card.json",
+        "manifest_reachable": True,
+        "card_parseable": True,
+        "declared_a2a_v1_jsonrpc": True,
+        "interaction_url_validated": True,
+        "interaction_url": "https://agent.example/a2a",
+        "authentication_requirement": "none",
+        "protocol_binding": "JSONRPC",
+        "protocol_version": "1.0",
+        "resource_bounds": {"outbound_attempts_used": 2},
+    }
+    monkeypatch.setattr(
+        action_engine, "discover_external_agents", lambda *args: [candidate]
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    posts = []
+
+    def post(url, encoded):
+        import json
+        request = json.loads(encoded)
+        challenge = json.loads(
+            request["params"]["message"]["parts"][0]["text"]
+        )
+        posts.append(encoded)
+        entered.set()
+        assert release.wait(10)
+        response = {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {"message": {
+                "messageId": "pg-reply", "role": "ROLE_AGENT",
+                "parts": [{"text": json.dumps({"nonce": challenge["nonce"]})}],
+            }},
+        }
+        return FetchResult(200, json.dumps(response).encode(), None, 1)
+
+    monkeypatch.setattr(action_engine, "_post_challenge", post)
+    with action_engine._ACTION_RATE_LOCK:
+        action_engine._ACTION_RATE_TIMES.clear()
+    payload = schemas.VerifyCallabilityRequest(
+        query="research", authorize_external_contact=True
+    )
+    idempotency_key = "pg-concurrent-" + token
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            action_engine.verify_external_callability,
+            requester_id,
+            payload,
+            idempotency_key,
+        )
+        assert entered.wait(10)
+        second = pool.submit(
+            action_engine.verify_external_callability,
+            requester_id,
+            payload,
+            idempotency_key,
+        )
+        second_result = second.result(timeout=10)
+        release.set()
+        first_result = first.result(timeout=10)
+
+    assert first_result["action_id"] == second_result["action_id"]
+    assert len(posts) == 1
+    with SessionLocal() as db:
+        run = db.scalar(
+            select(models.ActionRun).where(
+                models.ActionRun.requester_agent_id == requester_id,
+                models.ActionRun.idempotency_key == idempotency_key,
+            )
+        )
+        assert run is not None
+        assert db.scalar(
+            select(func.count()).select_from(models.ActionAttempt).where(
+                models.ActionAttempt.action_run_id == run.id
             )
         ) == 1

@@ -249,3 +249,131 @@ class AgentUtilityCheckpoint(Base):
     freshness_state: Mapped[str] = mapped_column(String(40), nullable=False)
     eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ActionRun(Base):
+    __tablename__ = "action_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "requester_agent_id",
+            "idempotency_key",
+            name="uq_action_runs_requester_idempotency",
+        ),
+        UniqueConstraint("action_id", name="uq_action_runs_action_id"),
+        Index("ix_action_runs_requester_created", "requester_agent_id", "created_at"),
+        CheckConstraint("action_attempt_count >= 0", name="ck_action_runs_attempts_nonnegative"),
+        CheckConstraint("discovery_attempt_count >= 0", name="ck_action_runs_discovery_nonnegative"),
+        CheckConstraint("request_bytes >= 0", name="ck_action_runs_request_bytes_nonnegative"),
+        CheckConstraint(
+            "response_bytes IS NULL OR response_bytes >= 0",
+            name="ck_action_runs_response_bytes_nonnegative",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    requested_query: Mapped[str] = mapped_column(String(128), nullable=False)
+    requested_candidate_identifier: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    authorize_external_contact: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    selected_provider_identifier: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    agent_card_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    interaction_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    discovery_evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    protocol_binding: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    protocol_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    failure_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discovery_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    action_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    request_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    response_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_amount: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cost_currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class ActionAttempt(Base):
+    __tablename__ = "action_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "action_run_id", "attempt_number", name="uq_action_attempts_run_number"
+        ),
+        CheckConstraint("attempt_number = 1", name="ck_action_attempts_one_post_v1"),
+        CheckConstraint("request_bytes >= 0", name="ck_action_attempts_request_bytes_nonnegative"),
+        CheckConstraint(
+            "response_bytes IS NULL OR response_bytes >= 0",
+            name="ck_action_attempts_response_bytes_nonnegative",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_run_id: Mapped[int] = mapped_column(
+        ForeignKey("action_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    delivery_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    request_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transport_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    response_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    protocol_response_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+class ActionOutcome(Base):
+    __tablename__ = "action_outcomes"
+    __table_args__ = (
+        UniqueConstraint("action_run_id", name="uq_action_outcomes_run"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_run_id: Mapped[int] = mapped_column(
+        ForeignKey("action_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    outcome_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    protocol_response_received: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    callability_verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    capability_verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    verified_outcome: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    normalized_result_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    failure_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    response_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    protocol_task_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    protocol_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    proof_present: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ActionVerification(Base):
+    __tablename__ = "action_verifications"
+    __table_args__ = (
+        UniqueConstraint("action_run_id", name="uq_action_verifications_run"),
+        UniqueConstraint("action_outcome_id", name="uq_action_verifications_outcome"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_run_id: Mapped[int] = mapped_column(
+        ForeignKey("action_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    action_outcome_id: Mapped[int] = mapped_column(
+        ForeignKey("action_outcomes.id", ondelete="CASCADE"), nullable=False
+    )
+    verification_method: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    challenge_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    proof_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)

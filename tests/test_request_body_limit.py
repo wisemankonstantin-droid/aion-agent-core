@@ -5,7 +5,7 @@ import pytest
 from app.main import MAX_MACHINE_REQUEST_BYTES, _BoundMachineRequestBody
 
 
-MACHINE_PATHS = ("/utility/query", "/mcp", "/a2a/v1")
+MACHINE_PATHS = ("/utility/query", "/actions/verify-callability", "/mcp", "/a2a/v1")
 
 
 def _request(path, chunks, *, content_length=None):
@@ -76,10 +76,11 @@ def test_declared_oversized_machine_body_is_rejected_without_reading(path):
     assert downstream_body is None
 
 
+@pytest.mark.parametrize("path", MACHINE_PATHS)
 @pytest.mark.parametrize("content_length", ["", "invalid", "-1", "1, 2"])
-def test_malformed_content_length_is_rejected_without_reading(content_length):
+def test_malformed_content_length_is_rejected_without_reading(path, content_length):
     status, receive_calls, downstream_body = _request(
-        "/utility/query",
+        path,
         [b"unread"],
         content_length=content_length,
     )
@@ -88,10 +89,11 @@ def test_malformed_content_length_is_rejected_without_reading(content_length):
     assert downstream_body is None
 
 
-def test_valid_content_length_at_limit_preserves_body_for_downstream():
+@pytest.mark.parametrize("path", MACHINE_PATHS)
+def test_valid_content_length_at_limit_preserves_body_for_downstream(path):
     body = b"x" * MAX_MACHINE_REQUEST_BYTES
     status, receive_calls, downstream_body = _request(
-        "/utility/query",
+        path,
         [body],
         content_length=str(len(body)),
     )
@@ -100,18 +102,20 @@ def test_valid_content_length_at_limit_preserves_body_for_downstream():
     assert downstream_body == body
 
 
-def test_missing_content_length_stream_at_limit_is_replayed_downstream():
+@pytest.mark.parametrize("path", MACHINE_PATHS)
+def test_missing_content_length_stream_at_limit_is_replayed_downstream(path):
     chunks = [b"a" * 32768, b"b" * 32768]
-    status, receive_calls, downstream_body = _request("/mcp", chunks)
+    status, receive_calls, downstream_body = _request(path, chunks)
     assert status == 204
     assert receive_calls == 2
     assert downstream_body == b"".join(chunks)
 
 
-def test_understated_content_length_does_not_bypass_stream_limit():
+@pytest.mark.parametrize("path", MACHINE_PATHS)
+def test_understated_content_length_does_not_bypass_stream_limit(path):
     chunks = [b"a" * MAX_MACHINE_REQUEST_BYTES, b"b", b"unread"]
     status, receive_calls, downstream_body = _request(
-        "/utility/query",
+        path,
         chunks,
         content_length="1",
     )

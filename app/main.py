@@ -21,6 +21,11 @@ from .services.external_registry import discover_external_agents
 from .services.rate_limit import allow_mcp_request, configured_join_limit, configured_mcp_limit
 from .services.joining import join_agent
 from .services.agent_utility import select_current_utility
+from .services.action_engine import (
+    ActionServiceError,
+    get_action_status_by_id,
+    verify_external_callability,
+)
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
@@ -37,7 +42,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -169,6 +174,7 @@ def root():
         "onboarding": "/onboarding",
         "skill": "/skill.md",
         "external_discovery": "/discover/external?q=web_research",
+        "verified_callability_action": "POST /actions/verify-callability",
         "donations": "/donations/options",
         "health": "/health",
         "join_rate_limit_per_minute": configured_join_limit(),
@@ -374,6 +380,32 @@ def external_discovery(q: str, limit: int = 5, db: Session = Depends(get_db)):
         "results": discover_external_agents(q, limit),
         "membership": "external results are not counted as AION members",
     }
+
+
+@app.post("/actions/verify-callability")
+def verify_callability_action(
+    payload: schemas.VerifyCallabilityRequest,
+    agent=Depends(require_agent),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return verify_external_callability(agent.id, payload, idempotency_key)
+    except ActionServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+
+@app.get("/actions/{action_id}")
+def action_status(action_id: str, agent=Depends(require_agent)):
+    try:
+        return get_action_status_by_id(action_id, requester_agent_id=agent.id)
+    except ActionServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
 
 
 
@@ -904,6 +936,31 @@ MCP_TOOLS = [
         "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}},
     },
     {
+        "name": "verify_external_callability",
+        "description": "Authenticated, explicitly authorized, fixed nonce challenge to one safely discovered public no-credential A2A 1.0 endpoint.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["query", "authorize_external_contact", "idempotency_key"],
+            "properties": {
+                "query": {"type": "string", "minLength": 1, "maxLength": 128},
+                "candidate_identifier": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
+                "authorize_external_contact": {"type": "boolean", "const": True},
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_action_status",
+        "description": "Return the authenticated requester's durable Package 3 action evidence without re-invoking.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["action_id"],
+            "properties": {"action_id": {"type": "string", "format": "uuid"}},
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "get_opportunities",
         "description": "Authenticated agent gets matches for its needs and market needs matching its offers.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -1131,6 +1188,23 @@ async def mcp_gateway(
                 "membership": "external results are not counted as AION members",
             }
 
+        elif name == "verify_external_callability":
+            mcp_agent = authenticate_agent(authorization, db)
+            action_args = dict(args)
+            idempotency_key = action_args.pop("idempotency_key", None)
+            payload = schemas.VerifyCallabilityRequest.model_validate(action_args)
+            data = verify_external_callability(
+                mcp_agent.id, payload, idempotency_key
+            )
+
+        elif name == "get_action_status":
+            mcp_agent = authenticate_agent(authorization, db)
+            if set(args) != {"action_id"}:
+                raise ValueError("exactly action_id is required")
+            data = get_action_status_by_id(
+                str(args["action_id"]), requester_agent_id=mcp_agent.id
+            )
+
         elif name == "get_opportunities":
             mcp_agent = authenticate_agent(authorization, db)
             data = opportunities_for_agent(db, mcp_agent.id)
@@ -1178,6 +1252,12 @@ async def mcp_gateway(
         else:
             return _mcp_error(rpc_id, -32602, f"Unknown tool: {name}")
 
+    except ActionServiceError as exc:
+        return _mcp_result(rpc_id, {
+            "content": [{"type": "text", "text": exc.message}],
+            "structuredContent": {"code": exc.code, "status": exc.status_code},
+            "isError": True,
+        })
     except (KeyError, ValueError) as exc:
         return _mcp_error(rpc_id, -32602, f"Invalid tool arguments: {exc}")
     except HTTPException as exc:

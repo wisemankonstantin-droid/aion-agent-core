@@ -123,3 +123,18 @@ class UtilityQuery(BaseModel):
     )
 
     model_config = {"extra": "forbid"}
+
+
+class VerifyCallabilityRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=128)
+    candidate_identifier: Optional[str] = Field(default=None, min_length=1, max_length=240)
+    authorize_external_contact: bool
+
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+    @field_validator("query", "candidate_identifier")
+    @classmethod
+    def no_control_characters(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and any(ord(character) < 32 for character in value):
+            raise ValueError("control characters are not allowed")
+        return value

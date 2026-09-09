@@ -16,6 +16,16 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
 - External discovery has a five-candidate cap, 128-character query limit,
   12-attempt per-call budget, process-local 30-per-60-second guard and a
   128-entry, 600-second TTL/LRU validation cache.
+- Package 3 accepts actions only from authenticated AION agents with explicit
+  contact authorization and requester-scoped idempotency. It permits no caller
+  URL, headers, credentials, remote method or message content.
+- Action traffic revalidates public HTTPS at dispatch, is DNS-pinned with the
+  original TLS identity, rejects redirects/compression, caps responses at 128
+  KiB, times out at five seconds and makes at most one POST. Unknown delivery
+  is durable and never auto-retried.
+- Process-local action guards permit four concurrent actions and 20 starts per
+  60 seconds. Database uniqueness plus PostgreSQL advisory locking—not these
+  process guards—enforce the idempotency claim.
 
 ## Before higher-scale production
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.

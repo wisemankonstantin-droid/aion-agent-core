@@ -141,7 +141,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
             if index[2] == 1
         }
 
-    assert revision == "0007_agent_utility_checkpoints"
+    assert revision == "0008_action_outcome_evidence"
     assert {
         "agents",
         "machine_entries",
@@ -149,6 +149,10 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
         "live_utility_observations",
         "live_utility_verifications",
         "agent_utility_checkpoints",
+        "action_runs",
+        "action_attempts",
+        "action_outcomes",
+        "action_verifications",
     } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
@@ -193,12 +197,16 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0007_agent_utility_checkpoints"
+    assert revision == "0008_action_outcome_evidence"
     assert {
         "live_utility_sources",
         "live_utility_observations",
         "live_utility_verifications",
         "agent_utility_checkpoints",
+        "action_runs",
+        "action_attempts",
+        "action_outcomes",
+        "action_verifications",
     } <= tables
 
 
@@ -244,7 +252,59 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='migration-agent'"
         ).fetchone()
 
-    assert revision == "0007_agent_utility_checkpoints"
+    assert revision == "0008_action_outcome_evidence"
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
+
+
+def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-3-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+
+    _alembic(root, url, "upgrade", "0007_agent_utility_checkpoints")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
+            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-3-sentinel", "Package 3 Sentinel", "", "A2A", 0,
+             "package-3-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+
+    with sqlite3.connect(database) as connection:
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()[0]
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        action_indexes = connection.execute(
+            "PRAGMA index_list('action_runs')"
+        ).fetchall()
+        unique_columns = {
+            tuple(
+                row[2]
+                for row in connection.execute(
+                    f"PRAGMA index_info('{index[1]}')"
+                ).fetchall()
+            )
+            for index in action_indexes
+            if index[2] == 1
+        }
+        sentinel = connection.execute(
+            "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
+        ).fetchone()
+
+    assert revision == "0008_action_outcome_evidence"
+    assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
+    assert ("requester_agent_id", "idempotency_key") in unique_columns
+    assert ("action_id",) in unique_columns
+    assert sentinel == ("package-3-sentinel",)

@@ -346,6 +346,8 @@ def _validate_external(row, budget=None):
         "card_parseable": False,
         "protocol_declared": False,
         "declared_a2a_v1_jsonrpc": False,
+        "authentication_requirement": "unknown",
+        "public_no_credentials": False,
         "conformant": False,
         "interaction_url_validated": False,
         "interaction_contacted": False,
@@ -371,6 +373,22 @@ def _validate_external(row, budget=None):
             state["card_parseable"] = True
             state["card_name"] = card.get("name")
             state["card_version"] = card.get("version")
+            security_schemes = card.get("securitySchemes", card.get("security_schemes"))
+            security_requirements = card.get("security")
+            if security_schemes is not None and not isinstance(security_schemes, dict):
+                authentication_requirement = "unknown"
+            elif security_requirements is not None and not isinstance(
+                security_requirements, list
+            ):
+                authentication_requirement = "unknown"
+            elif security_schemes or security_requirements:
+                authentication_requirement = "credentials_required"
+            else:
+                # In the A2A Agent Card schema, absent/empty security
+                # requirements mean no credential scheme is required.
+                authentication_requirement = "none"
+            state["authentication_requirement"] = authentication_requirement
+            state["public_no_credentials"] = authentication_requirement == "none"
             interaction_url, version, binding = _interface(card)
             state["interaction_url"] = interaction_url
             state["protocol_version"] = version

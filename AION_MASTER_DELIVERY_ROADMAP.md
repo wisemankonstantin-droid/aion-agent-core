@@ -47,7 +47,7 @@ compatibility, personalized delta and durable checkpoints through
 `0007_agent_utility_checkpoints`. Merged to main at
 `88bc6fae247a5bb454d435380c24d665ba48f512` with zero known defects.
 
-### Package 3 — Next; not started
+### Package 3 — implementation candidate; pending HQ review
 
 Prove one narrow killer loop:
 
@@ -72,6 +72,13 @@ correlated evidence for the future Data & Learning Plane to distinguish:
 Claims, attempts, outcomes and verifications must not collapse into one event.
 Package 3 should implement only the persistence needed by its narrow killer
 loop, not the entire learning platform.
+
+The candidate implements a public/no-credential A2A callability proof through
+shared REST/MCP service semantics and additive migration
+`0008_action_outcome_evidence`. Its fixed nonce challenge distinguishes protocol
+response, verified callability and unverified domain capability. This is not an
+acceptance, deployment, independent VUO or capability-quality claim. A2A
+inbound action adaptation is deliberately outside this V1 candidate.
 
 ### Package 3B — Continuous Learning & Self-Update Engine V1
 
