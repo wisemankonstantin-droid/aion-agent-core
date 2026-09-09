@@ -3,8 +3,13 @@
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Current repository main:**
+- **Accepted Package 2 application baseline:**
   `88bc6fae247a5bb454d435380c24d665ba48f512`.
+- **Post-Package-2 strategy alignment checkpoint:**
+  `7fb469024855a065a1d42d12fc5c1a40d354ab6f`.
+- **Live repository state rule:** verify the current branch HEAD directly from
+  GitHub. The verified GitHub ref wins over this durable checkpoint document;
+  no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
@@ -81,10 +86,29 @@ migration or deployment.
 
 ## Current next milestone
 
-Package 3 is **Next** and **Not Started**. Its primary proof is one narrow real
+Package 3 remains **Next** and **Not Started**. Before Package 3, HQ identified
+a bounded blocker cluster in legacy external discovery: unsafe registry
+transport, implicit external invocation, insufficient request/cache bounds and
+the self-invalidating repository-main field in this document. The corrections
+are isolated from Package 3 and require independent review before acceptance.
+Package 3's primary proof remains one narrow real
 `request -> find -> verify -> invoke -> verify outcome -> save history` loop,
 as defined in `AION_MASTER_DELIVERY_ROADMAP.md`. This strategy-alignment work
 does not authorize Package 3 implementation or production deployment.
+
+## Pre-Package-3 audit-correction validation
+
+- External discovery now uses the shared hardened HTTPS transport for registry
+  search, detail, resolution and Agent Card retrieval. Normal discovery records
+  bounded reachability/declaration evidence and never invokes the declared A2A
+  interaction URL.
+- Targeted external-discovery, security, REST, MCP, A2A and regression suite:
+  92 passed.
+- Full local suite: 202 passed, 5 PostgreSQL-only tests skipped.
+- Readiness reported all local checks true; secret scanning inspected 110 files
+  with 0 findings; compile, dependency and diff checks passed.
+- No database model, migration or database-concurrency behavior changed. The
+  repository Alembic head remains `0007_agent_utility_checkpoints`.
 
 ## Package 2 validation
 
@@ -189,6 +213,15 @@ does not authorize Package 3 implementation or production deployment.
 - Declared but unverified endpoints receive no verified/callable semantics or
   ranking benefit. The current data model has no persisted endpoint-liveness
   evidence.
+- External registry search/detail/resolve and Agent Card reads use the shared
+  pinned public-only HTTPS transport with redirect, byte, timeout and attempt
+  bounds. Normal external discovery validates only registry/card/interface
+  declarations and the safety of the declared interaction destination; it does
+  not contact the interaction URL or claim invocation success, callability or a
+  verified outcome.
+- External discovery is capped at five candidates, a 128-character query, 12
+  outbound attempts per call and a process-local 30-call/60-second guard. Its
+  validation cache is TTL/LRU bounded to 128 entries for 600 seconds.
 - Historical shadowed registry and lifecycle definitions were removed while
   preserving the active behavior and identity-aware funnel metrics.
 - Final production smoke passed for health, readiness, public discovery,

@@ -8,6 +8,7 @@ main = (root / "app/main.py").read_text(encoding="utf-8")
 requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 render = (root / "render.yaml").read_text(encoding="utf-8")
 models = (root / "app/models.py").read_text(encoding="utf-8")
+external_registry = (root / "app/services/external_registry.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -28,7 +29,11 @@ checks = {
     "activation_funnel": (root / "app/services/lifecycle.py").exists() and '"M4"' in (root / "app/services/lifecycle.py").read_text(encoding="utf-8"),
     "db_reputation_idempotency": "uq_reputation_events_agent_reason" in models,
     "external_cold_start": (root / "app/services/external_registry.py").exists(),
-    "external_validation": "AION_EXTERNAL_VALIDATION_V1" in (root / "app/services/external_registry.py").read_text(encoding="utf-8"),
+    "external_validation": (
+        "from app.services import safe_http as _safe_http" in external_registry
+        and '"interaction_contacted": False' in external_registry
+        and '"verified_outcome": False' in external_registry
+    ),
     "identity_resolution": (root / "app/services/identity_resolution.py").exists() and '@app.get("/identity-resolution")' in main,
     "first_contact": (root / "app/services/first_contact.py").exists() and '@app.get("/first-contact")' in main,
     "matching_v1": '"version":"matching/1.0"' in main,

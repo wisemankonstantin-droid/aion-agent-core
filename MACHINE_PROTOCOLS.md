@@ -40,7 +40,22 @@ compatibility reasons, warnings and limitations. It performs no remote action.
 The canonical entry sequence is `first contact -> immediate utility -> optional onboarding -> explicit join`. Plain text such as `help` and the explicit `{"action":"first_contact"}` command return public utility without membership. `{"action":"onboarding"}` returns machine-readable joining instructions. AION should provide value before membership when safely possible; first-contact reads are not membership, activation or independent-agent adoption.
 
 ## External A2A discovery
-AION can query public external listings as cold-start supply. An external listing never becomes AION membership merely because it was returned by discovery. Verification requires a public HTTPS Agent Card, an A2A 1.0 JSON-RPC interface and a successful harmless interaction.
+AION can query public external listings as cold-start supply. REST, MCP, A2A and
+opportunity fallback use the same bounded service. Each call accepts at most a
+128-character non-control query, returns at most five candidates, spends at
+most 12 outbound connection attempts, uses at most two attempts per fetch with
+a four-second timeout, and accepts at most 256,000 response bytes per fetch.
+The process-local guard permits 30 discovery calls per 60 seconds. Card
+validation uses a 600-second TTL/LRU cache capped at 128 entries.
+
+Registry search/detail/resolve and Agent Card reads use the shared pinned HTTPS
+transport: public global addresses only, one bounded DNS answer, TLS validation
+for the original hostname, no redirects and no transparent compression.
+Discovery may report a registry candidate, reachable parseable Agent Card,
+declared A2A 1.0 JSON-RPC interface and a destination-validated interaction URL.
+It does not contact that interaction URL and therefore never claims callable,
+interaction success, verified external-agent operation or verified outcome.
+An external result never becomes AION membership merely because it was found.
 
 ## Payments
 `/payments/intents` records intent. `/donations/options` exposes configured machine-readable rails. Settlement is not implemented or claimed until a real network/asset/recipient/facilitator verification path exists.

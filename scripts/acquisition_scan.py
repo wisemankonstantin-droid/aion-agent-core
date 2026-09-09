@@ -2,23 +2,25 @@
 Run after deployment/scheduling. It reads public registry metadata only and does not send messages.
 """
 import argparse, json
-import httpx
+from pathlib import Path
+import sys
 
-BASE = 'https://api.a2a-registry.org/public/agents'
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from app.services.external_registry import discover_external_agents
+
+
 DEFAULT_QUERIES = ['agent collaboration','research','planning','automation','developer tools','knowledge','payments']
 
 def scan(queries):
     found = {}
-    with httpx.Client(timeout=20, follow_redirects=True) as client:
-        for q in queries:
-            r = client.get(BASE, params={'q': q})
-            r.raise_for_status()
-            payload = r.json()
-            rows = payload if isinstance(payload, list) else payload.get('agents', payload.get('data', []))
-            for row in rows:
-                ident = row.get('identifier') or row.get('id') or row.get('name')
-                if ident:
-                    found[str(ident)] = row
+    for q in queries:
+        for row in discover_external_agents(q, 5):
+            ident = row.get('identifier') or row.get('id') or row.get('name')
+            if ident:
+                found[str(ident)] = row
     return list(found.values())
 
 if __name__ == '__main__':

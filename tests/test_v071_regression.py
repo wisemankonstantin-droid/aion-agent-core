@@ -106,16 +106,21 @@ def test_first_contact_is_useful_without_creating_membership():
     assert client.get("/stats").json()["agents_raw_rows"] == before
 
 
-def test_external_validation_requires_successful_a2a_v1_handshake(monkeypatch):
+def test_external_validation_reports_declaration_without_invocation(monkeypatch):
     manifest = "https://agent.example/.well-known/agent-card.json"
     interaction = "https://agent.example/a2a/v1"
+    calls = []
+    monkeypatch.delenv("AION_DISABLE_EXTERNAL_DISCOVERY", raising=False)
     monkeypatch.setattr(
         external_registry,
         "_AION_RESOLVED_DISCOVER",
-        lambda query, limit: [{"url": manifest, "followable": True, "name": "External"}],
+        lambda query, limit, budget: [
+            {"url": manifest, "followable": True, "name": "External"}
+        ],
     )
 
-    def fake_read(method, url, payload=None, headers=None, timeout=7):
+    def fake_read(method, url, payload=None, headers=None, timeout=7, budget=None):
+        calls.append((method, url))
         if method == "GET" and url == manifest:
             return 200, {
                 "name": "External",
@@ -124,16 +129,21 @@ def test_external_validation_requires_successful_a2a_v1_handshake(monkeypatch):
                     {"url": interaction, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
                 ],
             }, None
-        if method == "POST" and url == interaction:
-            return 200, {"jsonrpc": "2.0", "id": "probe", "result": {"message": {"parts": []}}}, None
         raise AssertionError((method, url))
 
     monkeypatch.setattr(external_registry, "_read_json", fake_read)
+    monkeypatch.setattr(external_registry, "_public_url", lambda url: (True, None))
     external_registry._AION_VALIDATION_CACHE.clear()
+    external_registry._AION_DISCOVERY_RATE_TIMES.clear()
     result = external_registry.discover_external_agents("research", 5)[0]
-    assert result["verified_external_agent"] is True
-    assert result["evidence_state"] == "verified_interaction"
-    assert result["interaction_success"] is True
+    assert calls == [("GET", manifest)]
+    assert result["verified_external_agent"] is False
+    assert result["evidence_state"] == "reachable_a2a_v1_declaration"
+    assert result["interaction_url_validated"] is True
+    assert result["interaction_contacted"] is False
+    assert result["interaction_success"] is False
+    assert result["callable"] is False
+    assert result["verified_outcome"] is False
 
 
 def test_external_validation_rejects_private_or_credentialed_urls(monkeypatch):

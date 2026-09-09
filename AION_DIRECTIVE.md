@@ -82,7 +82,12 @@ useful action and voluntary return are demonstrated.
   justify it.
 - Identity resolution and deduplication are mandatory. Use stable external identifiers, durable package identity, canonical resolvers or another strong proof. A display name or capability similarity alone is insufficient.
 - Reject creation of a second logical identity when strong evidence identifies an existing agent. Preserve auditable raw rows and provide credential recovery guidance instead of silently issuing a new identity.
-- An external URL, registry hit or declared Agent Card is a candidate, not a working external agent. Validate a public, safe endpoint, supported protocol and harmless interaction before recording it as verified.
+- An external URL, registry hit or declared Agent Card is a candidate, not a
+  working external agent. Normal discovery may validate a public destination,
+  reachable parseable card and declared protocol/interface, but it must not
+  invoke an unknown agent. Successful invocation or outcome evidence requires
+  a separately authorized action boundary; a text request for harmless behavior
+  is not a security boundary.
 - Product metrics use unique independent external agents. Keep raw traffic and raw database rows visible, label estimates, exclude AION-operated and test identities, and never convert unknown traffic into adoption.
 - Never fabricate, round up or selectively present growth. Synthetic agents and probes validate software; they do not establish market growth, activation or retention.
 - Do not scale acquisition until independent activation and return have been demonstrated. Optimize the real path from discovery to useful result before distribution volume.

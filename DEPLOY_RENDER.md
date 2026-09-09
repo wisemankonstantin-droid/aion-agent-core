@@ -4,7 +4,8 @@
 
 The controlled direct-source cutover is complete and production is live.
 
-- Repository main: `88bc6fae247a5bb454d435380c24d665ba48f512`
+- Repository state: verify the current `main` ref directly from GitHub; it is
+  intentionally not embedded as a self-invalidating current-HEAD claim.
 - Production deployed SHA: `419f11b2a34fdec26269a216de65e9dcf955e963`
 - Current deploy: `dep-dafuu3v40ujc73d3fks0`
 - Status: live
