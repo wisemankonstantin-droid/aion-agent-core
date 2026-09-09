@@ -25,6 +25,7 @@ from app.services.live_utility import (
 )
 from app.services import live_utility_store
 from app.services.live_utility_sources import (
+    AdapterResponse,
     GitHubReleaseAdapter,
     SourceValidationError,
     VERIFICATION_METHOD,
@@ -299,6 +300,7 @@ class LiveUtilityEngine:
         source_id: str,
         now: datetime,
         demand: bool = False,
+        retrieved_response: AdapterResponse | None = None,
     ) -> RefreshResult:
         _require_aware_now(now)
         adapter = self._adapters.get(source_id)
@@ -360,31 +362,36 @@ class LiveUtilityEngine:
                 error="request_budget_exceeded",
             )
 
-        wait_seconds = adapter.fetch_policy.timeout_seconds * self.policy.request_budget
-        if not self._semaphore.acquire(timeout=wait_seconds):
-            return RefreshResult(
-                RefreshStatus.FETCH_FAILED,
-                source_id,
-                subject_key,
-                0,
-                current,
-                error="concurrency_limit_timeout",
-            )
-        try:
-            try:
-                response = adapter.retrieve()
-            except Exception as exc:
-                self._record_failure(source_id, now)
+        if retrieved_response is None:
+            wait_seconds = adapter.fetch_policy.timeout_seconds * self.policy.request_budget
+            if not self._semaphore.acquire(timeout=wait_seconds):
                 return RefreshResult(
                     RefreshStatus.FETCH_FAILED,
                     source_id,
                     subject_key,
                     0,
                     current,
-                    error=f"fetch_exception:{type(exc).__name__}",
+                    error="concurrency_limit_timeout",
                 )
-        finally:
-            self._semaphore.release()
+            try:
+                try:
+                    response = adapter.retrieve()
+                except Exception as exc:
+                    self._record_failure(source_id, now)
+                    return RefreshResult(
+                        RefreshStatus.FETCH_FAILED,
+                        source_id,
+                        subject_key,
+                        0,
+                        current,
+                        error=f"fetch_exception:{type(exc).__name__}",
+                    )
+            finally:
+                self._semaphore.release()
+        else:
+            # Package 3B retrieves outside any database transaction, then uses
+            # this existing normalization/deduplication path for persistence.
+            response = retrieved_response
 
         if response.transport.error is not None:
             self._record_failure(source_id, now)

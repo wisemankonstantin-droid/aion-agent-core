@@ -26,6 +26,7 @@ from .services.action_engine import (
     get_action_status_by_id,
     verify_external_callability,
 )
+from .services.learning_engine import LearningServiceError, submit_agent_evidence
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
@@ -42,7 +43,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -402,6 +403,21 @@ def action_status(action_id: str, agent=Depends(require_agent)):
     try:
         return get_action_status_by_id(action_id, requester_agent_id=agent.id)
     except ActionServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+
+@app.post("/learning/evidence")
+def learning_evidence_intake(
+    payload: schemas.AgentEvidenceSubmission,
+    agent=Depends(require_agent),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return submit_agent_evidence(agent.id, payload, idempotency_key)
+    except LearningServiceError as exc:
         raise HTTPException(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
@@ -961,6 +977,26 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "submit_learning_evidence",
+        "description": "Authenticated bounded submission of an untrusted Package 3B evidence claim. Supplied reference URLs are stored only and never contacted.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["category", "subject_key", "description", "idempotency_key"],
+            "properties": {
+                "category": {"type": "string", "enum": ["capability_claim", "endpoint_change", "provider_failure", "compatibility_issue", "missing_capability", "source_suggestion", "pricing_observation"]},
+                "subject_key": {"type": "string", "minLength": 1, "maxLength": 120},
+                "description": {"type": "string", "minLength": 1, "maxLength": 2000},
+                "reference_url": {"type": ["string", "null"], "maxLength": 1000},
+                "provider_identifier": {"type": ["string", "null"], "maxLength": 240},
+                "protocol": {"type": ["string", "null"], "maxLength": 40},
+                "failure_class": {"type": ["string", "null"]},
+                "observed_at": {"type": ["string", "null"], "format": "date-time"},
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "get_opportunities",
         "description": "Authenticated agent gets matches for its needs and market needs matching its offers.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -1205,6 +1241,13 @@ async def mcp_gateway(
                 str(args["action_id"]), requester_agent_id=mcp_agent.id
             )
 
+        elif name == "submit_learning_evidence":
+            mcp_agent = authenticate_agent(authorization, db)
+            evidence_args = dict(args)
+            idempotency_key = evidence_args.pop("idempotency_key", None)
+            payload = schemas.AgentEvidenceSubmission.model_validate(evidence_args)
+            data = submit_agent_evidence(mcp_agent.id, payload, idempotency_key)
+
         elif name == "get_opportunities":
             mcp_agent = authenticate_agent(authorization, db)
             data = opportunities_for_agent(db, mcp_agent.id)
@@ -1253,6 +1296,12 @@ async def mcp_gateway(
             return _mcp_error(rpc_id, -32602, f"Unknown tool: {name}")
 
     except ActionServiceError as exc:
+        return _mcp_result(rpc_id, {
+            "content": [{"type": "text", "text": exc.message}],
+            "structuredContent": {"code": exc.code, "status": exc.status_code},
+            "isError": True,
+        })
+    except LearningServiceError as exc:
         return _mcp_result(rpc_id, {
             "content": [{"type": "text", "text": exc.message}],
             "structuredContent": {"code": exc.code, "status": exc.status_code},

@@ -5,7 +5,7 @@ import pytest
 from app.main import MAX_MACHINE_REQUEST_BYTES, _BoundMachineRequestBody
 
 
-MACHINE_PATHS = ("/utility/query", "/actions/verify-callability", "/mcp", "/a2a/v1")
+MACHINE_PATHS = ("/utility/query", "/actions/verify-callability", "/learning/evidence", "/mcp", "/a2a/v1")
 
 
 def _request(path, chunks, *, content_length=None):

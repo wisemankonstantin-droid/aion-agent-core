@@ -54,9 +54,10 @@ release-evidence foundation using `LiveUtilitySource`,
 history. Together they do not implement the complete Data & Learning Plane,
 agent-evidence intake, gap analysis or commercial-opportunity detection.
 
-**Planned direction:** Package 3B must turn selected inputs into a minimal continuous
-learning and self-update loop. The canonical package boundaries are in
-`AION_MASTER_DELIVERY_ROADMAP.md`.
+**Package 3B implementation candidate:** one bounded, operator-invoked cycle
+turns selected inputs into minimal continuous learning and knowledge
+self-update. It is pending HQ review, not merged and not deployed. The
+canonical package boundaries are in `AION_MASTER_DELIVERY_ROADMAP.md`.
 
 ## Product gates
 
@@ -274,7 +275,7 @@ bounded until real outcome evidence exists.
 
 ### Continuous learning and self-update
 
-Package 3B is the planned **AION Continuous Learning & Self-Update Engine V1**.
+Package 3B is the **AION Continuous Learning & Self-Update Engine V1** candidate.
 It combines four bounded loops:
 
 1. knowledge watch for selected relevant external changes;
@@ -291,6 +292,37 @@ High-value triggers include protocol revisions, breaking API or authentication
 changes, new discovery mechanisms, payment standards, registry changes,
 security advisories and material ecosystem shifts. It must remain selective,
 bounded and production-usable rather than becoming a general crawler.
+
+The implementation candidate watches exactly the configured official A2A and
+MCP release sources. Each one-shot cycle considers at most two sources,
+refreshes sequentially, permits at most two attempts per source and four per
+cycle, inherits the 256,000-byte hardened response cap, has a 40-second work
+budget, limits stored normalized source payloads to 16 KiB, caps stored cycle
+summaries at 64 KiB and enforces a five-minute minimum refresh interval. Three consecutive
+failures open a durable 15-minute circuit. A durable lease prevents concurrent
+cycles from refreshing the same source twice, while existing observation
+digests and lineage prevent duplicate material-change evidence after retries or
+restart. Retrieval occurs outside database transactions; persistence reuses
+the Package 1 normalization, verification and advisory-lock path.
+
+Authenticated agents may submit seven bounded evidence categories through one
+REST/MCP service: `capability_claim`, `endpoint_change`, `provider_failure`,
+`compatibility_issue`, `missing_capability`, `source_suggestion` and
+`pricing_observation`. Claims begin `unverified`. Distinct authenticated agents
+may move identical material evidence to `corroborated`, never automatically to
+verified truth; same-agent replay does not increase breadth or reputation.
+Reference URLs are passive stored evidence and are never fetched during intake.
+A2A intake is deferred in V1.
+
+Demand aggregation uses bounded recent action/failure and agent-evidence rows.
+`no_result`, `capability_not_found`, `incompatible` and authenticated
+`missing_capability` claims are genuine unmet-demand signals. `rate_limited`,
+`unavailable`, `endpoint_unreachable`, transient transport, protocol,
+invocation, verification and unknown-delivery failures remain operational
+evidence, not market no-result evidence. Candidate priority is deterministic
+and based on distinct-agent breadth, distinct repeat demand, recency and
+corroboration—not raw volume. Unknown provider, payment, cost and margin
+evidence remains explicitly unknown.
 
 Automatic data or knowledge updates are allowed only within reviewed bounded
 policies. Production code self-modification is a separate boundary. A future
@@ -352,6 +384,11 @@ until funded by the future Economic Execution Gate or explicitly authorized as
 a bounded operator-funded experiment. It must have a monetary ceiling and
 maximum frequency. No execution may begin with unknown maximum cost, and no
 recursive child may exceed its parent's `MAX_TOTAL_SPEND`.
+
+For the Package 3B candidate, maximum paid external spend is exactly zero.
+Configured public Tier-1 release reads are bounded zero/near-zero external-
+monetary-cost operations; this does not claim internal compute has no cost.
+There is no paid fallback or operator-funded experiment in V1.
 
 AION must not continuously crawl the internet or apply the same refresh cadence
 to every fact. Refresh cost should be proportional to expected utility, change

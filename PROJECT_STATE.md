@@ -11,6 +11,8 @@
   `d8465a17522044c0349609e44ac7ccd9f0facf82`.
 - **Main checkpoint at Economic Control Plane alignment start:**
   `d2ddb13797915788a06ad1bf4266fea7683ab462`.
+- **Main checkpoint at Package 3B implementation start:**
+  `a92964e0b7d29eacae8016e6ea54f084f6f3a4bf`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
@@ -43,7 +45,8 @@
   AION is relied on as a commercial production service.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
-- **Package 3 Alembic head:** `0008_action_outcome_evidence`.
+- **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
+- **Package 3B candidate Alembic head:** `0009_continuous_learning_v1`.
 - **Production boundary:** Package 3 has not been deployed or migrated in
   production. Production remains on the SHA above and AutoDeploy remains OFF.
 
@@ -110,18 +113,52 @@ The **AION Data & Learning Plane** is now defined directionally as the planned
 persistent intelligence/evidence layer behind the Live Utility Engine. Package
 3 captures bounded request, selection, reachability/callability, invocation,
 result, verification, outcome, failure, duration, attempt and economic evidence
-from its first real action. Package 3B is planned as a minimal Continuous
+from its first real action. The Package 3B candidate adds a minimal Continuous
 Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
 bounded agent-evidence intake and demand/gap/opportunity signals.
 
 The broader Data & Learning Plane remains architecture direction. Package 3
-adds only four bounded evidence boundaries: ActionRun, ActionAttempt,
-ActionOutcome and ActionVerification. There is no continuous-learning engine,
-agent-evidence intake, gap analyzer or commercial-opportunity engine. Migration
-`0008_action_outcome_evidence` is additive and stores normalized evidence,
+adds four bounded evidence boundaries: ActionRun, ActionAttempt, ActionOutcome
+and ActionVerification. Migration `0008_action_outcome_evidence` is additive and stores normalized evidence,
 digests and byte/timing counters without raw remote response bodies.
 Callability proof leaves `capability_verified=false`; controlled fixtures are
 not independent adoption or external VUO evidence.
+
+## Current Package 3B implementation candidate
+
+Package 3B is an **implementation candidate pending HQ review**. It is not
+merged and not deployed. The candidate adds a one-shot bounded learning cycle,
+durable selected-source watch/circuit coordination, authenticated REST/MCP
+agent-evidence intake, and deterministic demand/gap opportunity candidates.
+It watches only the configured official A2A and MCP release sources and reuses
+the Package 1 normalization, verification, freshness and material-version
+lineage. Migration `0009_continuous_learning_v1` is additive.
+
+Agent claims begin unverified; distinct authenticated agents may establish
+corroboration but not verified truth. Submitted URLs are passive untrusted
+evidence and are never contacted by intake. Genuine `no_result`,
+`capability_not_found`, `incompatible`, and authenticated
+`missing_capability` evidence feed bounded unmet-demand aggregation.
+Operational failures remain separate and cannot masquerade as market demand.
+
+Automatic Package 3B paid external spend is disabled with a maximum of zero.
+The candidate contains no real payment implementation, paid-provider calls,
+automatic production scheduler, crawler, autonomous code modification, merge
+or deployment behavior. A2A evidence intake is a deliberate V1 limitation;
+REST and MCP share one authenticated service. No independent adoption,
+production learning operation, external VUO, payment, revenue or commercial
+opportunity proof is claimed.
+
+Package 3B candidate validation at this checkpoint:
+
+- targeted learning, migration, request-boundary, source-integrity,
+  Live Utility, safe-HTTP, external-security, Package 3, MCP and PostgreSQL-gate
+  collection: 165 passed, 9 PostgreSQL-only tests skipped locally;
+- full local suite: 285 passed, 9 PostgreSQL-only tests skipped;
+- SQLite fresh-to-head and `0008 -> 0009` upgrade paths, repeated upgrade and
+  Alembic schema check passed; and
+- exact-SHA AION CI and PostgreSQL 18 release-gate results remain required
+  before this candidate is handed to HQ.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -173,7 +210,7 @@ Profile, product tiers, and future cost/VUO and CM/VUO evidence.
 
 This is documentation and architecture policy only. No payment rail,
 settlement, wallet, balance ledger, paid-provider execution, dynamic pricing or
-other economic runtime is implemented. Package 3B is **Not Started**.
+other economic runtime is implemented. Package 3B does not weaken these rules.
 Production remains intentionally unchanged. Live merge/main status must be
 verified directly from GitHub under the repository state rule above.
 

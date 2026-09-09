@@ -377,3 +377,131 @@ class ActionVerification(Base):
     proof_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class LearningRun(Base):
+    __tablename__ = "learning_runs"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_learning_runs_run_id"),
+        CheckConstraint("sources_considered >= 0", name="ck_learning_runs_sources_nonnegative"),
+        CheckConstraint("outbound_attempts >= 0", name="ck_learning_runs_attempts_nonnegative"),
+        CheckConstraint("response_bytes >= 0", name="ck_learning_runs_bytes_nonnegative"),
+        CheckConstraint("paid_external_spend_permitted = false", name="ck_learning_runs_paid_spend_disabled_v1"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sources_considered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outbound_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    response_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    paid_external_spend_permitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class LearningSourceWatchState(Base):
+    __tablename__ = "learning_source_watch_states"
+    __table_args__ = (
+        UniqueConstraint("source_id", name="uq_learning_source_watch_states_source"),
+        CheckConstraint("consecutive_failures >= 0", name="ck_learning_watch_failures_nonnegative"),
+        CheckConstraint("outbound_attempts_total >= 0", name="ck_learning_watch_attempts_nonnegative"),
+        CheckConstraint("response_bytes_total >= 0", name="ck_learning_watch_bytes_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(
+        String(160), ForeignKey("live_utility_sources.source_id", ondelete="CASCADE"), nullable=False
+    )
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_observation_id: Mapped[str | None] = mapped_column(
+        String(160), ForeignKey("live_utility_observations.observation_id", ondelete="RESTRICT"), nullable=True
+    )
+    last_material_change_observation_id: Mapped[str | None] = mapped_column(
+        String(160), ForeignKey("live_utility_observations.observation_id", ondelete="RESTRICT"), nullable=True
+    )
+    next_eligible_refresh_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    circuit_open_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    outbound_attempts_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    response_bytes_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AgentEvidenceClaim(Base):
+    __tablename__ = "agent_evidence_claims"
+    __table_args__ = (
+        UniqueConstraint("claim_id", name="uq_agent_evidence_claims_claim_id"),
+        UniqueConstraint(
+            "requester_agent_id", "idempotency_key",
+            name="uq_agent_evidence_claims_requester_idempotency",
+        ),
+        UniqueConstraint(
+            "requester_agent_id", "evidence_digest",
+            name="uq_agent_evidence_claims_requester_material",
+        ),
+        Index("ix_agent_evidence_digest_state", "evidence_digest", "state"),
+        Index("ix_agent_evidence_category_submitted", "category", "submitted_at"),
+        CheckConstraint("corroborating_agent_count >= 1", name="ck_agent_evidence_corroboration_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    evidence_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(String(2000), nullable=False)
+    reference_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    provider_identifier: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    protocol: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    failure_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    corroborating_agent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    supporting_references: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class LearningOpportunityCandidate(Base):
+    __tablename__ = "learning_opportunity_candidates"
+    __table_args__ = (
+        UniqueConstraint("candidate_key", name="uq_learning_opportunities_candidate_key"),
+        Index("ix_learning_opportunities_priority", "priority_score", "last_seen_at"),
+        CheckConstraint("total_meaningful_signals >= 0", name="ck_learning_opportunities_signals_nonnegative"),
+        CheckConstraint("distinct_requester_count >= 0", name="ck_learning_opportunities_requesters_nonnegative"),
+        CheckConstraint("repeat_requester_count >= 0", name="ck_learning_opportunities_repeats_nonnegative"),
+        CheckConstraint("anonymous_signal_count >= 0", name="ck_learning_opportunities_anonymous_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_key: Mapped[str] = mapped_column(String(71), nullable=False)
+    normalized_demand_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    total_meaningful_signals: Mapped[int] = mapped_column(Integer, nullable=False)
+    distinct_requester_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    repeat_requester_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    anonymous_signal_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_class_breakdown: Mapped[dict] = mapped_column(JSON, nullable=False)
+    operational_failure_breakdown: Mapped[dict] = mapped_column(JSON, nullable=False)
+    supporting_evidence_references: Mapped[list] = mapped_column(JSON, nullable=False)
+    evidence_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    priority_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    known_provider_availability: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    payment_potential: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    known_cost: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    margin_feasibility: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

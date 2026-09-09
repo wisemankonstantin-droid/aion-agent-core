@@ -26,6 +26,18 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
 - Process-local action guards permit four concurrent actions and 20 starts per
   60 seconds. Database uniqueness plus PostgreSQL advisory locking—not these
   process guards—enforce the idempotency claim.
+- Package 3B evidence intake requires an existing authenticated agent,
+  requester-scoped idempotency and a strict bounded schema. Reference URLs are
+  stored only as untrusted evidence and never fetched by submission; arbitrary
+  methods, headers, credentials and remote payloads are rejected.
+- Evidence intake is process-limited to 20 new claims per agent per minute with
+  at most 1,024 in-memory agent buckets. Same-agent material replay cannot
+  manufacture independent corroboration or reputation.
+- The Package 3B watcher allowlist contains only the configured official A2A
+  and MCP release sources. Hardened transport bounds remain in force. Durable
+  leases prevent duplicate same-source refresh; three consecutive failures
+  open a restart-safe 15-minute circuit. Automatic paid external spend is
+  disabled with a maximum of zero.
 
 ## Before higher-scale production
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.

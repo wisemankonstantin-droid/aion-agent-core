@@ -19,6 +19,9 @@ checks = {
     "migration_0006_live_utility_data": (root / "alembic/versions/0006_live_utility_data.py").exists(),
     "migration_0007_agent_utility_checkpoints": (root / "alembic/versions/0007_agent_utility_checkpoints.py").exists(),
     "migration_0008_action_outcome_evidence": (root / "alembic/versions/0008_action_outcome_evidence.py").exists(),
+    "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
+    "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
+        and (root / "scripts/learning_cycle.py").exists(),
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
     "mcp_live_utility": '"name": "get_live_utility"' in main,

@@ -141,7 +141,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
             if index[2] == 1
         }
 
-    assert revision == "0008_action_outcome_evidence"
+    assert revision == "0009_continuous_learning_v1"
     assert {
         "agents",
         "machine_entries",
@@ -153,6 +153,10 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
         "action_attempts",
         "action_outcomes",
         "action_verifications",
+        "learning_runs",
+        "learning_source_watch_states",
+        "agent_evidence_claims",
+        "learning_opportunity_candidates",
     } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
@@ -197,7 +201,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0008_action_outcome_evidence"
+    assert revision == "0009_continuous_learning_v1"
     assert {
         "live_utility_sources",
         "live_utility_observations",
@@ -207,6 +211,10 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
         "action_attempts",
         "action_outcomes",
         "action_verifications",
+        "learning_runs",
+        "learning_source_watch_states",
+        "agent_evidence_claims",
+        "learning_opportunity_candidates",
     } <= tables
 
 
@@ -252,7 +260,7 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='migration-agent'"
         ).fetchone()
 
-    assert revision == "0008_action_outcome_evidence"
+    assert revision == "0009_continuous_learning_v1"
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
@@ -303,8 +311,48 @@ def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
         ).fetchone()
 
-    assert revision == "0008_action_outcome_evidence"
+    assert revision == "0009_continuous_learning_v1"
     assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
     assert ("requester_agent_id", "idempotency_key") in unique_columns
     assert ("action_id",) in unique_columns
     assert sentinel == ("package-3-sentinel",)
+
+
+def test_existing_0008_database_upgrades_to_continuous_learning_v1(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-3b-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+
+    _alembic(root, url, "upgrade", "0008_action_outcome_evidence")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
+            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-3b-sentinel", "Package 3B Sentinel", "", "A2A", 0,
+             "package-3b-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+
+    with sqlite3.connect(database) as connection:
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        evidence_indexes = connection.execute("PRAGMA index_list('agent_evidence_claims')").fetchall()
+        evidence_unique_columns = {
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in evidence_indexes if index[2] == 1
+        }
+        sentinel = connection.execute(
+            "SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'"
+        ).fetchone()
+
+    assert revision == "0009_continuous_learning_v1"
+    assert {
+        "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
+        "learning_opportunity_candidates",
+    } <= tables
+    assert ("requester_agent_id", "idempotency_key") in evidence_unique_columns
+    assert ("requester_agent_id", "evidence_digest") in evidence_unique_columns
+    assert sentinel == ("package-3b-sentinel",)

@@ -8,7 +8,7 @@ import pytest
 
 from app.db import SessionLocal
 from app import a2a_official, main
-from app.services import action_engine, external_registry, lifecycle, opportunities
+from app.services import action_engine, external_registry, learning_engine, lifecycle, opportunities
 from scripts import acquisition_scan
 
 
@@ -43,6 +43,12 @@ def test_rest_mcp_a2a_and_opportunities_share_external_discovery_service():
         action_engine.discover_external_agents_with_status
         is external_registry.discover_external_agents_with_status
     )
+
+
+def test_rest_and_mcp_share_package3b_evidence_service():
+    assert main.submit_agent_evidence is learning_engine.submit_agent_evidence
+    source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert source.count("submit_agent_evidence(") == 2
 
 
 def test_acquisition_scan_reuses_bounded_external_discovery(monkeypatch):

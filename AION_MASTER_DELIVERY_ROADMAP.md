@@ -84,6 +84,8 @@ this V1 implementation.
 
 ### Package 3B — Continuous Learning & Self-Update Engine V1
 
+**Implementation candidate; pending HQ review; not merged; not deployed.**
+
 Build the smallest production-usable learning layer around the proven utility
 path. It includes four bounded loops:
 
@@ -103,8 +105,17 @@ maximum frequency, cost ceiling, demand/utility priority and disable/circuit-
 breaker behavior. Prefer event-driven, adaptive-TTL, demand-, usage-, impact-
 driven and incremental refresh. Paid source/watch execution is disabled by
 default unless a future real economic execution path funds it or an explicit
-bounded operator-funded experiment authorizes it. Package 3B is not started by
-this policy alignment.
+bounded operator-funded experiment authorizes it.
+
+The V1 candidate implements one operator-invoked cycle rather than a resident
+scheduler. It watches only the configured official A2A and MCP release sources,
+persists restart-safe watch leases/circuit state, reuses existing normalized
+observations, accepts bounded authenticated REST/MCP evidence, and recomputes
+bounded deterministic opportunity candidates from independent-agent demand.
+Agent claims remain separate from verified truth; operational failures remain
+separate from genuine unmet demand. Automatic paid external spend is fixed at
+zero. A2A evidence intake, scheduling and autonomous code change are
+deliberately deferred.
 
 ### Package 4 — Controlled Production Live Utility release
 

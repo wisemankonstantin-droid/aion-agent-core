@@ -11,7 +11,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
-from app.services import action_engine, external_registry
+from app.services import action_engine, external_registry, learning_engine
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -343,3 +343,156 @@ def test_postgres_concurrent_action_claim_posts_at_most_once(monkeypatch):
                 models.ActionAttempt.action_run_id == run.id
             )
         ) == 1
+
+
+def test_postgres_concurrent_learning_evidence_idempotency_is_single(monkeypatch):
+    token = uuid.uuid4().hex
+    with SessionLocal.begin() as db:
+        agent = models.Agent(
+            external_id="pg-learning-evidence-" + token,
+            name="PG Learning Evidence " + token,
+            api_key_hash="pg-learning-evidence-hash-" + token,
+        )
+        db.add(agent)
+        db.flush()
+        agent_id = agent.id
+
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+    call_lock = threading.Lock()
+
+    def allow(_agent_id):
+        nonlocal calls
+        with call_lock:
+            calls += 1
+            first = calls == 1
+        if first:
+            entered.set()
+            assert release.wait(10)
+        return True
+
+    monkeypatch.setattr(learning_engine, "allow_evidence_submission", allow)
+    payload = schemas.AgentEvidenceSubmission(
+        category="missing_capability",
+        subject_key="pg-gap-" + token,
+        description="Concurrent evidence claim",
+    )
+    idem = "pg-evidence-" + token
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(learning_engine.submit_agent_evidence, agent_id, payload, idem)
+        assert entered.wait(10)
+        second = pool.submit(learning_engine.submit_agent_evidence, agent_id, payload, idem)
+        release.set()
+        results = [first.result(timeout=10), second.result(timeout=10)]
+
+    assert results[0]["claim_id"] == results[1]["claim_id"]
+    assert {result["idempotent_replay"] for result in results} == {False, True}
+    assert calls == 1
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(models.AgentEvidenceClaim).where(
+                models.AgentEvidenceClaim.requester_agent_id == agent_id,
+                models.AgentEvidenceClaim.idempotency_key == idem,
+            )
+        ) == 1
+
+
+def test_postgres_concurrent_opportunity_recompute_upserts_one_candidate():
+    token = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    with SessionLocal.begin() as db:
+        agent = models.Agent(
+            external_id="pg-learning-opportunity-" + token,
+            name="PG Learning Opportunity " + token,
+            api_key_hash="pg-learning-opportunity-hash-" + token,
+        )
+        db.add(agent)
+        db.flush()
+        db.add(models.ActionRun(
+            action_id=str(uuid.uuid4()),
+            requester_agent_id=agent.id,
+            idempotency_key="pg-opportunity-" + token,
+            request_digest="sha256:" + token,
+            requested_query="pg-gap-" + token,
+            requested_candidate_identifier=None,
+            authorize_external_contact=True,
+            state="failed",
+            failure_class="no_result",
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            duration_ms=1,
+            discovery_attempt_count=1,
+            action_attempt_count=0,
+            request_bytes=1,
+            response_bytes=0,
+            cost_amount=None,
+            cost_currency=None,
+        ))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda _: learning_engine.recompute_opportunity_candidates(now + timedelta(seconds=1)),
+            range(2),
+        ))
+    matching = [
+        row for result in results for row in result
+        if row["normalized_demand_key"] == "pg-gap-" + token
+    ]
+    assert len(matching) == 2
+    assert matching[0]["candidate_key"] == matching[1]["candidate_key"]
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(models.LearningOpportunityCandidate).where(
+                models.LearningOpportunityCandidate.candidate_key == matching[0]["candidate_key"]
+            )
+        ) == 1
+
+
+def test_postgres_concurrent_learning_source_claim_fetches_once():
+    base = configured_tier1_adapters()[0]
+    entered = threading.Event()
+    release = threading.Event()
+
+    class Adapter:
+        source = base.source
+        subject_key = base.subject_key
+        fetch_policy = FetchPolicy(timeout_seconds=1, max_response_bytes=256_000, max_attempts=1)
+        external_cost_amount = 0
+        calls = 0
+
+        def retrieve(self):
+            self.calls += 1
+            entered.set()
+            assert release.wait(10)
+            return AdapterResponse(FetchResult(200, b"pg-learning", None, 1), {"version": "pg-learning-v1"})
+
+        def normalize(self, payload):
+            return dict(payload)
+
+        def source_revision(self, normalized):
+            return normalized["version"]
+
+    adapter = Adapter()
+    with SessionLocal.begin() as db:
+        LiveUtilityEngine((adapter,)).ensure_sources(db)
+        state = db.scalar(select(models.LearningSourceWatchState).where(models.LearningSourceWatchState.source_id == base.source.source_id))
+        if state is not None:
+            db.delete(state)
+
+    context = {"trigger": "demand", "source_ids": [base.source.source_id]}
+    now = datetime.now(timezone.utc)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(learning_engine.run_learning_cycle, now, context, adapters=(adapter,))
+        assert entered.wait(10)
+        second = pool.submit(learning_engine.run_learning_cycle, now, context, adapters=(adapter,))
+        second_result = second.result(timeout=10)
+        release.set()
+        first_result = first.result(timeout=10)
+
+    assert adapter.calls == 1
+    assert {
+        first_result["source_results"][0]["status"],
+        second_result["source_results"][0]["status"],
+    } == {"refreshed_changed", "source_busy"}

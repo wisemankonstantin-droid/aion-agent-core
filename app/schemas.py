@@ -1,3 +1,6 @@
+from datetime import datetime
+from urllib.parse import urlsplit
+
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional, List, Literal
 
@@ -137,4 +140,74 @@ class VerifyCallabilityRequest(BaseModel):
     def no_control_characters(cls, value: Optional[str]) -> Optional[str]:
         if value is not None and any(ord(character) < 32 for character in value):
             raise ValueError("control characters are not allowed")
+        return value
+
+
+EvidenceCategory = Literal[
+    "capability_claim",
+    "endpoint_change",
+    "provider_failure",
+    "compatibility_issue",
+    "missing_capability",
+    "source_suggestion",
+    "pricing_observation",
+]
+
+
+class AgentEvidenceSubmission(BaseModel):
+    category: EvidenceCategory
+    subject_key: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=2000)
+    reference_url: Optional[str] = Field(default=None, max_length=1000)
+    provider_identifier: Optional[str] = Field(default=None, max_length=240)
+    protocol: Optional[str] = Field(default=None, max_length=40)
+    failure_class: Optional[Literal[
+        "no_result",
+        "capability_not_found",
+        "incompatible",
+        "rate_limited",
+        "unavailable",
+        "endpoint_unreachable",
+        "protocol_failure",
+        "invocation_failed",
+        "verification_failed",
+        "stale_evidence",
+    ]] = None
+    observed_at: Optional[datetime] = None
+
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+    @field_validator("description")
+    @classmethod
+    def bounded_description(cls, value: str) -> str:
+        if value is not None and any(ord(character) < 32 and character not in "\n\t" for character in value):
+            raise ValueError("control characters are not allowed")
+        return value
+
+    @field_validator("subject_key", "reference_url", "provider_identifier", "protocol")
+    @classmethod
+    def no_control_characters(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and any(ord(character) < 32 for character in value):
+            raise ValueError("control characters are not allowed")
+        return value
+
+    @field_validator("reference_url")
+    @classmethod
+    def passive_reference_only(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("reference_url must be an absolute HTTP(S) URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("reference_url must not contain credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("reference_url must not contain query parameters or fragments")
+        return value
+
+    @field_validator("observed_at")
+    @classmethod
+    def observed_at_must_be_aware(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("observed_at must include a timezone")
         return value

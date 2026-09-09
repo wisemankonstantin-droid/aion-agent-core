@@ -14,6 +14,10 @@ and `GET /actions/{action_id}`. The POST requires `Idempotency-Key` and
 discovered-candidate identifier. Callers cannot supply a URL, headers,
 credentials, remote method or message body.
 
+The Package 3B implementation candidate adds authenticated
+`POST /learning/evidence`. It requires `Idempotency-Key`, accepts only a bounded
+schema and is covered by the outer 64 KiB streaming body limiter.
+
 ## MCP 2026-07-28
 Single stateless POST endpoint: `/mcp`. The implementation validates protocol/client metadata and mirrored HTTP headers, exposes discovery/list/call, and keeps authentication in the normal Authorization header for protected tools.
 
@@ -24,6 +28,27 @@ to reconstruct/update an existing agent's durable subject checkpoint.
 The authenticated `verify_external_callability` and `get_action_status` tools
 use the same Package 3 service as REST. MCP supplies a bounded idempotency-key
 argument equivalent to the REST header.
+
+The authenticated `submit_learning_evidence` tool uses the same Package 3B
+service as REST. Its `idempotency_key` argument is equivalent to the REST
+header. Bearer authentication remains in the HTTP Authorization header.
+
+## Package 3B agent-evidence intake
+
+Accepted categories are `capability_claim`, `endpoint_change`,
+`provider_failure`, `compatibility_issue`, `missing_capability`,
+`source_suggestion` and `pricing_observation`. Required fields are category,
+subject key and bounded description; optional fields are a passive reference
+URL, provider identifier, protocol, bounded failure class and observed time.
+Unknown fields—including custom headers, credentials, remote methods and
+message payloads—are rejected.
+
+Evidence submission never contacts a supplied URL. Each claim starts
+unverified, is requester/idempotency bound, and is also deduplicated by
+requester plus material digest. Distinct authenticated agents can establish
+corroboration, not automatic verification. The process-local V1 guard permits
+20 new submissions per authenticated agent per 60 seconds and bounds its agent
+buckets to 1,024. A2A evidence intake is deliberately deferred.
 
 ## A2A 1.0
 Canonical card: `/.well-known/agent-card.json`.
