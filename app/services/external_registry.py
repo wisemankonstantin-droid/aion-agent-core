@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict, deque
+from dataclasses import dataclass
 import os
 import threading
 import time as _time
@@ -31,6 +32,16 @@ _PinnedHTTPSConnection = _safe_http.PinnedHTTPSConnection
 _AION_VALIDATION_CACHE = OrderedDict()
 _AION_DISCOVERY_RATE_TIMES = deque()
 _AION_DISCOVERY_STATE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryResult:
+    """Internal discovery outcome; public callers retain list compatibility."""
+
+    results: list[dict]
+    status: str
+    failure_class: str | None
+    resource_bounds: dict
 
 
 class _OutboundBudget:
@@ -170,7 +181,29 @@ def _read_json(
     return result.status, data, result.error
 
 
-def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
+def _operational_failure(status, error) -> str:
+    if status == 429 or error == "http_429":
+        return "rate_limited"
+    if error == "outbound_budget_exhausted":
+        return "unavailable"
+    return "endpoint_unreachable"
+
+
+def _discovery_bounds(budget: _OutboundBudget) -> dict:
+    return {
+        "candidate_limit": _AION_MAX_EXTERNAL_CANDIDATES,
+        "query_character_limit": _AION_MAX_EXTERNAL_QUERY_CHARS,
+        "outbound_attempt_budget": budget.maximum,
+        "outbound_attempts_used": budget.used,
+        "response_byte_limit": _AION_MAX_EXTERNAL_BYTES,
+        "cache_max_entries": _AION_VALIDATION_CACHE_MAX_ENTRIES,
+        "cache_ttl_seconds": _AION_VALIDATION_TTL,
+    }
+
+
+def _discover_external_agents_resolved_with_status(
+    query: str, limit: int = 5, budget=None
+) -> DiscoveryResult:
     query = _normalized_query(query)
     limit = _normalized_limit(limit)
     if (
@@ -178,17 +211,19 @@ def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
         or limit is None
         or os.getenv("AION_DISABLE_EXTERNAL_DISCOVERY") == "1"
     ):
-        return []
+        return DiscoveryResult([], "unavailable", "unavailable", {})
     budget = budget or _OutboundBudget()
     search_url = f"{A2A_REGISTRY_SEARCH}?{urlencode({'q': query})}"
     status, payload, error = _read_json("GET", search_url, budget=budget)
     if error or status != 200:
-        return []
+        failure = _operational_failure(status, error)
+        return DiscoveryResult([], failure, failure, _discovery_bounds(budget))
     rows = payload if isinstance(payload, list) else _first(payload, "agents", "data")
     if not isinstance(rows, list):
-        return []
+        return DiscoveryResult([], "unavailable", "unavailable", _discovery_bounds(budget))
 
     results = []
+    incomplete_failure = None
     for row in rows[:limit]:
         if not isinstance(row, dict):
             continue
@@ -256,6 +291,14 @@ def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
             else:
                 resolution_error = resolve_error or f"resolve_http_{resolve_status}"
 
+        if not manifest_url and resolution_error:
+            failure = _operational_failure(
+                resolve_status if package_name else detail_status,
+                resolve_error if package_name else detail_error,
+            )
+            if failure == "rate_limited" or incomplete_failure is None:
+                incomplete_failure = failure
+
         has_manifest = bool(manifest_url)
         results.append(
             {
@@ -292,11 +335,21 @@ def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
             }
         )
         if budget.remaining <= 0:
+            incomplete_failure = incomplete_failure or "unavailable"
             break
-    return results
+    return DiscoveryResult(
+        results,
+        incomplete_failure or "success",
+        incomplete_failure,
+        _discovery_bounds(budget),
+    )
 
 
-_AION_RESOLVED_DISCOVER = _discover_external_agents_resolved
+def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
+    return _discover_external_agents_resolved_with_status(query, limit, budget).results
+
+
+_AION_RESOLVED_DISCOVER = _discover_external_agents_resolved_with_status
 
 
 def _interface(card):
@@ -430,34 +483,77 @@ def _validate_external(row, budget=None):
     return merged
 
 
-def discover_external_agents(query: str, limit: int = 5):
+def discover_external_agents_with_status(query: str, limit: int = 5) -> DiscoveryResult:
     normalized_query = _normalized_query(query)
     normalized_limit = _normalized_limit(limit)
-    if (
-        normalized_query is None
-        or normalized_limit is None
-        or os.getenv("AION_DISABLE_EXTERNAL_DISCOVERY") == "1"
-        or not _allow_discovery()
-    ):
-        return []
+    if normalized_query is None or normalized_limit is None:
+        return DiscoveryResult(
+            [], "unavailable", "unavailable", _discovery_bounds(_OutboundBudget())
+        )
+    if os.getenv("AION_DISABLE_EXTERNAL_DISCOVERY") == "1":
+        return DiscoveryResult(
+            [], "unavailable", "unavailable", _discovery_bounds(_OutboundBudget())
+        )
+    if not _allow_discovery():
+        return DiscoveryResult(
+            [], "rate_limited", "rate_limited", _discovery_bounds(_OutboundBudget())
+        )
 
     budget = _OutboundBudget()
-    rows = _AION_RESOLVED_DISCOVER(normalized_query, normalized_limit, budget)
+    resolved_value = _AION_RESOLVED_DISCOVER(
+        normalized_query, normalized_limit, budget
+    )
+    # The list branch preserves small test/extension seams that predate the
+    # structured internal result. The production resolver returns DiscoveryResult.
+    resolved = (
+        resolved_value
+        if isinstance(resolved_value, DiscoveryResult)
+        else DiscoveryResult(
+            list(resolved_value), "success", None, _discovery_bounds(budget)
+        )
+    )
     results = []
-    for row in rows[:normalized_limit]:
+    failure_class = resolved.failure_class
+    validation_failure = None
+    for row in resolved.results[:normalized_limit]:
         if budget.remaining <= 0:
+            failure_class = failure_class or "unavailable"
             break
-        results.append(_validate_external(row, budget))
+        validated = _validate_external(row, budget)
+        results.append(validated)
+        if validated.get("failure_reason") == "outbound_budget_exhausted":
+            failure_class = failure_class or "unavailable"
+        elif validated.get("failure_reason") == "http_429":
+            failure_class = "rate_limited"
+        elif not validated.get("manifest_reachable") and validated.get(
+            "failure_reason"
+        ) not in {None, "no_manifest_url"}:
+            reason = str(validated["failure_reason"])
+            validation_failure = (
+                "unavailable"
+                if reason in {"response_too_large", "content_encoding_rejected"}
+                else "endpoint_unreachable"
+            )
 
-    resource_bounds = {
-        "candidate_limit": _AION_MAX_EXTERNAL_CANDIDATES,
-        "query_character_limit": _AION_MAX_EXTERNAL_QUERY_CHARS,
-        "outbound_attempt_budget": budget.maximum,
-        "outbound_attempts_used": budget.used,
-        "response_byte_limit": _AION_MAX_EXTERNAL_BYTES,
-        "cache_max_entries": _AION_VALIDATION_CACHE_MAX_ENTRIES,
-        "cache_ttl_seconds": _AION_VALIDATION_TTL,
-    }
+    if (
+        failure_class is None
+        and validation_failure is not None
+        and not any(result.get("manifest_reachable") for result in results)
+    ):
+        failure_class = validation_failure
+
+    resource_bounds = _discovery_bounds(budget)
     for result in results:
         result["resource_bounds"] = dict(resource_bounds)
-    return results
+    return DiscoveryResult(
+        results,
+        failure_class or "success",
+        failure_class,
+        resource_bounds,
+    )
+
+
+def discover_external_agents(query: str, limit: int = 5):
+    """Compatibility surface: return only the candidate list."""
+
+    return discover_external_agents_with_status(query, limit).results

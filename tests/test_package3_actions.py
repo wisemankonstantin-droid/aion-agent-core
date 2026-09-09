@@ -10,11 +10,21 @@ from sqlalchemy import func, select
 from app import models, schemas
 from app.db import SessionLocal
 from app.main import MCP_VERSION, app
-from app.services import action_engine
+from app.services import action_engine, external_registry
 from app.services.safe_http import FetchResult
 
 
 client = TestClient(app)
+
+
+def _discovery(results, failure_class=None, attempts=0):
+    bounds = {"outbound_attempts_used": attempts}
+    return external_registry.DiscoveryResult(
+        results=list(results),
+        status=failure_class or "success",
+        failure_class=failure_class,
+        resource_bounds=bounds,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +113,7 @@ def _mcp(key, name, arguments):
 
 def test_unauthenticated_or_unauthorized_requests_never_contact(monkeypatch):
     contacts = []
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: contacts.append(a))
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: contacts.append(a))
     assert _request("invalid").status_code == 401
     _, key = _join()
     for payload in (
@@ -117,7 +127,7 @@ def test_unauthenticated_or_unauthorized_requests_never_contact(monkeypatch):
 
 def test_requester_cannot_supply_url_message_headers_or_method(monkeypatch):
     contacts = []
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: contacts.append(a))
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: contacts.append(a))
     _, key = _join()
     base = {"query": "research", "authorize_external_contact": True}
     for extra in ("url", "message", "headers", "method", "credentials"):
@@ -130,12 +140,12 @@ def test_no_result_and_credentialed_candidate_make_no_post(monkeypatch):
     _, key = _join()
     posts = []
     monkeypatch.setattr(action_engine, "_post_challenge", lambda *a: posts.append(a))
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([]))
     assert _request(key).json()["failure_class"] == "no_result"
     monkeypatch.setattr(
         action_engine,
-        "discover_external_agents",
-        lambda *a: [_candidate(authentication_requirement="credentials_required")],
+        "discover_external_agents_with_status",
+        lambda *a: _discovery([_candidate(authentication_requirement="credentials_required")]),
     )
     assert _request(key).json()["failure_class"] == "permission_missing"
     assert posts == []
@@ -147,11 +157,11 @@ def test_unknown_auth_and_candidate_identifier_mismatch_are_not_invoked(monkeypa
     monkeypatch.setattr(action_engine, "_post_challenge", lambda *a: posts.append(a))
     monkeypatch.setattr(
         action_engine,
-        "discover_external_agents",
-        lambda *a: [_candidate(authentication_requirement="unknown")],
+        "discover_external_agents_with_status",
+        lambda *a: _discovery([_candidate(authentication_requirement="unknown")]),
     )
     assert _request(key).json()["failure_class"] == "permission_missing"
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     response = _request(
         key,
         payload={
@@ -166,7 +176,7 @@ def test_unknown_auth_and_candidate_identifier_mismatch_are_not_invoked(monkeypa
 
 def test_interaction_destination_is_revalidated_and_private_resolution_is_not_contacted(monkeypatch):
     _, key = _join()
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     monkeypatch.setattr(
         action_engine.safe_http,
         "resolve_public_https",
@@ -193,7 +203,7 @@ def test_bounded_transport_failures_are_precise_and_never_retried(
     monkeypatch, fetch_result, failure
 ):
     _, key = _join()
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     calls = []
     monkeypatch.setattr(
         action_engine,
@@ -210,7 +220,7 @@ def test_bounded_transport_failures_are_precise_and_never_retried(
 
 def test_valid_protocol_without_nonce_is_not_verified(monkeypatch):
     _, key = _join()
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     def response(encoded):
         request = json.loads(encoded)
         body = {"jsonrpc": "2.0", "id": request["id"], "result": {"message": {
@@ -262,7 +272,7 @@ def test_action_transport_policy_is_fixed_and_single_attempt(monkeypatch):
 
 def test_query_and_idempotency_bounds_fail_before_discovery(monkeypatch):
     contacts = []
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: contacts.append(a))
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: contacts.append(a))
     _, key = _join()
     assert _request(
         key, payload={"query": "x" * 129, "authorize_external_contact": True}
@@ -278,7 +288,7 @@ def test_end_to_end_success_is_durable_idempotent_and_separates_evidence(monkeyp
     with SessionLocal() as db:
         starting_agents = db.scalar(select(func.count()).select_from(models.Agent))
         reputation = db.get(models.Agent, requester_id).reputation
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     posts = []
     monkeypatch.setattr(
         action_engine,
@@ -323,7 +333,7 @@ def test_end_to_end_success_is_durable_idempotent_and_separates_evidence(monkeyp
 def test_idempotency_conflict_and_concurrent_replay_never_make_second_post(monkeypatch):
     requester_id, _ = _join()
     payload = schemas.VerifyCallabilityRequest(query="research", authorize_external_contact=True)
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     entered = threading.Event()
     release = threading.Event()
     posts = []
@@ -376,7 +386,7 @@ def test_in_progress_restart_read_is_conservative_and_never_resends(monkeypatch)
 
 def test_mcp_and_rest_use_same_service_and_require_auth(monkeypatch):
     _, key = _join()
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: [_candidate()])
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     monkeypatch.setattr(action_engine, "_post_challenge", lambda u, e: _verified_response(e))
     response = _mcp(key, "verify_external_callability", {
         "query": "research", "authorize_external_contact": True,
@@ -404,7 +414,7 @@ def test_action_considers_no_more_than_candidate_limit(monkeypatch):
     ]
     candidates.append(_candidate(identifier="external:beyond-limit"))
     posts = []
-    monkeypatch.setattr(action_engine, "discover_external_agents", lambda *a: candidates)
+    monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery(candidates))
     monkeypatch.setattr(action_engine, "_post_challenge", lambda *a: posts.append(a))
     result = _request(key).json()
     assert result["failure_class"] == "unavailable"

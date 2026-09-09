@@ -11,7 +11,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
-from app.services import action_engine
+from app.services import action_engine, external_registry
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -273,7 +273,11 @@ def test_postgres_concurrent_action_claim_posts_at_most_once(monkeypatch):
         "resource_bounds": {"outbound_attempts_used": 2},
     }
     monkeypatch.setattr(
-        action_engine, "discover_external_agents", lambda *args: [candidate]
+        action_engine,
+        "discover_external_agents_with_status",
+        lambda *args: external_registry.DiscoveryResult(
+            [candidate], "success", None, {"outbound_attempts_used": 2}
+        ),
     )
     entered = threading.Event()
     release = threading.Event()

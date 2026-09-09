@@ -85,6 +85,14 @@ automatically resent. Durable requester-scoped idempotency returns existing
 evidence for the same request and rejects changed requests. Normal discovery
 remains declaration-only.
 
+The internal action-facing discovery result distinguishes a completed empty
+search from operational failure. Only a successful completed empty search
+becomes `no_result`. The shared discovery guard becomes `rate_limited`;
+operator-disabled or budget-incomplete discovery becomes `unavailable`; and
+registry network/service failure becomes `endpoint_unreachable` (with upstream
+HTTP 429 remaining `rate_limited`). The public list-returning discovery
+contract is unchanged.
+
 V1 inbound action surfaces are REST and MCP. An A2A adapter is intentionally
 deferred; bearer credentials are never accepted inside A2A message text.
 

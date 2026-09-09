@@ -148,6 +148,14 @@ not independent adoption or external VUO evidence.
   fixture, not independent adoption or a commercial VUO.
 - Normal CI and the PostgreSQL 18 release gate remain required on the exact
   final candidate SHA before HQ review. Production remains untouched.
+- The HQ corrective candidate preserves structured discovery status internally
+  so operational, rate, configuration and budget failures cannot be persisted
+  as a factual `no_result`. Public discovery lists remain compatible and
+  declaration-only.
+- Corrective targeted discovery/action/security/source-integrity suite: 73
+  passed, with 6 PostgreSQL-only cases skipped locally. Corrective full local
+  suite: 254 passed, 6 PostgreSQL-only cases skipped. The PostgreSQL cases
+  remain required in the exact-SHA release gate.
 
 ## Package 2 validation
 

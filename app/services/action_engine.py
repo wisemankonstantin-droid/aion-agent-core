@@ -30,7 +30,7 @@ from a2a.types import (
 from .. import models, schemas
 from ..db import SessionLocal
 from . import safe_http
-from .external_registry import discover_external_agents
+from .external_registry import discover_external_agents_with_status
 
 
 ACTION_TYPE = "a2a_callability_challenge_v1"
@@ -240,11 +240,6 @@ def _candidate_failure(candidates: list[dict], requested_identifier: str | None)
         if not relevant:
             return "capability_not_found"
     if any(
-        candidate.get("authentication_requirement") != "none"
-        for candidate in relevant
-    ):
-        return "permission_missing"
-    if any(
         str(candidate.get("failure_reason") or "").startswith(
             ("non_public_address", "url_must_be_public_https", "nonstandard_port")
         )
@@ -255,6 +250,11 @@ def _candidate_failure(candidates: list[dict], requested_identifier: str | None)
         return "endpoint_unreachable"
     if any(not candidate.get("declared_a2a_v1_jsonrpc") for candidate in relevant):
         return "incompatible"
+    if any(
+        candidate.get("authentication_requirement") != "none"
+        for candidate in relevant
+    ):
+        return "permission_missing"
     return "unavailable"
 
 
@@ -295,7 +295,7 @@ def _duration_ms(started_at: datetime | None, completed_at: datetime) -> int | N
     return max(0, int((completed_at - started_at).total_seconds() * 1000))
 
 
-def _complete_without_post(action_id: str, failure_class: str) -> dict:
+def _complete_without_post(action_id: str, failure_class: str, discovery=None) -> dict:
     now = _utcnow()
     with SessionLocal() as db:
         run = db.scalar(
@@ -305,6 +305,16 @@ def _complete_without_post(action_id: str, failure_class: str) -> dict:
             raise ActionServiceError(404, "action_not_found", "Action run not found")
         run.state = "failed"
         run.failure_class = failure_class
+        if discovery is not None:
+            bounds = dict(discovery.resource_bounds)
+            run.discovery_attempt_count = int(
+                bounds.get("outbound_attempts_used") or 0
+            )
+            run.discovery_evidence = {
+                "discovery_status": discovery.status,
+                "failure_class": discovery.failure_class,
+                "resource_bounds": bounds,
+            }
         run.completed_at = now
         run.duration_ms = _duration_ms(run.started_at, now)
         outcome = models.ActionOutcome(
@@ -828,9 +838,14 @@ def verify_external_callability(
     if not _ACTION_SLOTS.acquire(blocking=False):
         return _complete_without_post(action_id, "rate_limited")
     try:
-        candidates = list(
-            discover_external_agents(payload.query, ACTION_DISCOVERY_CANDIDATE_LIMIT)
-        )[:ACTION_DISCOVERY_CANDIDATE_LIMIT]
+        discovery = discover_external_agents_with_status(
+            payload.query, ACTION_DISCOVERY_CANDIDATE_LIMIT
+        )
+        if discovery.failure_class is not None:
+            return _complete_without_post(
+                action_id, discovery.failure_class, discovery
+            )
+        candidates = list(discovery.results)[:ACTION_DISCOVERY_CANDIDATE_LIMIT]
         candidate = _select_candidate(candidates, payload.candidate_identifier)
         if candidate is None:
             return _complete_without_post(
