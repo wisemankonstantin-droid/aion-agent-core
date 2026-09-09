@@ -164,17 +164,18 @@ not independent adoption or external VUO evidence.
 
 ## Economic Control Plane alignment
 
-The Economic Constitution alignment is **in progress on a dedicated candidate
-branch** and remains pending HQ acceptance. It canonically defines no unfunded
-variable spend, no AION credit, pay-before-spend, maximum-cost and funding
-gates, contribution-margin floors and targets, lawful paid-source use,
+The Economic Constitution alignment is **independently HQ-accepted with zero
+known reproducible defects**. It canonically defines no unfunded variable
+spend, no AION credit, pay-before-spend, maximum-cost and funding gates,
+contribution-margin floors and targets, lawful paid-source use,
 prepaid/reserved funding, recursive spend limits, the Economic Capability
 Profile, product tiers, and future cost/VUO and CM/VUO evidence.
 
 This is documentation and architecture policy only. No payment rail,
 settlement, wallet, balance ledger, paid-provider execution, dynamic pricing or
 other economic runtime is implemented. Package 3B is **Not Started**.
-Production remains intentionally unchanged.
+Production remains intentionally unchanged. Live merge/main status must be
+verified directly from GitHub under the repository state rule above.
 
 ## Package 2 validation
 
