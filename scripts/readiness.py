@@ -10,6 +10,10 @@ render = (root / "render.yaml").read_text(encoding="utf-8")
 models = (root / "app/models.py").read_text(encoding="utf-8")
 external_registry = (root / "app/services/external_registry.py").read_text(encoding="utf-8")
 action_engine = (root / "app/services/action_engine.py").read_text(encoding="utf-8")
+release_identity = (root / "app/release_identity.py").read_text(encoding="utf-8")
+live_gate = (root / ".github/workflows/live-gate.yml").read_text(encoding="utf-8")
+postgres_gate = (root / ".github/workflows/postgres-release-gate.yml").read_text(encoding="utf-8")
+learning_cli = (root / "scripts/learning_cycle.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -22,6 +26,22 @@ checks = {
     "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
+    "package_4_release_identity": (
+        'EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"' in release_identity
+        and "RENDER_GIT_COMMIT" in release_identity
+        and "AION_RELEASE_SHA" in release_identity
+    ),
+    "package_4_schema_readiness": (
+        '"schema_current"' in main and "SELECT version_num FROM alembic_version" in main
+    ),
+    "package_4_exact_sha_live_gate": (
+        "expected_release_sha" in live_gate and "AION_EXPECTED_RELEASE_SHA" in live_gate
+    ),
+    "package_4_legacy_postgres_gate": (
+        "upgrade 0004_reputation_idempotency" in postgres_gate
+        and "postgres_0004_release_proof.py verify" in postgres_gate
+    ),
+    "package_4_learning_preflight": "--plan" in learning_cli,
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
     "mcp_live_utility": '"name": "get_live_utility"' in main,
@@ -64,8 +84,11 @@ checks = {
 }
 
 external = [
-    "Obtain independent review before any merge or deployment of the reconciled v0.7.1 source.",
-    "Re-run the external A2A smoke after deployment and verify join_aion through the official SDK route.",
+    "Obtain HQ review of the exact Package 4 candidate before merge or production action.",
+    "Verify the live alembic_version read-only; do not infer it from deployed source.",
+    "Resolve the free production database durability/expiry blocker with explicit cost approval.",
+    "Verify a real production backup/recovery point, restore access and retention before migration.",
+    "Obtain an explicit Human Gate before exact-SHA deploy, migration or first production learning cycle.",
     "Obtain the first genuinely external M2/M3 journey; AION-operated or synthetic identities must not be counted as external adoption.",
     "Prove external activation and return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

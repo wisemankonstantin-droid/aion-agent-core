@@ -1,4 +1,4 @@
-# Project checkpoint — 2026-09-09
+# Project checkpoint — 2026-09-10
 
 ## Current production state
 
@@ -13,6 +13,8 @@
   `d2ddb13797915788a06ad1bf4266fea7683ab462`.
 - **Main checkpoint at Package 3B implementation start:**
   `a92964e0b7d29eacae8016e6ea54f084f6f3a4bf`.
+- **Package 3B acceptance/merge and Package 4 task-start checkpoint:**
+  `d9d4b699b688663ec46ee84fafb5c4d814fd4799`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
@@ -47,8 +49,14 @@
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production boundary:** Package 3 has not been deployed or migrated in
-  production. Production remains on the SHA above and AutoDeploy remains OFF.
+- **Production database revision:** unknown in this release process. The
+  deployed source includes migrations only through 0004, but that is not proof
+  of the live database revision. A future Human-Gated release requires a
+  read-only `alembic_version` check.
+- **Production recovery:** no current backup/snapshot, restore rehearsal, HA,
+  PITR, RPO or RTO has been verified by Package 4.
+- **Production boundary:** Packages 3 and 3B have not been deployed or migrated
+  in production. Production remains on the SHA above and AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -151,7 +159,7 @@ identities are excluded from independent opportunity breadth, confidence and
 priority.
 
 Automatic Package 3B paid external spend is disabled with a maximum of zero.
-The candidate contains no real payment implementation, paid-provider calls,
+The accepted implementation contains no real payment implementation, paid-provider calls,
 automatic production scheduler, crawler, autonomous code modification, merge
 or deployment behavior. A2A evidence intake is a deliberate V1 limitation;
 REST and MCP share one authenticated service. No independent adoption,
@@ -179,7 +187,25 @@ Package 3B validation at this checkpoint:
   passed AION CI run `34382094903` and PostgreSQL 18 pre-production release
   gate run `34382094918` on that exact SHA; HQ independently re-reviewed the
   four prior blockers and accepted Package 3B with zero known reproducible
-  defects. Live merge/main status must be verified directly from GitHub.
+  defects. The documentation closeout was merged at
+  `d9d4b699b688663ec46ee84fafb5c4d814fd4799`; resulting-main AION CI run
+  `34385252760` passed. Package 3B remains not deployed.
+
+## Current Package 4 release candidate
+
+Package 4 is a **release candidate pending HQ review**. It is not merged and
+not deployed. It adds release engineering only: validated runtime Git identity,
+schema-aware non-mutating readiness, exact-SHA manual Live Gate enforcement,
+an anonymous/non-mutating Package 1–3B smoke, zero-side-effect Package 3B
+learning preflight, a seeded PostgreSQL 18 `0004 -> 0009` preservation and
+rollback-compatibility gate, and the current production Human Gate/runbook.
+
+The expected head remains `0009_continuous_learning_v1`; Package 4 adds no
+migration. Production remains at deploy `dep-dafuu3v40ujc73d3fks0` and SHA
+`419f11b2a34fdec26269a216de65e9dcf955e963`. No live database revision,
+backup, restore readiness or database durability is claimed. The free database
+expiry remains an unresolved production Human Gate. No Package 5 work has
+started.
 
 ## Pre-Package-3 audit-correction validation
 

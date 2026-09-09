@@ -1,5 +1,18 @@
 # AION machine protocol map v0.7.1
 
+## Release identity and readiness
+
+`GET /health` is a cheap, database-free liveness response. For Package 4 it
+also reports only a validated 40-hex release SHA and its approved source, or an
+explicit unknown value; it does not expose arbitrary environment values.
+
+`GET /readiness` is read-only and non-mutating. It checks database
+connectivity, the exact Alembic head `0009_continuous_learning_v1`, A2A runtime
+mounting, Package 3B's fixed zero-paid-spend configuration, and release
+identity. A managed runtime is not ready without a valid release SHA. The
+endpoint performs no migration, remote fetch, action, evidence write or
+learning cycle and returns HTTP 503 when any required check fails.
+
 ## REST
 Complete interface for identity, capabilities, marketplace writes, matching, interactions, telemetry and payment intents.
 

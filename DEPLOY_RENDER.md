@@ -25,6 +25,46 @@ Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately
 authorized production change.
 
+## Package 4 controlled-release procedure — current
+
+The Package 4 candidate prepares release safety only. It does not authorize a
+deploy, migration, database read/write, backup operation, plan change, secret
+change or learning cycle. `PRODUCTION_GATE.md` is the canonical ordered gate.
+
+Before a future production action:
+
+1. Confirm the HQ-approved exact Git SHA has passed AION CI and the PostgreSQL
+   18 gate at that same SHA. A branch name is not release identity.
+2. Resolve the free database durability/expiry blocker. Record the live plan's
+   current and incremental monthly price, capability, acceptable uptime,
+   backup/restore semantics and explicit cost approval. Do not assume a plan
+   name or price from this repository.
+3. Verify and record a real production recovery point, retention/expiry,
+   restore procedure/destination, operator access and known RPO/RTO. Source
+   history is not a database backup.
+4. Read `SELECT version_num FROM alembic_version` through authorized read-only
+   access and record the result. Stop if it is not an exact migration start
+   state tested by the accepted candidate.
+5. Obtain an explicit Human Gate naming the exact SHA, service, database
+   revision, recovery point, costs, production operations and rollback owner.
+6. Keep AutoDeploy OFF and manually deploy the exact approved `main` SHA to the
+   existing service. Record Render's deploy ID and `RENDER_GIT_COMMIT`.
+7. Observe the existing start command carefully: it runs
+   `python -m alembic upgrade head` before Uvicorn, so deployment can migrate
+   the live database before HTTP readiness exists.
+8. Require `/health` and `/readiness` to report the exact SHA and schema head
+   `0009_continuous_learning_v1`, then manually run the Live Gate with the
+   expected exact SHA.
+9. Only after that gate passes, inspect
+   `python scripts/learning_cycle.py --plan`. A first one-shot production cycle
+   requires separate explicit authorization and recorded observation.
+
+AutoDeploy remains OFF through Package 4. Enabling it or adding a scheduler is
+a separate later infrastructure decision. The Package 4 source rollback rule
+is restore known-good source/config without an automatic Alembic downgrade;
+the accepted gate must first prove legacy operations remain compatible with
+the additive 0009 schema.
+
 ## Historical release and cutover evidence
 
 The remaining Phase A-E material records the completed cutover and its rollback

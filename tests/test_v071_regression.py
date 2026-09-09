@@ -38,7 +38,13 @@ def test_version_and_readiness_surface_v071():
     }
     readiness = client.get("/readiness")
     assert readiness.status_code == 200
-    assert readiness.json()["checks"] == {"database": True, "a2a_runtime": True}
+    assert readiness.json()["checks"] == {
+        "database": True,
+        "a2a_runtime": True,
+        "schema_current": True,
+        "package_3b_config": True,
+        "release_identity": True,
+    }
 
 
 def test_logical_identity_guard_rejects_new_external_id_for_same_endpoint_and_name():

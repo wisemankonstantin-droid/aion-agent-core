@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import yaml
 
 import pytest
 
@@ -164,3 +165,54 @@ def test_funnel_snapshot_remains_identity_aware():
     assert "M1_to_unique_M2" in result["conversion"]
     assert "M2_joined_agents" not in result
     assert "M3_activated_agents" not in result
+
+
+def test_package4_live_gate_is_manual_exact_sha_only():
+    workflow = yaml.load(
+        (ROOT / ".github" / "workflows" / "live-gate.yml").read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
+    )
+    assert set(workflow["on"]) == {"workflow_dispatch"}
+    inputs = workflow["on"]["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"public_url", "expected_release_sha"}
+    assert inputs["expected_release_sha"]["required"] == "true"
+    source = (ROOT / "scripts" / "smoke_live.py").read_text(encoding="utf-8")
+    assert "AION_EXPECTED_RELEASE_SHA" in source
+    assert '"/agents"' not in source
+    assert "Authorization" not in source
+    assert "verify_external_callability(" not in source
+    assert "submit_agent_evidence(" not in source
+
+
+def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
+    identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    assert 'EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"' in identity
+    assert "upgrade 0004_reputation_idempotency" in workflow
+    assert "postgres_0004_release_proof.py seed" in workflow
+    assert "postgres_0004_release_proof.py verify" in workflow
+    assert "codex/package-4-controlled-production-release" in workflow
+
+
+def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
+    workflow_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / ".github" / "workflows").glob("*.yml")
+    )
+    render = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    assert "learning_cycle.py" not in workflow_text
+    assert "cron:" not in workflow_text
+    assert "schedule:" not in workflow_text
+    assert "autoDeploy: true" not in render
+
+
+def test_package4_manifest_is_current_and_does_not_claim_production_actions():
+    manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
+    assert manifest["package"].startswith("Package 4")
+    assert manifest["task_start_main_sha"] == "d9d4b699b688663ec46ee84fafb5c4d814fd4799"
+    assert manifest["expected_database_migration_head"] == "0009_continuous_learning_v1"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "419f11b2a34fdec26269a216de65e9dcf955e963"
+    assert manifest["production_baseline"]["actual_live_database_revision"].startswith("unknown")
+    assert manifest["hard_stop_blockers"]["production_backup_verified"] is False
+    assert manifest["production_action_authorized_by_candidate"] is False
+    assert "final_candidate_sha" not in manifest

@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -25,6 +26,10 @@ from app import models  # noqa: E402,F401
 
 if not POSTGRES_GATE:
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL)"))
+        connection.execute(text("DELETE FROM alembic_version"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0009_continuous_learning_v1')"))
 
 
 def pytest_sessionfinish(session, exitstatus):

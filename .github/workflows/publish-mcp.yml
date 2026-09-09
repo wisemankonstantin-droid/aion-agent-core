@@ -7,6 +7,10 @@ on:
         description: "Deployed AION HTTPS URL"
         required: true
         type: string
+      expected_release_sha:
+        description: "Exact approved deployed 40-hex Git commit"
+        required: true
+        type: string
       validate_only:
         description: "Validate but do not publish"
         required: true
@@ -28,6 +32,7 @@ jobs:
       - name: Live gate first
         env:
           AION_PUBLIC_URL: ${{ inputs.public_url }}
+          AION_EXPECTED_RELEASE_SHA: ${{ inputs.expected_release_sha }}
         run: python scripts/smoke_live.py
       - name: Generate MCP Registry metadata
         env:

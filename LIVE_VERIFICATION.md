@@ -1,4 +1,10 @@
-# AION live verification baseline for v0.6.2
+# Historical AION live verification baseline for v0.6.2
+
+This file preserves historical production evidence only. It is not the current
+Package 4 release procedure. Use `PRODUCTION_GATE.md` for the canonical current
+gate and `DEPLOY_RENDER.md` for the current Render procedure. No historical
+statement below proves the present live database revision, backup, durability,
+release SHA beyond the recorded deploy, or Package 1–3B production status.
 
 Date: 2026-09-06
 Live endpoint: `https://aion-agent-core-live.onrender.com`

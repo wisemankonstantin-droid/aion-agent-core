@@ -43,6 +43,18 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   leases prevent duplicate same-source refresh; three consecutive failures
   open a restart-safe 15-minute circuit. Automatic paid external spend is
   disabled with a maximum of zero.
+- Package 4 release identity exposes only a validated 40-hex commit and its
+  source. `RENDER_GIT_COMMIT` has precedence over the optional
+  `AION_RELEASE_SHA` fallback; invalid values expose no SHA and unrelated
+  environment values are never returned.
+- `/health` performs no database, migration, learning or external-network work.
+  `/readiness` reads database connectivity and `alembic_version`, verifies the
+  expected 0009 schema, mounted A2A runtime and fixed Package 3B policy, and
+  never migrates, refreshes sources, runs learning or exposes credentials.
+- The Package 4 Live Gate is manually dispatched with a public URL and exact
+  expected SHA. Its protected action/evidence checks are unauthenticated
+  rejection proofs; it supplies no credential and cannot dispatch or persist
+  those operations.
 
 ## Before higher-scale production
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.

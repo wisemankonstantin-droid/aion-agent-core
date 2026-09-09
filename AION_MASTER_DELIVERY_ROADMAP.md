@@ -119,9 +119,19 @@ deliberately deferred.
 
 ### Package 4 — Controlled Production Live Utility release
 
+**Release candidate in preparation; pending HQ review, not merged and not
+deployed.**
+
 Release the Package 3/3B utility path only after all package and Human Gates
 pass. Use authoritative A2A/MCP conformance or compatibility tools where
 practical in addition to internal tests.
+
+The candidate must prove an exact runtime Git identity, schema-current
+readiness, the representative PostgreSQL 18 `0004 -> 0009` production jump,
+legacy-data preservation, additive-schema source rollback compatibility, a
+manual exact-SHA live gate, and a zero-side-effect learning-policy preflight.
+The first production learning cycle remains a separate Human-Gated one-shot
+operation; no automatic scheduler is introduced.
 
 Ensure selected Data & Learning loops can run reliably in production, their
 freshness policies are operational, and their resource and cost limits are

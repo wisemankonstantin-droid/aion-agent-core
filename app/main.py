@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
 from fastapi.responses import PlainTextResponse, JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, text
 
 from .db import Base, engine, get_db
 from . import models, schemas
@@ -27,6 +27,7 @@ from .services.action_engine import (
     verify_external_callability,
 )
 from .services.learning_engine import LearningServiceError, submit_agent_evidence
+from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
@@ -190,6 +191,7 @@ def health():
         "service": "aion-agent-core",
         "version": APP_VERSION,
         "a2a_runtime": A2A_RUNTIME.get("status", "unknown"),
+        **release_identity(),
     }
 
 
@@ -314,17 +316,61 @@ def version():
     return {"status":"ok","service":"aion-agent-core","version":APP_VERSION,
             "a2a_protocol":"1.0","mcp_protocol":MCP_VERSION}
 
+def _readiness_payload(db: Session, *, a2a_status: str) -> dict:
+    from .services.learning_engine import MAX_PAID_EXTERNAL_SPEND, WATCHED_SOURCE_IDS
+
+    identity = release_identity()
+    managed_runtime = bool(
+        os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL")
+    )
+    release_identity_ready = (
+        identity["release_sha"] is not None
+        if managed_runtime
+        else not str(identity["release_source"]).endswith("_invalid")
+    )
+    checks = {
+        "database": False,
+        "a2a_runtime": a2a_status == "mounted",
+        "schema_current": False,
+        "package_3b_config": (
+            WATCHED_SOURCE_IDS
+            == (
+                "official-a2a-protocol-release",
+                "official-mcp-specification-release",
+            )
+            and MAX_PAID_EXTERNAL_SPEND == 0
+        ),
+        "release_identity": release_identity_ready,
+    }
+    actual_revision = None
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = True
+        revisions = list(db.scalars(text("SELECT version_num FROM alembic_version")))
+        actual_revision = revisions[0] if len(revisions) == 1 else revisions
+        checks["schema_current"] = revisions == [EXPECTED_SCHEMA_REVISION]
+    except Exception:
+        checks["database"] = False
+        checks["schema_current"] = False
+    return {
+        "status": "ready" if all(checks.values()) else "not_ready",
+        "checks": checks,
+        "version": APP_VERSION,
+        "expected_schema_revision": EXPECTED_SCHEMA_REVISION,
+        "database_schema_revision": actual_revision,
+        "schema_current": checks["schema_current"],
+        **identity,
+    }
+
+
 @app.get("/readiness")
 def readiness(db: Session = Depends(get_db)):
-    from sqlalchemy import text
-    checks={"database":False,"a2a_runtime":A2A_RUNTIME.get("status")=="mounted"}
-    try:
-        db.execute(text("SELECT 1"));checks["database"]=True
-    except Exception:
-        checks["database"]=False
-    if not all(checks.values()):
-        raise HTTPException(status_code=503,detail={"status":"not_ready","checks":checks})
-    return {"status":"ready","checks":checks,"version":APP_VERSION}
+    payload = _readiness_payload(
+        db, a2a_status=A2A_RUNTIME.get("status", "unknown")
+    )
+    if payload["status"] != "ready":
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @app.get("/onboarding")

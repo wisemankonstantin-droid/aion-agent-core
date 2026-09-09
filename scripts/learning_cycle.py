@@ -12,10 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.services.learning_engine import run_learning_cycle  # noqa: E402
+from app.services.learning_engine import learning_cycle_plan, run_learning_cycle  # noqa: E402
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Run one bounded AION learning cycle")
     parser.add_argument(
         "--trigger",
@@ -28,7 +28,17 @@ def main() -> int:
         dest="source_ids",
         help="Configured watched source ID; may be provided at most twice",
     )
-    arguments = parser.parse_args()
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Print the bounded production policy without network or database work",
+    )
+    arguments = parser.parse_args(argv)
+    if arguments.plan:
+        if arguments.source_ids:
+            parser.error("--plan does not accept --source")
+        print(json.dumps(learning_cycle_plan(), sort_keys=True, separators=(",", ":")))
+        return 0
     context = {"trigger": arguments.trigger}
     if arguments.source_ids:
         context["source_ids"] = arguments.source_ids

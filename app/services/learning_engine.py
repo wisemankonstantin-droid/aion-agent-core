@@ -74,6 +74,27 @@ _SQLITE_WATCH_LOCK = threading.RLock()
 _SQLITE_OPPORTUNITY_LOCK = threading.RLock()
 
 
+def learning_cycle_plan() -> dict:
+    """Return the fixed V1 production policy without network or database work."""
+
+    return {
+        "mode": "plan",
+        "side_effects": False,
+        "watched_source_ids": list(WATCHED_SOURCE_IDS),
+        "maximum_watched_sources": MAX_WATCHED_SOURCES_PER_CYCLE,
+        "maximum_concurrent_refreshes": MAX_CONCURRENT_REFRESHES,
+        "maximum_outbound_attempts_per_source": MAX_OUTBOUND_ATTEMPTS_PER_SOURCE,
+        "maximum_outbound_attempts_per_cycle": MAX_OUTBOUND_ATTEMPTS_PER_CYCLE,
+        "maximum_response_bytes_per_source": MAX_RESPONSE_BYTES_PER_SOURCE,
+        "maximum_cycle_seconds": MAX_CYCLE_SECONDS,
+        "minimum_refresh_interval_seconds": MIN_REFRESH_INTERVAL_SECONDS,
+        "circuit_failure_threshold": CIRCUIT_FAILURE_THRESHOLD,
+        "circuit_cooldown_seconds": CIRCUIT_COOLDOWN_SECONDS,
+        "maximum_paid_external_spend": MAX_PAID_EXTERNAL_SPEND,
+        "paid_external_execution_enabled": False,
+    }
+
+
 class LearningServiceError(Exception):
     def __init__(self, status_code: int, code: str, message: str):
         super().__init__(message)
