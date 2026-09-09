@@ -8,7 +8,7 @@ Package 2 adds `POST /utility/query` and Package 1-backed utility inside
 Bearer identity enables durable Personalized Delta; it never creates a new
 identity. Inputs select only `a2a`, `mcp` or both and cannot provide a fetch URL.
 
-The Package 3 candidate adds authenticated `POST /actions/verify-callability`
+The HQ-accepted Package 3 implementation adds authenticated `POST /actions/verify-callability`
 and `GET /actions/{action_id}`. The POST requires `Idempotency-Key` and
 `authorize_external_contact=true`; input is only a bounded query and optional
 discovered-candidate identifier. Callers cannot supply a URL, headers,
@@ -67,7 +67,7 @@ It does not contact that interaction URL and therefore never claims callable,
 interaction success, verified external-agent operation or verified outcome.
 An external result never becomes AION membership merely because it was found.
 
-## Package 3 callability evidence candidate
+## Package 3 callability evidence
 
 The action service selects only a freshly discovered, parseable, declared A2A
 1.0 JSON-RPC endpoint whose interaction URL passes public HTTPS validation and

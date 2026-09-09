@@ -403,12 +403,13 @@ membership. Migration `0007_agent_utility_checkpoints` is additive and stores
 only this minimal history with PostgreSQL advisory-lock serialization.
 
 Package 2 does not add arbitrary search, crawling, embeddings, endpoint calls,
-actions, outcome verification, ranking or payments. The separately authorized
-Package 3 candidate adds only one authenticated public/no-credential A2A
+actions, outcome verification, ranking or payments. The separately authorized and HQ-accepted
+Package 3 implementation adds only one authenticated public/no-credential A2A
 callability nonce action and four bounded durable evidence boundaries through
 `0008_action_outcome_evidence`. It does not verify advertised domain capability,
-implement arbitrary delegation, or begin Package 3B. It remains pending HQ
-review and is neither merged nor deployed.
+implement arbitrary delegation, or begin Package 3B. It has passed independent
+HQ review with zero known reproducible defects and is ready for merge; it is
+not yet merged or deployed.
 
 Before important production releases, use official or authoritative A2A and MCP
 conformance or compatibility tools where practical in addition to, never in

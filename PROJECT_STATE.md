@@ -41,7 +41,7 @@
   AION is relied on as a commercial production service.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
-- **Package 3 candidate Alembic head:** `0008_action_outcome_evidence`.
+- **Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Production boundary:** Package 2 has not been deployed or migrated in
   production. Production remains on the SHA above and AutoDeploy remains OFF.
 
@@ -93,10 +93,11 @@ external-agent invocation, bounded request work and cache state, and corrected
 the repository-state documentation model. Resulting-main AION CI run
 `34315606416` passed on that exact SHA.
 
-## Current Package 3 implementation candidate
+## Current Package 3 implementation
 
-Package 3 is now **implemented on a dedicated candidate branch and pending HQ
-review**. It is not accepted, merged or deployed. The candidate implements one
+Package 3 is **implemented and independently HQ-accepted with zero known
+reproducible defects**. It is ready for merge to main, but is not yet merged or
+deployed. The accepted implementation provides one
 narrow authenticated and explicitly authorized public/no-credential A2A
 callability action: bounded discovery, deterministic safe selection, one fixed
 server-generated nonce challenge, verification and durable correlated history.
@@ -134,21 +135,23 @@ not independent adoption or external VUO evidence.
 - No database model, migration or database-concurrency behavior changed. The
   repository Alembic head remains `0007_agent_utility_checkpoints`.
 
-## Package 3 candidate validation
+## Package 3 validation
 
 - Targeted action, request-boundary, hardened-transport, external-security and
   migration suite: 89 passed.
 - Full local suite: 245 passed, 6 PostgreSQL-only tests skipped.
 - SQLite fresh-to-head and `0007 -> 0008` paths, repeated upgrade and Alembic
-  schema check passed. The candidate head is
+  schema check passed. The accepted Package 3 head is
   `0008_action_outcome_evidence`.
 - The controlled end-to-end responder proof exercised bounded discovery,
   requester-scoped claim, one official A2A `SendMessage`, nonce verification,
   four durable evidence boundaries and restart-safe retrieval. It is a test
   fixture, not independent adoption or a commercial VUO.
-- Normal CI and the PostgreSQL 18 release gate remain required on the exact
-  final candidate SHA before HQ review. Production remains untouched.
-- The HQ corrective candidate preserves structured discovery status internally
+- HQ independently accepted the corrected Package 3 implementation at
+  `b34ae9b3d792f96fb3c71710d727a1db56d78cb3` after AION CI run
+  `34325607999` and PostgreSQL 18 release gate run `34325608008` both passed
+  on that exact SHA. It remains unmerged and undeployed; production is untouched.
+- The HQ-accepted corrective implementation preserves structured discovery status internally
   so operational, rate, configuration and budget failures cannot be persisted
   as a factual `no_result`. Public discovery lists remain compatible and
   declaration-only.
