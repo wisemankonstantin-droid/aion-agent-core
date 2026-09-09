@@ -45,10 +45,19 @@ message payloads—are rejected.
 
 Evidence submission never contacts a supplied URL. Each claim starts
 unverified, is requester/idempotency bound, and is also deduplicated by
-requester plus material digest. Distinct authenticated agents can establish
-corroboration, not automatic verification. The process-local V1 guard permits
-20 new submissions per authenticated agent per 60 seconds and bounds its agent
-buckets to 1,024. A2A evidence intake is deliberately deferred.
+requester plus material digest. Distinct authenticated logical agents can
+establish corroboration, not automatic verification; raw rows resolved to one
+logical identity cannot corroborate themselves. PostgreSQL serializes shared
+material evidence before updating every matching durable claim. The
+process-local V1 guard permits 20 submission attempts per authenticated agent
+per 60 seconds—including replay, conflict and duplicate attempts—and bounds its
+agent buckets to 1,024. A2A evidence intake is deliberately deferred.
+
+Agent-supplied `observed_at` remains untrusted provenance. Opportunity recency
+for agent claims uses AION's durable `submitted_at` receipt time. Demand breadth
+uses canonical logical identity resolution, and AION-operated or test logical
+identities do not increase independent commercial breadth, confidence or
+priority.
 
 ## A2A 1.0
 Canonical card: `/.well-known/agent-card.json`.

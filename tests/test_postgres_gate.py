@@ -388,7 +388,7 @@ def test_postgres_concurrent_learning_evidence_idempotency_is_single(monkeypatch
 
     assert results[0]["claim_id"] == results[1]["claim_id"]
     assert {result["idempotent_replay"] for result in results} == {False, True}
-    assert calls == 1
+    assert calls == 2
     with SessionLocal() as db:
         assert db.scalar(
             select(func.count()).select_from(models.AgentEvidenceClaim).where(
@@ -396,6 +396,50 @@ def test_postgres_concurrent_learning_evidence_idempotency_is_single(monkeypatch
                 models.AgentEvidenceClaim.idempotency_key == idem,
             )
         ) == 1
+
+
+def test_postgres_concurrent_cross_agent_corroboration_converges(monkeypatch):
+    token = uuid.uuid4().hex
+    with SessionLocal.begin() as db:
+        agents = []
+        for suffix in ("a", "b"):
+            agent = models.Agent(
+                external_id=f"pg-corroboration-{token}-{suffix}",
+                name=f"PG Corroboration {token} {suffix}",
+                api_key_hash=f"pg-corroboration-hash-{token}-{suffix}",
+            )
+            db.add(agent)
+            db.flush()
+            agents.append(agent.id)
+
+    monkeypatch.setattr(learning_engine, "allow_evidence_submission", lambda _: True)
+    payload = schemas.AgentEvidenceSubmission(
+        category="missing_capability",
+        subject_key="pg-shared-gap-" + token,
+        description="Concurrent cross-agent material evidence",
+    )
+    barrier = threading.Barrier(2)
+
+    def submit(agent_id):
+        barrier.wait(timeout=10)
+        return learning_engine.submit_agent_evidence(
+            agent_id, payload, f"pg-cross-agent-{agent_id}-{token}"
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(submit, agents))
+
+    assert len({result["claim_id"] for result in results}) == 2
+    with SessionLocal() as db:
+        rows = list(db.scalars(select(models.AgentEvidenceClaim).where(
+            models.AgentEvidenceClaim.evidence_digest == results[0]["evidence_digest"]
+        )))
+    assert len(rows) == 2
+    assert {row.state for row in rows} == {"corroborated"}
+    assert {row.corroborating_agent_count for row in rows} == {2}
+    expected_references = {row.claim_id for row in rows}
+    assert all(set(row.supporting_references) == expected_references for row in rows)
+    assert all(row.state != "verified" for row in rows)
 
 
 def test_postgres_concurrent_opportunity_recompute_upserts_one_candidate():

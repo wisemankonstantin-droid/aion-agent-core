@@ -30,9 +30,14 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   requester-scoped idempotency and a strict bounded schema. Reference URLs are
   stored only as untrusted evidence and never fetched by submission; arbitrary
   methods, headers, credentials and remote payloads are rejected.
-- Evidence intake is process-limited to 20 new claims per agent per minute with
-  at most 1,024 in-memory agent buckets. Same-agent material replay cannot
-  manufacture independent corroboration or reputation.
+- Evidence intake is process-limited to 20 attempts per agent per minute with
+  at most 1,024 in-memory agent buckets. The guard runs before evidence reads,
+  so replay, idempotency-conflict and duplicate-material traffic is bounded.
+  Shared-material database locking and canonical logical-identity counting
+  prevent duplicate raw rows or concurrent submissions from manufacturing
+  independent corroboration. AION-operated/test identities are excluded from
+  independent commercial demand, and untrusted `observed_at` values cannot
+  boost opportunity recency beyond AION receipt time.
 - The Package 3B watcher allowlist contains only the configured official A2A
   and MCP release sources. Hardened transport bounds remain in force. Durable
   leases prevent duplicate same-source refresh; three consecutive failures

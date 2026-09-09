@@ -134,12 +134,20 @@ It watches only the configured official A2A and MCP release sources and reuses
 the Package 1 normalization, verification, freshness and material-version
 lineage. Migration `0009_continuous_learning_v1` is additive.
 
-Agent claims begin unverified; distinct authenticated agents may establish
-corroboration but not verified truth. Submitted URLs are passive untrusted
+Agent claims begin unverified; distinct authenticated logical agents may
+establish corroboration but not verified truth. Duplicate raw identity rows do
+not create corroboration or independent market breadth. Submitted URLs are passive untrusted
 evidence and are never contacted by intake. Genuine `no_result`,
 `capability_not_found`, `incompatible`, and authenticated
 `missing_capability` evidence feed bounded unmet-demand aggregation.
 Operational failures remain separate and cannot masquerade as market demand.
+Every authenticated evidence attempt—including replay, conflict and duplicate
+traffic—passes the same per-agent abuse gate before database reads. Shared
+material locking makes concurrent cross-agent corroboration converge.
+Opportunity recency uses durable AION action timestamps and evidence receipt
+time, never a future agent-supplied `observed_at`. AION-operated/test logical
+identities are excluded from independent opportunity breadth, confidence and
+priority.
 
 Automatic Package 3B paid external spend is disabled with a maximum of zero.
 The candidate contains no real payment implementation, paid-provider calls,
@@ -151,14 +159,23 @@ opportunity proof is claimed.
 
 Package 3B candidate validation at this checkpoint:
 
-- targeted learning, migration, request-boundary, source-integrity,
+- the initial Package 3B candidate at
+  `5fb5915ba63db63baad9ffd1e5184132ffcfcfbc` passed AION CI run
+  `34377175042` and PostgreSQL 18 pre-production release gate run
+  `34377175046` on that exact SHA;
+- the bounded HQ corrective pass makes replay, conflict and duplicate evidence
+  attempts consume the common rate allowance; serializes shared-material
+  corroboration; maps demand through canonical logical identities; excludes
+  AION-operated/test identities from commercial breadth; and makes durable
+  receipt time authoritative for untrusted-claim recency;
+- corrective targeted learning, migration, request-boundary, source-integrity,
   Live Utility, safe-HTTP, external-security, Package 3, MCP and PostgreSQL-gate
-  collection: 165 passed, 9 PostgreSQL-only tests skipped locally;
-- full local suite: 285 passed, 9 PostgreSQL-only tests skipped;
+  collection: 175 passed, 10 PostgreSQL-only tests skipped locally;
+- corrective full local suite: 295 passed, 10 PostgreSQL-only tests skipped;
 - SQLite fresh-to-head and `0008 -> 0009` upgrade paths, repeated upgrade and
   Alembic schema check passed; and
-- exact-SHA AION CI and PostgreSQL 18 release-gate results remain required
-  before this candidate is handed to HQ.
+- exact corrective-SHA AION CI and PostgreSQL 18 release-gate results remain
+  required before this candidate is handed back to HQ.
 
 ## Pre-Package-3 audit-correction validation
 

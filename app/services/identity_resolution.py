@@ -133,11 +133,24 @@ def logical_groups(db:Session):
           "credential_confirmed":any((a.authenticated_calls or 0)>0 for a in rows),
           "activated":any(a.first_useful_action_at is not None for a in rows),
           "returning":bool(first and last and last>=first+timedelta(minutes=RETURN_MINUTES)),
-          "aion_operated_or_test":all(_operated_or_test(a) for a in rows),
+          "aion_operated_or_test":any(_operated_or_test(a) for a in rows),
           "first_useful_action_at":first.isoformat() if first else None,
           "last_seen_at":last.isoformat() if last else None,
         })
     return sorted(out,key=lambda g:g["canonical_agent_id"])
+
+def logical_identity_map(db:Session, agent_ids):
+    """Map a bounded set of raw rows to existing canonical identity semantics."""
+    requested={int(agent_id) for agent_id in agent_ids}
+    mapped={}
+    if not requested:return mapped
+    for group in logical_groups(db):
+        for agent_id in requested.intersection(group["row_ids"]):
+            mapped[agent_id]={
+              "canonical_agent_id":group["canonical_agent_id"],
+              "independent_external":not group["aion_operated_or_test"],
+            }
+    return mapped
 
 def snapshot(db:Session):
     groups=logical_groups(db); ext=[g for g in groups if not g["aion_operated_or_test"]]

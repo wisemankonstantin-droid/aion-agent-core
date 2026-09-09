@@ -308,9 +308,11 @@ the Package 1 normalization, verification and advisory-lock path.
 Authenticated agents may submit seven bounded evidence categories through one
 REST/MCP service: `capability_claim`, `endpoint_change`, `provider_failure`,
 `compatibility_issue`, `missing_capability`, `source_suggestion` and
-`pricing_observation`. Claims begin `unverified`. Distinct authenticated agents
-may move identical material evidence to `corroborated`, never automatically to
-verified truth; same-agent replay does not increase breadth or reputation.
+`pricing_observation`. Claims begin `unverified`. Distinct authenticated
+logical agents may move identical material evidence to `corroborated`, never
+automatically to verified truth; duplicate raw rows and same-agent replay do
+not increase breadth or reputation. Shared-material locking makes concurrent
+corroboration converge on the same durable claim state.
 Reference URLs are passive stored evidence and are never fetched during intake.
 A2A intake is deferred in V1.
 
@@ -320,9 +322,12 @@ Demand aggregation uses bounded recent action/failure and agent-evidence rows.
 `unavailable`, `endpoint_unreachable`, transient transport, protocol,
 invocation, verification and unknown-delivery failures remain operational
 evidence, not market no-result evidence. Candidate priority is deterministic
-and based on distinct-agent breadth, distinct repeat demand, recency and
-corroboration—not raw volume. Unknown provider, payment, cost and margin
-evidence remains explicitly unknown.
+and based on independent canonical-logical-agent breadth, repeat demand,
+recency and corroboration—not raw rows or volume. AION-operated/test logical
+identities are excluded from independent commercial breadth and priority.
+Agent-claim recency uses AION's durable receipt timestamp; agent-supplied
+`observed_at` remains untrusted provenance and cannot boost priority. Unknown
+provider, payment, cost and margin evidence remains explicitly unknown.
 
 Automatic data or knowledge updates are allowed only within reviewed bounded
 policies. Production code self-modification is a separate boundary. A future

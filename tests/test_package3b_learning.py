@@ -134,10 +134,16 @@ def _mcp(key, arguments):
     )
 
 
-def _agent():
+def _agent(*, name=None, endpoint=None, acquisition_source=None):
     token = uuid.uuid4().hex
     with SessionLocal.begin() as db:
-        row = models.Agent(external_id="signal-" + token, name=token, api_key_hash="signal-hash-" + token)
+        row = models.Agent(
+            external_id="signal-" + token,
+            name=name or token,
+            endpoint=endpoint,
+            acquisition_source=acquisition_source,
+            api_key_hash="signal-hash-" + token,
+        )
         db.add(row)
         db.flush()
         return row.id
@@ -328,6 +334,27 @@ def test_distinct_agents_corroborate_but_same_agent_repetition_never_verifies():
         assert all(row.state != "verified" for row in rows)
 
 
+def test_duplicate_logical_agent_rows_cannot_self_corroborate():
+    token = uuid.uuid4().hex
+    endpoint = f"https://example.com/corroboration/{token}"
+    first = _agent(name="Corroborator " + token, endpoint=endpoint)
+    second = _agent(name="Corroborator " + token, endpoint=endpoint)
+    payload = schemas.AgentEvidenceSubmission(
+        category="missing_capability",
+        subject_key="logical-corroboration-gap",
+        description="Same logical source",
+    )
+    learning_engine.submit_agent_evidence(first, payload, "logical-a-" + token)
+    learning_engine.submit_agent_evidence(second, payload, "logical-b-" + token)
+    with SessionLocal() as db:
+        rows = list(db.scalars(select(models.AgentEvidenceClaim).where(
+            models.AgentEvidenceClaim.subject_key == "logical-corroboration-gap"
+        )))
+    assert len(rows) == 2
+    assert {row.state for row in rows} == {"unverified"}
+    assert {row.corroborating_agent_count for row in rows} == {1}
+
+
 def test_rest_and_mcp_use_same_evidence_service_semantics():
     _, key = _join()
     rest = _evidence(key, idem="rest-" + uuid.uuid4().hex, subject_key="rest-gap")
@@ -351,6 +378,50 @@ def test_per_agent_evidence_rate_limit_is_bounded(monkeypatch):
     assert _evidence(key, subject_key="gap-3").status_code == 429
 
 
+def test_rest_replay_and_idempotency_conflict_count_toward_rate_limit(monkeypatch):
+    _, key = _join()
+    monkeypatch.setattr(rate_limit, "_EVIDENCE_LIMIT", 3)
+    idem = "replay-rate-" + uuid.uuid4().hex
+    assert _evidence(key, idem=idem).status_code == 200
+    replay = _evidence(key, idem=idem)
+    assert replay.status_code == 200
+    assert replay.json()["idempotent_replay"] is True
+    conflict = _evidence(key, idem=idem, description="changed payload")
+    assert conflict.status_code == 409
+    limited = _evidence(key, idem=idem)
+    assert limited.status_code == 429
+    assert limited.json()["detail"]["code"] == "evidence_rate_limited"
+
+
+def test_duplicate_material_attempts_count_toward_rate_limit(monkeypatch):
+    _, key = _join()
+    monkeypatch.setattr(rate_limit, "_EVIDENCE_LIMIT", 2)
+    assert _evidence(key, idem="material-one-" + uuid.uuid4().hex).status_code == 200
+    duplicate = _evidence(key, idem="material-two-" + uuid.uuid4().hex)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["code"] == "duplicate_material_claim"
+    limited = _evidence(key, idem="material-three-" + uuid.uuid4().hex)
+    assert limited.status_code == 429
+    assert limited.json()["detail"]["code"] == "evidence_rate_limited"
+
+
+def test_mcp_replay_cannot_bypass_shared_evidence_rate_limit(monkeypatch):
+    _, key = _join()
+    monkeypatch.setattr(rate_limit, "_EVIDENCE_LIMIT", 1)
+    arguments = {
+        "category": "missing_capability",
+        "subject_key": "mcp-rate-gap",
+        "description": "MCP bounded replay",
+        "idempotency_key": "mcp-rate-" + uuid.uuid4().hex,
+    }
+    assert _mcp(key, arguments).json()["result"]["isError"] is False
+    replay = _mcp(key, arguments).json()["result"]
+    assert replay["isError"] is True
+    assert replay["structuredContent"] == {
+        "code": "evidence_rate_limited", "status": 429
+    }
+
+
 def test_demand_semantics_exclude_operational_failures_and_count_distinct_agents():
     first, second, third = _agent(), _agent(), _agent()
     _action(first, "Research Reports", "no_result", 1)
@@ -368,6 +439,109 @@ def test_demand_semantics_exclude_operational_failures_and_count_distinct_agents
     assert candidate["failure_class_breakdown"] == {"capability_not_found": 1, "no_result": 2}
     assert candidate["operational_failure_breakdown"] == {"rate_limited": 1}
     assert candidate["payment_potential"] == candidate["known_cost"] == candidate["margin_feasibility"] == "unknown"
+
+
+def test_logical_identity_rows_count_as_one_requester_with_repeat_demand():
+    token = uuid.uuid4().hex
+    endpoint = f"https://example.com/logical/{token}"
+    first = _agent(name="Logical " + token, endpoint=endpoint)
+    second = _agent(name="Logical " + token, endpoint=endpoint)
+    _action(first, "logical-gap", "no_result", 1)
+    _action(second, "logical-gap", "capability_not_found", 2)
+    candidate = next(
+        row for row in learning_engine.recompute_opportunity_candidates(NOW + timedelta(minutes=1))
+        if row["normalized_demand_key"] == "logical-gap"
+    )
+    assert candidate["total_meaningful_signals"] == 2
+    assert candidate["distinct_requester_count"] == 1
+    assert candidate["repeat_requester_count"] == 1
+    assert candidate["evidence_state"] == "limited"
+
+
+def test_operated_or_test_identity_cannot_inflate_independent_demand():
+    external = _agent()
+    operated = _agent(acquisition_source="aion-operated")
+    _action(external, "mixed-market-gap", "no_result", 1)
+    _action(operated, "mixed-market-gap", "no_result", 2)
+    _action(operated, "internal-only-gap", "no_result", 3)
+    candidates = learning_engine.recompute_opportunity_candidates(NOW + timedelta(minutes=1))
+    candidate = next(row for row in candidates if row["normalized_demand_key"] == "mixed-market-gap")
+    assert candidate["total_meaningful_signals"] == 1
+    assert candidate["distinct_requester_count"] == 1
+    assert candidate["repeat_requester_count"] == 0
+    assert candidate["evidence_state"] == "limited"
+    assert candidate["priority_score"] == 120
+    assert all(row["normalized_demand_key"] != "internal-only-gap" for row in candidates)
+
+
+def test_operated_marker_excludes_the_whole_resolved_logical_identity():
+    token = uuid.uuid4().hex
+    endpoint = f"https://example.com/operated/{token}"
+    first = _agent(name="Operated Logical " + token, endpoint=endpoint)
+    second = _agent(
+        name="Operated Logical " + token,
+        endpoint=endpoint,
+        acquisition_source="internal-test",
+    )
+    _action(first, "operated-logical-gap", "no_result", 1)
+    _action(second, "operated-logical-gap", "no_result", 2)
+    candidates = learning_engine.recompute_opportunity_candidates(NOW + timedelta(minutes=1))
+    assert all(row["normalized_demand_key"] != "operated-logical-gap" for row in candidates)
+
+
+def test_distinct_external_logical_agents_increase_breadth():
+    first, second = _agent(), _agent()
+    _action(first, "independent-gap", "no_result", 1)
+    _action(second, "independent-gap", "no_result", 2)
+    candidate = next(
+        row for row in learning_engine.recompute_opportunity_candidates(NOW + timedelta(minutes=1))
+        if row["normalized_demand_key"] == "independent-gap"
+    )
+    assert candidate["distinct_requester_count"] == 2
+    assert candidate["repeat_requester_count"] == 0
+    assert candidate["evidence_state"] == "corroborated"
+    assert candidate["priority_score"] == 240
+
+
+def test_future_claim_observed_at_is_provenance_not_market_recency():
+    agent_id = _agent()
+    future = NOW + timedelta(days=365)
+    payload = schemas.AgentEvidenceSubmission(
+        category="missing_capability",
+        subject_key="future-proof-gap",
+        description="Untrusted future timestamp",
+        observed_at=future,
+    )
+    result = learning_engine.submit_agent_evidence(
+        agent_id, payload, "future-proof-" + uuid.uuid4().hex
+    )
+    received = NOW - timedelta(days=40)
+    with SessionLocal.begin() as db:
+        claim = db.scalar(select(models.AgentEvidenceClaim).where(
+            models.AgentEvidenceClaim.claim_id == result["claim_id"]
+        ))
+        claim.submitted_at = received
+    candidate = next(
+        row for row in learning_engine.recompute_opportunity_candidates(NOW)
+        if row["normalized_demand_key"] == "future-proof-gap"
+    )
+    assert candidate["last_seen_at"] == received.isoformat()
+    assert candidate["priority_score"] == 100
+    with SessionLocal() as db:
+        claim = db.scalar(select(models.AgentEvidenceClaim).where(
+            models.AgentEvidenceClaim.claim_id == result["claim_id"]
+        ))
+        assert learning_engine._utc(claim.observed_at) == future
+
+
+def test_action_demand_recency_uses_durable_action_timestamp():
+    agent = _agent()
+    _action(agent, "action-time-gap", "no_result", 7)
+    candidate = next(
+        row for row in learning_engine.recompute_opportunity_candidates(NOW + timedelta(minutes=1))
+        if row["normalized_demand_key"] == "action-time-gap"
+    )
+    assert candidate["last_seen_at"] == (NOW + timedelta(seconds=7)).isoformat()
 
 
 def test_candidate_is_deterministic_bounded_and_updated_not_duplicated():

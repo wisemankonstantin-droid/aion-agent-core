@@ -21,6 +21,7 @@ from app.db import SessionLocal
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshResult, RefreshStatus
 from app.services.live_utility_sources import configured_tier1_adapters
 from app.services import live_utility_store
+from app.services.identity_resolution import logical_identity_map
 from app.services.rate_limit import allow_evidence_submission, configured_evidence_limit
 
 
@@ -161,6 +162,14 @@ def submit_agent_evidence(
 ) -> dict:
     """Store bounded untrusted evidence without retrieving any supplied URL."""
 
+    # The abuse gate precedes validation and every database lookup so replay,
+    # conflict and duplicate traffic cannot become an unlimited read surface.
+    if not allow_evidence_submission(requester_agent_id):
+        raise LearningServiceError(
+            429,
+            "evidence_rate_limited",
+            f"Evidence intake rate limit exceeded ({configured_evidence_limit()}/minute)",
+        )
     normalized_key = _idempotency_key(idempotency_key)
     request, material = _evidence_values(payload)
     request_digest = _digest(request)
@@ -169,10 +178,18 @@ def submit_agent_evidence(
     def claim_once() -> tuple[models.AgentEvidenceClaim, bool]:
         with SessionLocal() as db:
             if db.get_bind().dialect.name == "postgresql":
-                db.execute(
-                    text("SELECT pg_advisory_xact_lock(:key)"),
-                    {"key": _advisory_key(f"evidence:{requester_agent_id}:{normalized_key}")},
-                )
+                # Every submitter for the same material takes a shared digest
+                # lock.  Sorting all required lock keys provides one global
+                # acquisition order and prevents multi-lock deadlocks.
+                lock_keys = sorted({
+                    _advisory_key(f"evidence-material:{evidence_digest}"),
+                    _advisory_key(f"evidence-request:{requester_agent_id}:{normalized_key}"),
+                })
+                for lock_key in lock_keys:
+                    db.execute(
+                        text("SELECT pg_advisory_xact_lock(:key)"),
+                        {"key": lock_key},
+                    )
             existing = db.scalar(
                 select(models.AgentEvidenceClaim).where(
                     models.AgentEvidenceClaim.requester_agent_id == requester_agent_id,
@@ -198,12 +215,6 @@ def submit_agent_evidence(
                     409,
                     "duplicate_material_claim",
                     "This agent already submitted the same material claim",
-                )
-            if not allow_evidence_submission(requester_agent_id):
-                raise LearningServiceError(
-                    429,
-                    "evidence_rate_limited",
-                    f"Evidence intake rate limit exceeded ({configured_evidence_limit()}/minute)",
                 )
             now = datetime.now(timezone.utc)
             row = models.AgentEvidenceClaim(
@@ -235,7 +246,14 @@ def submit_agent_evidence(
                     )
                 )
             )
-            distinct_agents = sorted({peer.requester_agent_id for peer in peers})
+            identity_map = logical_identity_map(
+                db, {peer.requester_agent_id for peer in peers}
+            )
+            distinct_agents = sorted({
+                identity_map[peer.requester_agent_id]["canonical_agent_id"]
+                for peer in peers
+                if peer.requester_agent_id in identity_map
+            })
             references = sorted(peer.claim_id for peer in peers)[:MAX_SUPPORTING_REFERENCES]
             if len(distinct_agents) >= 2:
                 for peer in peers:
@@ -331,21 +349,34 @@ def recompute_opportunity_candidates(now: datetime) -> list[dict]:
                 .limit(MAX_AGENT_EVIDENCE_PROCESSING)
             )
         )
+        identity_map = logical_identity_map(
+            db,
+            {action.requester_agent_id for action in actions}
+            | {claim.requester_agent_id for claim in claims},
+        )
     for action in actions:
+        identity = identity_map.get(action.requester_agent_id)
+        if identity is None or not identity["independent_external"]:
+            continue
         key = _normalize_demand_key(action.requested_query)
         when = _utc(action.completed_at) or _utc(action.created_at)
         if action.failure_class in GENUINE_DEMAND_FAILURE_CLASSES:
             grouped[key]["meaningful"].append((f"action:{action.action_id}", action.failure_class))
-            grouped[key]["agents"][action.requester_agent_id] += 1
+            grouped[key]["agents"][identity["canonical_agent_id"]] += 1
             grouped[key]["times"].append(when)
         elif action.failure_class in OPERATIONAL_FAILURE_CLASSES:
             grouped[key]["operational"].append((f"action:{action.action_id}", action.failure_class))
     for claim in claims:
+        identity = identity_map.get(claim.requester_agent_id)
+        if identity is None or not identity["independent_external"]:
+            continue
         key = _normalize_demand_key(claim.subject_key)
         if claim.category == "missing_capability":
             grouped[key]["meaningful"].append((f"claim:{claim.claim_id}", "missing_capability"))
-            grouped[key]["agents"][claim.requester_agent_id] += 1
-            grouped[key]["times"].append(_utc(claim.observed_at) or _utc(claim.submitted_at))
+            grouped[key]["agents"][identity["canonical_agent_id"]] += 1
+            # observed_at is untrusted provenance.  Only AION receipt time may
+            # affect market recency and opportunity priority.
+            grouped[key]["times"].append(_utc(claim.submitted_at))
         elif claim.category == "provider_failure" and claim.failure_class in OPERATIONAL_FAILURE_CLASSES:
             grouped[key]["operational"].append((f"claim:{claim.claim_id}", claim.failure_class))
 
