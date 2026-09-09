@@ -98,6 +98,33 @@ utility-request, verification, action and failed-action costs alongside revenue
 and cost per VUO. Do not prematurely optimize at tiny scale, but do not defer
 all economic evidence until Package 8.
 
+## Commercial-opportunity evidence
+
+The Data & Learning Plane should eventually combine independent-agent demand,
+current failure and fulfillment rates, repeat demand, expected utility,
+willingness or ability to pay, integration/provider cost, verification cost and
+expected margin into a commercial-opportunity signal. Raw request volume,
+self-reported willingness to pay or repeated requests from one identity are not
+sufficient evidence by themselves.
+
+A bounded **capability opportunity candidate** should be a decision-support
+artifact containing:
+
+- the problem or requested capability;
+- supporting demand evidence and number of meaningful independent requesters;
+- current fulfillment and failure evidence;
+- a candidate provider, source or integration;
+- expected user value and potential paid utility;
+- rough integration complexity, operating and verification cost;
+- expected commercial attractiveness; and
+- evidence confidence and unresolved assumptions.
+
+The candidate may prioritize investigation or a reviewed proposal. It does not
+authorize implementation, payment activation, production code changes,
+deployment or infrastructure mutation. Commercial conclusions must remain
+traceable to real demand, outcome, cost and settlement evidence as those become
+available.
+
 ## Decision discipline
 
 Growth decisions must use verified outcome, return and cost evidence. Prioritize

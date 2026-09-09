@@ -7,6 +7,8 @@
   `88bc6fae247a5bb454d435380c24d665ba48f512`.
 - **Post-Package-2 strategy alignment checkpoint:**
   `7fb469024855a065a1d42d12fc5c1a40d354ab6f`.
+- **Accepted pre-Package-3 audit-correction checkpoint:**
+  `d8465a17522044c0349609e44ac7ccd9f0facf82`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
@@ -84,17 +86,36 @@ results explicitly report that limitation. Production remains on deployed SHA
 `419f11b2a34fdec26269a216de65e9dcf955e963`, with no Package 2 production
 migration or deployment.
 
+The pre-Package-3 audit corrections are **Done**, HQ-accepted and merged at
+`d8465a17522044c0349609e44ac7ccd9f0facf82`. They moved legacy external
+registry/card discovery onto the shared bounded transport, removed implicit
+external-agent invocation, bounded request work and cache state, and corrected
+the repository-state documentation model. Resulting-main AION CI run
+`34315606416` passed on that exact SHA.
+
 ## Current next milestone
 
-Package 3 remains **Next** and **Not Started**. Before Package 3, HQ identified
-a bounded blocker cluster in legacy external discovery: unsafe registry
-transport, implicit external invocation, insufficient request/cache bounds and
-the self-invalidating repository-main field in this document. The corrections
-are isolated from Package 3 and require independent review before acceptance.
+Package 3 remains **Next** and **Not Started**. The bounded legacy external-
+discovery blocker cluster was corrected, independently accepted and merged
+before Package 3.
 Package 3's primary proof remains one narrow real
 `request -> find -> verify -> invoke -> verify outcome -> save history` loop,
-as defined in `AION_MASTER_DELIVERY_ROADMAP.md`. This strategy-alignment work
-does not authorize Package 3 implementation or production deployment.
+as defined in `AION_MASTER_DELIVERY_ROADMAP.md`.
+
+The **AION Data & Learning Plane** is now defined directionally as the planned
+persistent intelligence/evidence layer behind the Live Utility Engine. Package
+3 must capture bounded request, selection, reachability/callability, invocation,
+result, verification, outcome, failure, duration, attempt and economic evidence
+from its first real action. Package 3B is planned as a minimal Continuous
+Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
+bounded agent-evidence intake and demand/gap/opportunity signals.
+
+This is architecture direction, not implemented functionality. The implemented
+data engine remains the Package 1/2 bounded A2A/MCP release-evidence system.
+There is no implemented Package 3 action plane, outcome-history system,
+continuous-learning engine, agent-evidence intake, gap analyzer or commercial-
+opportunity engine. This alignment does not authorize Package 3, deployment or
+production mutation.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -188,6 +209,10 @@ does not authorize Package 3 implementation or production deployment.
 
 ## Documentation alignment validation
 
+- Data & Learning Plane strategy alignment: source-integrity suite 7 passed;
+  `scripts/check_secrets.py` scanned 110 files with 0 findings; and
+  `git diff --check` passed. This documentation-only alignment did not change
+  runtime code, tests, migrations, workflows or production configuration.
 - Post-Package-2 strategy alignment: source-integrity suite 4 passed;
   `scripts/check_secrets.py` scanned 110 files with 0 findings; and
   `git diff --check` passed.

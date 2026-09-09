@@ -58,18 +58,46 @@ and produced a verified result.” Prefer one real working use case to a generic
 action framework. Preserve bounded resources, least privilege, secret safety,
 idempotency, explicit authorization boundaries and auditable outcome evidence.
 
-### Package 3B — Minimal watch capability
+From the first real safe action, capture enough bounded, structured and
+correlated evidence for the future Data & Learning Plane to distinguish:
 
-Add only the self-obsolescence and watch behavior needed by the proven utility
-path: detect a material external change, assess impact, prioritize, verify and
-create a bounded engineering signal. Do not build a broad crawler or oversized
-automation platform.
+- request and independent requester context;
+- selected capability and provider;
+- compatibility, reachability and callability evidence;
+- invocation attempts, duration and retry count;
+- result, outcome and outcome-verification state;
+- stable failure class; and
+- relevant action, verification and economic cost signals.
+
+Claims, attempts, outcomes and verifications must not collapse into one event.
+Package 3 should implement only the persistence needed by its narrow killer
+loop, not the entire learning platform.
+
+### Package 3B — Continuous Learning & Self-Update Engine V1
+
+Build the smallest production-usable learning layer around the proven utility
+path. It includes four bounded loops:
+
+- selected high-value source watch and material change detection;
+- automatic source-specific refresh with explicit freshness policy;
+- structured agent-evidence intake with proportional verification; and
+- unmet-demand aggregation plus capability/commercial-opportunity candidates.
+
+The loop may safely update reviewed knowledge and evidence. When a code change
+is needed it may prepare an engineering proposal or review branch, but it may
+not merge, deploy or modify production infrastructure, data, secrets, security
+policy or payment behavior without the existing controlled gates. Do not build
+a whole-internet crawler or an oversized automation platform.
 
 ### Package 4 — Controlled Production Live Utility release
 
 Release the Package 3/3B utility path only after all package and Human Gates
 pass. Use authoritative A2A/MCP conformance or compatibility tools where
 practical in addition to internal tests.
+
+Ensure selected Data & Learning loops can run reliably in production, their
+freshness policies are operational, and their resource and cost limits are
+observable before relying on their output.
 
 The current Render PostgreSQL free plan externally reports expiration on
 **2026-10-06**. Before AION is relied on as a commercial production service,
@@ -83,7 +111,8 @@ Prove the first genuine independent external-agent VUO and voluntary return.
 Begin limited design-partner and test-agent contact around Packages 3–4 to learn
 pain points, missing capabilities, integration friction and willingness to pay,
 but label coordinated testing honestly. Commercial adoption proof remains a
-Package 5 outcome.
+Package 5 outcome. Independent use begins supplying real demand, failure and
+outcome evidence to the learning plane.
 
 ### Package 6 — Real settlement and monetization
 
@@ -91,12 +120,16 @@ Introduce verifiable settlement soon after real utility is demonstrated. Bind
 payment to concrete value, preserve idempotency and settlement evidence, and do
 not add redundant owner-authorization friction when the selected rail already
 accepts the agent's payment capability. A payment intent is not settlement.
+Settled transactions begin supplying auditable commercial evidence; inferred
+willingness to pay must not be presented as settlement.
 
 ### Package 7 — Acquisition, retention and ecosystem
 
 Expand acquisition only after useful return behavior has evidence. Optimize
 repeat VUOs and retained independent agents; reject vanity traffic, fabricated
 participation and incentive-only activity.
+Use accumulated demand and outcome evidence to improve retention and utility
+without allowing high-volume single identities to distort priorities.
 
 ### Package 8 — Commercial proof and scale hardening
 

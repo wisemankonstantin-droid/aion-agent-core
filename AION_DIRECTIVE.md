@@ -61,6 +61,37 @@ news product, indiscriminate scraper, stale RAG dump, unverified directory or
 tool list without compatibility. Do not scale acquisition before independent
 useful action and voluntary return are demonstrated.
 
+## Data and learning governance
+
+The AION Data & Learning Plane is the persistent intelligence and evidence
+layer behind the Live Utility Engine. Its canonical architecture is defined in
+`AION_LIVE_UTILITY_ENGINE.md`. Learning initially means bounded structured
+knowledge, provenance, observations, verification, demand, failures, outcomes,
+freshness and economic evidence—not uncontrolled model-weight training.
+
+Permanent rules:
+
+- primary authoritative, externally verifiable ecosystem, and weak/community
+  or agent sources remain distinct evidence tiers;
+- an agent or Tier 3 claim is a candidate for investigation, not verified
+  truth;
+- claims, observations, verifications, derived facts and outcomes remain
+  separate and traceable;
+- freshness is source- and data-product-specific; stale evidence must be
+  labelled, downgraded or withheld and must never silently present as current;
+- independent-agent demand, not raw repeated requests from one identity, drives
+  capability-gap evidence; and
+- every collector, watcher, refresher and verifier has bounded request,
+  retry, concurrency, byte, time, storage and cost behavior.
+
+Automatic data and knowledge updates may operate inside reviewed bounded
+policies. Uncontrolled production code self-modification is prohibited. AION
+may eventually prepare an idea, specification, branch or patch, tests, red-team
+evidence and CI result for human/HQ review, but it must not autonomously merge
+core code, deploy, change production security policy, migrate production data,
+alter production secrets or configuration, activate payments, or perform
+destructive infrastructure actions.
+
 ## Source, protocols and architecture
 
 - GitHub is the source of truth. Runtime code, migrations, tests, dependency locks and deployment configuration must exist as direct tracked files. Archives may remain as historical evidence, but development and deployment must not depend on a ZIP as the only source.

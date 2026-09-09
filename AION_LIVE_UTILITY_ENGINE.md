@@ -33,6 +33,31 @@ development follows the reinforcing loop in `GROWTH_AND_REVENUE.md`.
 Registration alone is not utility. Traffic alone is not adoption. Synthetic or
 AION-operated agents are not evidence of independent external adoption.
 
+## AION Data & Learning Plane
+
+The **AION Data & Learning Plane** is the planned persistent intelligence and
+evidence layer behind the Live Utility Engine. Its target loop is:
+
+`sources + agents + verified outcomes -> collect -> verify -> normalize -> version -> store evidence -> calculate freshness -> serve utility -> observe demand / failure / outcome -> detect knowledge or capability gaps -> discover new sources / capabilities -> estimate utility and revenue potential -> propose or update -> repeat`
+
+For V1, learning means durable structured knowledge, provenance, observations,
+verification, outcome and demand history, freshness, compatibility and
+callability evidence, capability gaps and commercial-opportunity signals. It
+does not mean uncontrolled LLM weight training, and fine-tuning is not required
+for V1.
+
+**Implemented now:** Package 1 and Package 2 provide a bounded A2A/MCP
+release-evidence foundation using `LiveUtilitySource`,
+`LiveUtilityObservation`, `LiveUtilityVerification` and
+`AgentUtilityCheckpoint`. They do not implement the complete Data & Learning
+Plane, action telemetry, outcome history, agent-evidence intake, gap analysis or
+commercial-opportunity detection.
+
+**Planned direction:** Package 3 must capture the first bounded real-action
+evidence; Package 3B must turn selected inputs into a minimal continuous
+learning and self-update loop. The canonical package boundaries are in
+`AION_MASTER_DELIVERY_ROADMAP.md`.
+
 ## Product gates
 
 Initial useful value comes before membership friction or a paywall. Utility,
@@ -67,10 +92,16 @@ about provenance; it is not proof that every fact from the source is correct.
   Agent Cards, public APIs, repositories, marketplaces and capability
   catalogs.
 - **Tier 3 — weak or community signal:** forums, social posts, third-party
-  articles and unverified agent claims.
+  articles, external-agent contributions and unverified capability claims.
 
 Tier 3 information can trigger investigation but must not become verified truth
-without stronger evidence.
+without stronger evidence. The progression is:
+
+`claim -> candidate evidence -> corroboration / verification -> accepted evidence -> current knowledge`
+
+Source tier and verification state remain separate. An authoritative source can
+still be stale or misunderstood; repeated weak claims do not become strong
+evidence merely through volume.
 
 ### Freshness as a system property
 
@@ -78,14 +109,23 @@ Freshness is part of each consequential fact or capability, not a single global
 daily job. The data model should support, where applicable:
 
 - `observed_at`, `verified_at`, `valid_from`, `stale_after`, `expires_at`;
-- `source_revision` and `verification_method`;
+- `source_revision`, `verification_method`, `content_digest`, provenance,
+  current eligibility and change history;
 - event-driven, scheduled, TTL, demand-driven, impact-driven and usage-driven
   refresh; and
 - an explicit confidence downgrade when material information is stale and safe
   refresh cannot be completed.
 
-Refresh decisions should be policy-driven and testable. A recommendation must
-not silently present stale consequential data as current.
+There is no global freshness interval. Protocol releases may change slowly;
+security advisories, pricing, service availability and operational callability
+may require much shorter policies. Historical verified outcomes are immutable
+events, although their relevance or reputation weight may decay.
+
+Refresh decisions should be source- and data-product-specific, policy-driven
+and testable. If refresh fails, AION may use explicitly labelled last-known
+evidence where safe, must downgrade confidence and current eligibility, and
+must withhold a consequential recommendation when the remaining evidence is
+insufficient. Stale data must never silently present as current.
 
 ### Versioned knowledge and change events
 
@@ -101,6 +141,58 @@ but derived facts must remain traceable to the observations that support them.
 Watchers should emit structured, idempotent change events. They must focus on a
 small set of high-value sources and support incremental diffs rather than broad,
 continuous crawling.
+
+### Evidence record model
+
+The future plane should distinguish these conceptual record categories without
+pre-committing Package 3 to unnecessary tables:
+
+1. source;
+2. observation;
+3. verification;
+4. structured fact or derived state;
+5. change event;
+6. request or demand signal;
+7. invocation attempt;
+8. outcome;
+9. outcome verification;
+10. cost or economic signal;
+11. capability gap; and
+12. commercial-opportunity candidate.
+
+Claims, observations, verifications and outcomes must remain separate. Derived
+state must identify its supporting evidence and transformation. Package 3 will
+choose the smallest persistence shape that preserves these boundaries for its
+one authorized action path.
+
+### Agent evidence learning
+
+Independent agents can supply useful evidence, but their content is untrusted
+input. The target intake path is:
+
+`agent contribution -> validate structure -> classify source and evidence strength -> check abuse / duplication -> corroborate or verify where material -> store with provenance -> use only at the supported trust level`
+
+Candidate signals include capability declarations, endpoint changes, provider
+failures, result evidence, pricing observations, missing-capability requests,
+alternative providers, compatibility problems and source suggestions. One
+agent cannot manufacture truth or reputation through self-report, replay or
+repeated submissions. Independence, corroboration and outcome verification must
+remain explicit.
+
+### Demand, failure and gap evidence
+
+Learning includes failures and no-results. Future telemetry should use stable,
+machine-readable classes such as `no_result`, `capability_not_found`,
+`incompatible`, `endpoint_unreachable`, `protocol_failure`,
+`invocation_failed`, `verification_failed`, `unavailable`, `stale_evidence`,
+`budget_insufficient`, `too_expensive`, `permission_missing` and
+`payment_not_supported`.
+
+Gap analysis should aggregate primarily by meaningful independent-agent demand,
+repeat demand and outcome evidence, not raw request volume. Repetition from one
+identity must not simulate broad demand. A capability gap means independent
+agents repeatedly request a utility AION cannot currently deliver; it is an
+evidenced planning signal, not proof that a proposed integration will work.
 
 ### Capability graph and compatibility
 
@@ -180,18 +272,32 @@ recency and verified historical outcomes. Old evidence may decay in relevance,
 and operational success should outweigh declared claims. This must remain
 bounded until real outcome evidence exists.
 
-### Self-obsolescence detection
+### Continuous learning and self-update
 
-AION should detect when its own knowledge, integrations or assumptions are
-becoming outdated through a bounded pipeline:
+Package 3B is the planned **AION Continuous Learning & Self-Update Engine V1**.
+It combines four bounded loops:
 
-`watch -> detect -> diff -> impact analysis -> prioritize -> verify -> update -> test -> engineering task if required`
+1. knowledge watch for selected relevant external changes;
+2. automatic refresh under source-specific policy;
+3. agent-evidence intake and proportional verification; and
+4. capability-gap and commercial-opportunity detection from demand, failure and
+   economic signals.
+
+Its target cycle is:
+
+`watch -> detect -> diff -> assess impact -> prioritize -> verify -> update knowledge -> test / validate -> serve -> observe outcome`
 
 High-value triggers include protocol revisions, breaking API or authentication
 changes, new discovery mechanisms, payment standards, registry changes,
-security advisories and material ecosystem shifts. Automated detection may
-propose a change; it does not authorize code changes, deployment or unsafe
-external action.
+security advisories and material ecosystem shifts. It must remain selective,
+bounded and production-usable rather than becoming a general crawler.
+
+Automatic data or knowledge updates are allowed only within reviewed bounded
+policies. Production code self-modification is a separate boundary. A future
+system may prepare `idea -> spec -> branch / patch -> tests -> red team -> CI -> human / HQ review`, but it may not autonomously merge core code, deploy, change
+production security policy, migrate the production database, alter production
+secrets or configuration, activate payments, or perform destructive
+infrastructure actions.
 
 ### Action and payment adapters
 
@@ -239,11 +345,13 @@ The utility engine must have bounded operating cost. Prefer event-driven
 updates, adaptive TTLs, impact and demand priority, incremental diffs, cache
 reuse, conditional requests and selective verification. Every adapter or
 watcher should define request, concurrency, time, byte, storage and retry
-budgets, plus a disable or circuit-breaker path.
+budgets, plus a cost budget and disable or circuit-breaker path.
 
 AION must not continuously crawl the internet or apply the same refresh cadence
 to every fact. Refresh cost should be proportional to expected utility, change
-rate, consequence of staleness and current demand.
+rate, consequence of staleness and current demand. Repeated independent demand
+or `no_result` evidence may increase bounded refresh or source-discovery
+priority; unknown internet scale must never create an unlimited cost surface.
 
 ## Directional measures
 
