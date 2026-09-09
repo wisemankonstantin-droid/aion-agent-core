@@ -181,6 +181,62 @@ The normal package gate is:
 
 `implement -> targeted tests -> full tests -> Codex red team -> CI -> PostgreSQL gate when relevant -> HQ independent review -> corrective fixes -> revalidation -> Done`
 
+## Economic constitution
+
+These are permanent execution invariants. Product experiments, model output,
+market signals and package work may refine implementation, but may not silently
+weaken them.
+
+**NO UNFUNDED VARIABLE SPEND.** AION never incurs meaningful variable external
+cost triggered by a customer/requester unless a funding path is established
+before that cost is incurred. A free agent is allowed and may be a provider,
+seller, contributor, explorer, evidence source, future buyer or other useful
+participant. Free variable-cost execution is prohibited. Free discovery and
+acquisition utility must be bounded and zero/near-zero marginal cost; free
+utility never means unlimited utility.
+
+**NO AION CREDIT.** AION does not default to negative balances, debt,
+installments, execute-now-pay-later, or AION-funded provider work in hope of
+later recovery. Insufficient funds means no execution; AION does not subsidize
+the difference.
+
+For cost-bearing execution, **PAY BEFORE SPEND** means:
+
+`quote -> payment authorization -> reserve maximum spend -> execute -> meter actual cost -> verify outcome -> settle -> release unused reserve`
+
+If the worst-case authorized maximum cannot be bounded, there is no execution.
+Every recursive execution tree has a hard parent `MAX_TOTAL_SPEND`; children
+consume from it and may not enlarge it. A more expensive fallback requires
+`stop -> requote -> reauthorize`, never silent upgrade.
+
+Expected contribution margin for AION cost-bearing utility has a hard minimum
+of **40%** and a standard target of **60%+**. Below 40%, do not execute: reprice,
+change provider or offer another product. AION-owned premium intelligence,
+verification and high-freshness digital utility targets **70–80%** where market
+willingness supports it; this is not a guarantee for every product. Future
+marketplace/provider routing has a minimum AION take rate of **20%** of
+applicable commercial value plus applicable pass-through external/payment
+fees. Margin is not markup: at cost $1, 40%, 60% and 75% contribution margins
+require prices of approximately $1.67, $2.50 and $4.00 respectively.
+
+Pricing and routing use total expected variable cost, including provider/tool,
+external-agent, inference, search, browser/compute, verification, network,
+storage, payment, expected failed-attempt, bounded retry and applicable
+fraud/chargeback exposure. They reason about expected **cost per Verified Useful
+Outcome**, not merely cost per attempt. **CM/VUO** means contribution margin per
+Verified Useful Outcome. Do not fabricate VUO, revenue, cost or margin evidence.
+
+Paid provider/source use requires compatible commercial-use, resale,
+redistribution, caching and retention rights. Paid access alone is not a right
+to resell. Unknown or incompatible rights mean no use for that commercial
+purpose. Unlimited subscriptions are not the default for variable-cost
+resources; prefer prepaid balance, credits, included units, metering,
+pay-as-you-go and hard budgets.
+
+The detailed product ladder, Economic Capability Profile, economic gate and
+evidence model are canonical in `GROWTH_AND_REVENUE.md`. Package sequencing and
+resource boundaries are canonical in `AION_MASTER_DELIVERY_ROADMAP.md`.
+
 ## Machine payments
 
 Monetization follows useful action, not registration. A payment intent is not a settled payment. Any machine-payment flow must bind payer, payee, purpose, amount, authorization, idempotency and settlement evidence; handle replay, failure and refund states; and keep financial claims auditable. Do not claim machine-payment completion until a real rail and settlement have been verified.
@@ -230,7 +286,7 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 `audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
 
 The accepted delivery sequence and current package status are defined in
-`AION_MASTER_DELIVERY_ROADMAP.md`. Package 3 is next and must prove one narrow
-real `find -> verify -> invoke -> verify outcome` loop rather than abstract
-action infrastructure. Each package remains subject to the criticality ordering
-and release gates above.
+`AION_MASTER_DELIVERY_ROADMAP.md`. Package 3 is HQ-accepted, merged and not
+deployed. The Economic Constitution alignment precedes Package 3B, which has
+not started. Each package remains subject to the criticality ordering and
+release gates above.

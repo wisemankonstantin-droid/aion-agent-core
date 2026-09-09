@@ -3,8 +3,9 @@
 ## Status and scope
 
 This document defines the product and architecture direction for AION. It is
-additive to `AION_DIRECTIVE.md`. Implemented Package 1 and Package 2 boundaries
-are stated explicitly below; later roadmap items remain direction, not claims.
+additive to `AION_DIRECTIVE.md`. Implemented Package 1, Package 2 and Package 3
+boundaries are stated explicitly below; later roadmap items remain direction,
+not claims.
 The current FastAPI, SQLAlchemy, Alembic, A2A and MCP architecture remains
 authoritative until a bounded, reviewed change replaces a specific part of it.
 
@@ -15,13 +16,13 @@ generic search engine, an indiscriminate crawler, a stale RAG dump, an
 unverified directory, a generic news feed or a marketplace where listing
 implies trust.
 
-The immediate Package 3 progression is:
+The implemented Package 3 progression is:
 
 `request -> find real capability/tool/agent -> verify current reachability -> check compatibility -> evaluate trust evidence -> safe invocation -> result -> verify outcome -> save outcome history`
 
 One narrow real working use case is more valuable than a broad generic action
-framework. Package 3 must move AION from “this looks compatible” to “this
-currently works and produced a verified result.”
+framework. Package 3 moves AION from “this looks compatible” to a bounded proof
+that an endpoint currently works and produced a verified callability result.
 
 The canonical utility loop is:
 
@@ -46,15 +47,14 @@ callability evidence, capability gaps and commercial-opportunity signals. It
 does not mean uncontrolled LLM weight training, and fine-tuning is not required
 for V1.
 
-**Implemented now:** Package 1 and Package 2 provide a bounded A2A/MCP
+**Implemented now:** Packages 1 and 2 provide a bounded A2A/MCP
 release-evidence foundation using `LiveUtilitySource`,
 `LiveUtilityObservation`, `LiveUtilityVerification` and
-`AgentUtilityCheckpoint`. They do not implement the complete Data & Learning
-Plane, action telemetry, outcome history, agent-evidence intake, gap analysis or
-commercial-opportunity detection.
+`AgentUtilityCheckpoint`. Package 3 adds bounded action and verified-callability
+history. Together they do not implement the complete Data & Learning Plane,
+agent-evidence intake, gap analysis or commercial-opportunity detection.
 
-**Planned direction:** Package 3 must capture the first bounded real-action
-evidence; Package 3B must turn selected inputs into a minimal continuous
+**Planned direction:** Package 3B must turn selected inputs into a minimal continuous
 learning and self-update loop. The canonical package boundaries are in
 `AION_MASTER_DELIVERY_ROADMAP.md`.
 
@@ -347,17 +347,30 @@ reuse, conditional requests and selective verification. Every adapter or
 watcher should define request, concurrency, time, byte, storage and retry
 budgets, plus a cost budget and disable or circuit-breaker path.
 
+Any watcher or refresh that can incur paid variable cost is disabled by default
+until funded by the future Economic Execution Gate or explicitly authorized as
+a bounded operator-funded experiment. It must have a monetary ceiling and
+maximum frequency. No execution may begin with unknown maximum cost, and no
+recursive child may exceed its parent's `MAX_TOTAL_SPEND`.
+
 AION must not continuously crawl the internet or apply the same refresh cadence
 to every fact. Refresh cost should be proportional to expected utility, change
 rate, consequence of staleness and current demand. Repeated independent demand
 or `no_result` evidence may increase bounded refresh or source-discovery
 priority; unknown internet scale must never create an unlimited cost surface.
 
+Where commercial, resale, redistribution, caching and retention rights permit,
+one funded verified refresh should be versioned, stored and cached for lawful
+reuse by multiple authorized requests. Unknown rights prohibit that commercial
+use. Cache reuse and freshness policy are therefore economic as well as
+technical controls.
+
 ## Directional measures
 
 The North Star is VUO — Verified Useful Outcome. Useful measures include VUO per
 week, agents with a VUO, repeat and paid VUO rates, revenue and cost per VUO,
-gross margin per VUO where measurable, fresh verified coverage, stale answer
+CM/VUO and contribution-margin percentage where measurable, repeat paid VUO,
+repeat payer, fresh verified coverage, stale answer
 rate, verification success, capability invocation success, time to useful
 result and personalized-delta usefulness.
 
@@ -370,7 +383,7 @@ The canonical Package 0–9 sequence is in
 `AION_MASTER_DELIVERY_ROADMAP.md`. Each package requires a bounded hypothesis,
 threat model, resource budget, targeted tests and explicit non-goals.
 
-## Implemented Package 1 and Package 2 boundary
+## Implemented Package 1, Package 2 and Package 3 boundary
 
 Package 1 is accepted and merged on repository main. It provides two bounded
 official protocol-release sources, shared pinned HTTPS retrieval, structured
@@ -408,8 +421,8 @@ Package 3 implementation adds only one authenticated public/no-credential A2A
 callability nonce action and four bounded durable evidence boundaries through
 `0008_action_outcome_evidence`. It does not verify advertised domain capability,
 implement arbitrary delegation, or begin Package 3B. It has passed independent
-HQ review with zero known reproducible defects and is ready for merge; it is
-not yet merged or deployed.
+HQ review with zero known reproducible defects and is merged on main; it is not
+deployed.
 
 Before important production releases, use official or authoritative A2A and MCP
 conformance or compatibility tools where practical in addition to, never in

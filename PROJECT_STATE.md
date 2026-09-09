@@ -9,6 +9,8 @@
   `7fb469024855a065a1d42d12fc5c1a40d354ab6f`.
 - **Accepted pre-Package-3 audit-correction checkpoint:**
   `d8465a17522044c0349609e44ac7ccd9f0facf82`.
+- **Main checkpoint at Economic Control Plane alignment start:**
+  `d2ddb13797915788a06ad1bf4266fea7683ab462`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
@@ -42,7 +44,7 @@
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
 - **Package 3 Alembic head:** `0008_action_outcome_evidence`.
-- **Production boundary:** Package 2 has not been deployed or migrated in
+- **Production boundary:** Package 3 has not been deployed or migrated in
   production. Production remains on the SHA above and AutoDeploy remains OFF.
 
 ## Current product and architecture phase
@@ -96,8 +98,8 @@ the repository-state documentation model. Resulting-main AION CI run
 ## Current Package 3 implementation
 
 Package 3 is **implemented and independently HQ-accepted with zero known
-reproducible defects**. It is ready for merge to main, but is not yet merged or
-deployed. The accepted implementation provides one
+reproducible defects**. It is merged to main at
+`d2ddb13797915788a06ad1bf4266fea7683ab462` but is not deployed. The accepted implementation provides one
 narrow authenticated and explicitly authorized public/no-credential A2A
 callability action: bounded discovery, deterministic safe selection, one fixed
 server-generated nonce challenge, verification and durable correlated history.
@@ -106,7 +108,7 @@ included in V1; credentials are never placed in A2A message content.
 
 The **AION Data & Learning Plane** is now defined directionally as the planned
 persistent intelligence/evidence layer behind the Live Utility Engine. Package
-3 must capture bounded request, selection, reachability/callability, invocation,
+3 captures bounded request, selection, reachability/callability, invocation,
 result, verification, outcome, failure, duration, attempt and economic evidence
 from its first real action. Package 3B is planned as a minimal Continuous
 Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
@@ -150,7 +152,7 @@ not independent adoption or external VUO evidence.
 - HQ independently accepted the corrected Package 3 implementation at
   `b34ae9b3d792f96fb3c71710d727a1db56d78cb3` after AION CI run
   `34325607999` and PostgreSQL 18 release gate run `34325608008` both passed
-  on that exact SHA. It remains unmerged and undeployed; production is untouched.
+  on that exact SHA. It is merged and remains undeployed; production is untouched.
 - The HQ-accepted corrective implementation preserves structured discovery status internally
   so operational, rate, configuration and budget failures cannot be persisted
   as a factual `no_result`. Public discovery lists remain compatible and
@@ -159,6 +161,20 @@ not independent adoption or external VUO evidence.
   passed, with 6 PostgreSQL-only cases skipped locally. Corrective full local
   suite: 254 passed, 6 PostgreSQL-only cases skipped. The PostgreSQL cases
   remain required in the exact-SHA release gate.
+
+## Economic Control Plane alignment
+
+The Economic Constitution alignment is **in progress on a dedicated candidate
+branch** and remains pending HQ acceptance. It canonically defines no unfunded
+variable spend, no AION credit, pay-before-spend, maximum-cost and funding
+gates, contribution-margin floors and targets, lawful paid-source use,
+prepaid/reserved funding, recursive spend limits, the Economic Capability
+Profile, product tiers, and future cost/VUO and CM/VUO evidence.
+
+This is documentation and architecture policy only. No payment rail,
+settlement, wallet, balance ledger, paid-provider execution, dynamic pricing or
+other economic runtime is implemented. Package 3B is **Not Started**.
+Production remains intentionally unchanged.
 
 ## Package 2 validation
 

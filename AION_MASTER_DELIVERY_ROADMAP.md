@@ -47,7 +47,7 @@ compatibility, personalized delta and durable checkpoints through
 `0007_agent_utility_checkpoints`. Merged to main at
 `88bc6fae247a5bb454d435380c24d665ba48f512` with zero known defects.
 
-### Package 3 — implemented; HQ accepted; ready for merge
+### Package 3 — Done; HQ accepted and merged
 
 Prove one narrow killer loop:
 
@@ -70,7 +70,7 @@ correlated evidence for the future Data & Learning Plane to distinguish:
 - relevant action, verification and economic cost signals.
 
 Claims, attempts, outcomes and verifications must not collapse into one event.
-Package 3 should implement only the persistence needed by its narrow killer
+Package 3 implements only the persistence needed by its narrow killer
 loop, not the entire learning platform.
 
 The HQ-accepted implementation provides a public/no-credential A2A callability proof through
@@ -78,7 +78,7 @@ shared REST/MCP service semantics and additive migration
 `0008_action_outcome_evidence`. Its fixed nonce challenge distinguishes protocol
 response, verified callability and unverified domain capability. Package 3 has
 passed independent HQ review with zero known reproducible defects and is ready
-for merge; it is not yet merged or deployed. This is not an independent VUO or
+for use by later packages; it is merged but not deployed. This is not an independent VUO or
 capability-quality claim. A2A inbound action adaptation is deliberately outside
 this V1 implementation.
 
@@ -97,6 +97,14 @@ is needed it may prepare an engineering proposal or review branch, but it may
 not merge, deploy or modify production infrastructure, data, secrets, security
 policy or payment behavior without the existing controlled gates. Do not build
 a whole-internet crawler or an oversized automation platform.
+
+Every watcher and refresh loop must have a resource budget, monetary budget,
+maximum frequency, cost ceiling, demand/utility priority and disable/circuit-
+breaker behavior. Prefer event-driven, adaptive-TTL, demand-, usage-, impact-
+driven and incremental refresh. Paid source/watch execution is disabled by
+default unless a future real economic execution path funds it or an explicit
+bounded operator-funded experiment authorizes it. Package 3B is not started by
+this policy alignment.
 
 ### Package 4 — Controlled Production Live Utility release
 
@@ -123,13 +131,17 @@ but label coordinated testing honestly. Commercial adoption proof remains a
 Package 5 outcome. Independent use begins supplying real demand, failure and
 outcome evidence to the learning plane.
 
-### Package 6 — Real settlement and monetization
+### Package 6 — Economic Execution + Real Settlement
 
-Introduce verifiable settlement soon after real utility is demonstrated. Bind
-payment to concrete value, preserve idempotency and settlement evidence, and do
-not add redundant owner-authorization friction when the selected rail already
-accepts the agent's payment capability. A payment intent is not settlement.
-Settled transactions begin supplying auditable commercial evidence; inferred
+Implement the controlled economic path:
+
+`quote -> payment authorization -> reserve funds -> execute/spend -> verify outcome -> settle -> record cost/revenue/margin`
+
+Bind payment to concrete value, enforce maximum spend and contribution-margin
+gates, preserve idempotency and settlement evidence, and do not add redundant
+owner-authorization friction when the selected rail already accepts the
+agent's payment capability. A payment intent is not settlement. Settled
+transactions begin supplying auditable commercial evidence; inferred
 willingness to pay must not be presented as settlement.
 
 ### Package 7 — Acquisition, retention and ecosystem
@@ -165,6 +177,10 @@ endpoints alone.
   high-cost service.
 - Collect operational and unit-economic evidence when actions begin without
   prematurely optimizing at tiny scale.
+- Cost-bearing execution requires bounded maximum cost, funding/reservation,
+  compatible commercial rights and the Economic Constitution margin gate.
+- A free agent may participate, but free variable-cost execution, AION credit,
+  silent over-budget fallback and unbounded recursive spend are prohibited.
 - Do not begin the next package until the current one is accepted with zero
   known reproducible defects; deliberate scope limitations must be explicit.
 - Production releases require the relevant internal tests, CI, PostgreSQL gate,

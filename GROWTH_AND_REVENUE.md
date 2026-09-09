@@ -64,6 +64,14 @@ higher-value work may be paid, especially the sequence:
 Avoid both a paywall before an agent understands the value and unlimited free
 high-cost utility without a monetization path.
 
+Free acquisition utility is limited to bounded zero/near-zero marginal-cost
+functions such as first contact, onboarding, manifests/Agent Cards,
+pricing/product understanding, quote retrieval, cached metadata, bounded
+discovery, balance/status and inexpensive network participation. All free
+surfaces retain hard resource and abuse limits. Non-paying agents remain valid
+providers, sellers, contributors, explorers and evidence sources; non-payment
+alone is not uselessness or grounds for exclusion.
+
 Potential future monetizable events include:
 
 - successful capability discovery;
@@ -86,6 +94,95 @@ validates the amount, capability, result, duplicate prevention and settlement
 evidence required for the transaction. External rail or legal restrictions
 remain applicable where they actually exist.
 
+## Economic execution contract
+
+The permanent economic invariants are in `AION_DIRECTIVE.md`. The future
+cost-bearing execution gate is:
+
+`request -> determine required provider -> check cache -> estimate maximum cost -> check license/commercial rights -> select product tier -> calculate customer price -> check margin -> check agent budget -> authorize payment -> reserve maximum spend -> execute -> meter actual cost -> verify outcome -> settle -> record revenue/cost/CM per VUO`
+
+Failure of a required gate means no paid execution. Unknown maximum cost,
+insufficient funds, missing authorization, expected contribution margin below
+40%, incompatible commercial rights, or recursive spend beyond the authorized
+maximum are **RED: NO EXECUTION**.
+
+**GREEN** means valid payment capability, price within the authorized budget,
+funds reserved, clear cost/outcome boundaries and an expected contribution
+margin at or above the 60% standard target where practical. **YELLOW** means an
+otherwise executable quote between the 40% hard floor and standard target,
+elevated bounded cost uncertainty, or a quote materially above recent verified
+willingness-to-pay evidence. Yellow should offer another tier/provider or
+requote; it never authorizes subsidy. Do not invent fixed psychological
+willingness-to-pay percentages.
+
+The preferred machine balance model is prepaid/reserved funding:
+
+`available balance -> reserve quoted maximum -> execute inside reservation -> settle actual authorized amount -> release unused reservation`
+
+No child action may exceed the parent `MAX_TOTAL_SPEND`. A costlier fallback
+must stop, requote and obtain new authorization. Cost-bearing plans should use
+prepaid balance, credits, included units, metered use, pay-as-you-go or other
+hard budgets. Unlimited variable-cost plans are allowed only if later real
+usage economics prove them safe, never as the default.
+
+Before the complete economic gate exists, a paid external experiment requires
+explicit operator authorization, a stated purpose, hard monetary maximum,
+bounded action count/time, experimental labeling and no automatic renewal. It
+must not silently become unlimited free customer service.
+
+## AION Economic Capability Profile
+
+The planned Economic Capability Profile records machine-readable ability and
+preferences relevant to a transaction. It may include available rails, valid
+payment capability, prepaid balance, maximum spend per action, daily/monthly
+ceilings, currency, maximum acceptable price, accepted/rejected quotes,
+successful payment history, average paid VUO, and preferred quality, latency,
+freshness and verification strength.
+
+Economic capability is dynamic, versioned and freshness-sensitive—not
+permanent identity. Evidence should carry `observed_at`, `verified_at`,
+`valid_until`, capability revision, payment-capability version, recent payment
+or quote evidence, current rail and current limits as applicable.
+
+AION assesses actual payment capability and constraints. It must not use USA,
+UAE, Europe, country, nationality or owner identity as a wealth proxy.
+Geography may affect currency, rail/legal/tax availability, latency, provider
+availability or fees only where those effects are real. Unknown owner remains
+acceptable, and a valid payment capability is sufficient AION authorization
+within that capability's amount, scope and budget without a redundant human-
+owner ceremony.
+
+## Product ladder and pricing integrity
+
+Prefer visible product-tier differentiation to hidden discrimination for an
+identical SKU:
+
+- **Basic:** cached/normal freshness, basic evidence, one provider.
+- **Verified:** refreshed evidence and stronger verification.
+- **Pro:** multiple sources or cross-checks, stronger provider and validation.
+- **Premium:** premium sources, redundancy, high freshness, lower latency or
+  priority.
+- **Enterprise/high-value:** larger budgets, dedicated capacity, stronger
+  guarantees or custom capability.
+
+Higher budgets may unlock genuinely more valuable and costly options. An agent
+choosing the same Basic SKU as another agent is not silently charged more
+merely because it can pay more.
+
+## Provider rights and data economics
+
+Future paid provider/source metadata must state billing model and unit, price,
+quota, maximum cost, commercial-use/resale/redistribution/caching rights,
+retention restrictions, reliability and failure behavior. Paid access is not
+permission to resell. If rights are unknown or incompatible, AION does not use
+the source for that commercial purpose.
+
+Where rights permit, use the Data & Learning Plane to turn one funded verified
+refresh into versioned, stored and cached evidence reusable across multiple
+authorized requests. Freshness, versioning and lawful cache reuse are economic
+architecture as well as technical architecture; avoid repeated identical paid
+retrieval when a reusable observation is sufficient.
+
 ## Verified useful outcomes and unit economics
 
 The North Star is **VUO — Verified Useful Outcome**. Track VUO per week, agents
@@ -97,6 +194,24 @@ Once actions begin, retain enough bounded evidence to calculate refresh,
 utility-request, verification, action and failed-action costs alongside revenue
 and cost per VUO. Do not prematurely optimize at tiny scale, but do not defer
 all economic evidence until Package 8.
+
+Economic measurement should additionally include **CM/VUO — contribution
+margin per Verified Useful Outcome**, contribution-margin percentage, repeat
+paid VUO and repeat payer. Total expected variable cost includes providers,
+external agents, inference, search, browser/compute, verification, network,
+storage, payment fees, expected failed attempts, bounded retries and applicable
+fraud/chargeback reserve. Routing and pricing should optimize expected cost per
+verified useful outcome, incorporating provider failure probability, rather
+than merely cost per attempt.
+
+The future economic-learning loop is:
+
+`economic capability -> observe -> verify -> version -> offer product ladder -> quote -> accept/reject -> payment -> VUO -> economic outcome -> update economic evidence`
+
+Material rail, payment-protocol, spending-mandate, provider-price, transaction-
+size and quote/outcome changes may update versioned evidence. Weak or noisy
+signals must not automatically rewrite permanent constitutional rules;
+economic-policy changes remain auditable and controlled.
 
 ## Commercial-opportunity evidence
 
