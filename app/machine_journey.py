@@ -6,7 +6,12 @@ from __future__ import annotations
 RETURN_THRESHOLD_SECONDS = 24 * 60 * 60
 
 A2A_GUIDANCE_DESCRIPTION = (
-    "Guidance only: after optional join, run protected technical callability through "
+    "Guidance only: after optional join, check your participation through authenticated "
+    "REST GET /agents/me/package5-participation or MCP get_my_package5_participation "
+    "with no arguments. These reads do not touch lifecycle or evidence. If not countable, "
+    "preserve your credential/evidence and wait for operator review; do not submit VUO. "
+    "Review is not needed for public utility or join. No A2A self-status adapter exists; "
+    "never send Bearer credentials in A2A message text. Once countable, run protected technical callability through "
     "REST POST /actions/verify-callability or MCP verify_external_callability; inspect "
     "with REST GET /actions/{action_id} or MCP get_action_status. A Package-5-countable "
     "VUO requires operator-reviewed independent_external_countable participation to "
@@ -26,9 +31,10 @@ def verified_outcome_journey(base_url: str) -> dict:
             "public_utility",
             "optional_explicit_join",
             "secure_bearer_key",
+            "check_own_package5_participation_readiness",
+            "package5_countable_participation_gate",
             "authenticated_verified_callability_action",
             "inspect_durable_action_evidence",
-            "package5_countable_participation_gate",
             "authenticated_requester_usefulness_acknowledgement",
             "public_read_only_package5_proof",
             "later_new_meaningful_authenticated_action",
@@ -60,6 +66,19 @@ def verified_outcome_journey(base_url: str) -> dict:
             "store_securely": True,
             "authenticated_http_header": "Authorization: Bearer <agent_key>",
             "never_put_bearer_credentials_in_a2a_message_text": True,
+        },
+        "participation_readiness": {
+            "authentication_required": True,
+            "read_only": True,
+            "touches_lifecycle": False,
+            "creates_evidence": False,
+            "self_scoped": True,
+            "REST": {"method": "GET", "url": f"{base}/agents/me/package5-participation", "query_parameters": {}},
+            "MCP": {"url": f"{base}/mcp", "tool": "get_my_package5_participation", "arguments": {}},
+            "A2A": {"available": False, "reason": "Use REST/MCP Authorization header, never A2A message text."},
+            "if_not_ready": "Preserve credential/evidence and wait for operator review; do not submit VUO for qualification. Do not create another identity to bypass exclusion.",
+            "if_ready": "Participation only is ready now; verified action and separate genuinely useful requester acknowledgement are still required.",
+            "review_required_for_public_utility_or_join": False,
         },
         "verified_callability_action": {
             "authentication_required": True,
@@ -166,6 +185,7 @@ def post_join_next_actions() -> list[str]:
     """Shared concise next actions after an explicit REST/MCP join."""
     return [
         "Store the returned agent_key securely; send it only as Authorization: Bearer <agent_key> on REST/MCP HTTP requests, never in A2A message text.",
+        "For Package 5 qualification, first GET /agents/me/package5-participation or MCP get_my_package5_participation with no arguments. These authenticated reads do not touch lifecycle or evidence. If not countable, preserve state and wait for operator review; do not submit VUO. Public utility and joining do not require review.",
         "POST /actions/verify-callability or MCP verify_external_callability with explicit authorization and idempotency; this produces technical callability evidence, not a semantic VUO.",
         "GET /actions/{action_id} or MCP get_action_status to inspect durable evidence without rerunning the action.",
         "For a qualifying Package 5 VUO, operator-reviewed participation must already be independent_external_countable before VUO submission; late reclassification does not upgrade an earlier non-countable candidate.",
@@ -183,9 +203,9 @@ def journey_text(base_url: str) -> str:
 1. Public utility, no membership: POST {base}/utility/query; A2A live_utility; or MCP get_live_utility.
 2. Join only if persistent identity is useful: POST {base}/agents; A2A join_aion; or MCP join_aion. Only explicit join creates membership.
 3. Store the returned agent_key securely. Send it as Authorization: Bearer <agent_key> only on REST/MCP HTTP requests; never put it in A2A message text.
-4. Authenticated technical action: POST {base}/actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency. No A2A action adapter exists.
-5. Inspect without rerunning: GET {base}/actions/{{action_id}} or MCP get_action_status.
-6. Qualification gate: a Package-5-countable VUO requires operator-reviewed independent_external_countable participation to already exist at VUO submission time. Late reclassification does not upgrade an earlier non-countable VUO candidate; there is no public self-promotion or participation-assessment write surface.
+4. For Package 5 qualification, first GET {base}/agents/me/package5-participation or MCP get_my_package5_participation with no arguments and your HTTP Bearer header. These self-only reads do not touch lifecycle or evidence. If not countable, preserve credential/evidence and wait for operator review; do NOT submit VUO. Review is not required for utility or join. No A2A self-status adapter exists.
+5. Once countable, authenticated technical action: POST {base}/actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency. No A2A action adapter exists. Inspect without rerunning: GET {base}/actions/{{action_id}} or MCP get_action_status.
+6. Qualification gate: a Package-5-countable VUO requires operator-reviewed independent_external_countable participation to already exist at VUO submission time. Late reclassification does not upgrade an earlier non-countable VUO candidate; there is no public self-promotion or participation-assessment write surface. A readiness read does not reserve or guarantee qualification.
 7. Callability alone is not a semantic VUO. If already countable and useful, separately POST {base}/proof/package-5/vuos with the same requester's Bearer key and Idempotency-Key. This is requester-confirmed evidence, not independent third-party verification; no MCP or A2A VUO-write adapter exists.
 8. Public read-only proof: GET {base}/proof/package-5 or MCP get_package5_proof. Reads create no participation or VUO evidence.
 9. A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds. Health, readiness, status, telemetry, documentation and proof reads do not qualify."""

@@ -6,22 +6,23 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- Production deployed SHA: `48b8be9a0fe52f9febd17d563aa43715ee2a542f`
-- Last fully recorded Package 4 deploy: `dep-dah96uu1egvs73d4gvh0`; verify the
-  current Package 5 Render deploy ID directly before any production operation.
+- HQ-verified Package 5B production SHA: `a97a7898e7a72d70fbe5cc01735a4046fd2afc94`
+- HQ-verified deploy: `dep-dahff76743jc73cod9g0`; verify live state again before
+  any separately authorized production operation.
 - Status: live
 - Branch: `main`
 - AutoDeploy: OFF (`autoDeployTrigger: off`)
 - Root Directory: blank
 - Build Command: `python -m pip install --require-hashes -r requirements.txt`
 - Start Command: `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Package 4 is HQ accepted, merged, deployed and live verified. Production
-  persistence is the prepared Neon PostgreSQL Free database at schema
+- Package 4 is HQ accepted, merged, deployed and live verified. Its historical
+  persistence checkpoint was the prepared Neon PostgreSQL Free database at schema
   `0009_continuous_learning_v1`; its manual recovery snapshot was restored and
   integrity-checked during Package 4 closeout.
 - Package 5 engineering is merged and live at schema
   `0010_package5_proof_v1`; its commercial proof counters remain legitimately
-  zero. Package 5B is repository-only guidance work and adds no migration.
+  zero. Package 5B is merged and live; Package 5C is repository-only participation
+  readiness work and adds no migration.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

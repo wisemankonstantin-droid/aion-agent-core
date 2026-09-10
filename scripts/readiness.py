@@ -98,9 +98,9 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 5B conversion candidate.",
-    "Run AION CI on the exact pushed Package 5B SHA and any additional gate HQ requires.",
-    "Do not deploy Package 5B without a separate production Human Gate; Package 5B adds no migration.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 5C participation-readiness candidate.",
+    "Run AION CI on the exact pushed Package 5C SHA and any additional gate HQ requires.",
+    "Do not deploy Package 5C without a separate production Human Gate; Package 5C adds no migration.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

@@ -211,6 +211,15 @@ the existing path explicit across machine-facing entry surfaces:
 Package 5B adds guidance only. It does not alter evidence semantics, add an A2A
 protected-action/VUO-write adapter, introduce a migration or begin Package 6.
 
+Package 5B is merged and production-live at the HQ-verified checkpoint
+`a97a7898e7a72d70fbe5cc01735a4046fd2afc94`, deploy
+`dep-dahff76743jc73cod9g0`. Package 5C is the local bounded participation-readiness
+corrective: after join/key storage, read self-status via REST/MCP without
+lifecycle changes; if non-countable, preserve state and wait for review before
+seeking a qualifying VUO. Once countable, follow the existing action/evidence/
+usefulness sequence. This is not a gate on public utility or joining, a review
+request queue, a classification write path, or commercial proof.
+
 ### Package 6 — Economic Execution + Real Settlement
 
 Implement the controlled economic path:

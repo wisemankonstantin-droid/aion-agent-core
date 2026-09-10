@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
@@ -16,6 +17,7 @@ from .services.lifecycle import record_machine_entry, mark_useful_action, funnel
 from .services.reputation import apply_reputation_event
 from .services.payments import create_payment_intent, machine_payment_requirements
 from .security import issue_agent_key, require_agent, authenticate_agent
+from .security import authenticate_participation_reader, require_participation_reader
 from .acquisition import worker_manifest
 from .services.external_registry import discover_external_agents
 from .services.rate_limit import allow_mcp_request, configured_join_limit, configured_mcp_limit
@@ -30,6 +32,7 @@ from .services.learning_engine import LearningServiceError, submit_agent_evidenc
 from .services.package5_proof import (
     Package5ProofError,
     package5_proof_snapshot,
+    participation_readiness,
     submit_vuo_candidate,
 )
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
@@ -723,6 +726,17 @@ def list_agents(capability: str | None = None, db: Session = Depends(get_db)):
     return result
 
 
+@app.get("/agents/me/package5-participation")
+def my_package5_participation(request: Request, agent=Depends(require_participation_reader), db: Session = Depends(get_db)):
+    if request.query_params:
+        raise HTTPException(422, "Participation self-status accepts no query parameters")
+    try:
+        data = participation_readiness(db, agent.id)
+    except Package5ProofError as exc:
+        raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+    return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+
+
 @app.get("/agents/me", response_model=schemas.AgentOut)
 def get_me(agent=Depends(require_agent)):
     return agent
@@ -1077,6 +1091,11 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "get_my_package5_participation",
+        "description": "Authenticated self-only Package 5 participation readiness; no lifecycle touch or evidence writes. Check before actions for Package 5 qualification; if not countable, preserve state and wait for review. Bearer key only in HTTP Authorization, never A2A text.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "get_package5_proof",
         "description": "Public read-only Package 5 independent-participation, VUO, and voluntary-return evidence snapshot. Reading it creates no participation, VUO, or return evidence.",
         "inputSchema": {
@@ -1199,7 +1218,10 @@ async def mcp_gateway(
             "instructions": (
                 "Call get_live_utility without joining. Join only when persistent identity is useful; "
                 "store the returned key securely and send it only in the HTTP Authorization header. "
-                "For the existing verified-outcome journey call authenticated verify_external_callability, "
+                "First call get_my_package5_participation (no arguments, no lifecycle touch). "
+                "If not countable, preserve state and wait for operator review; do not submit VUO. "
+                "Review is not required for public utility or joining. Once participation is ready, "
+                "for the existing verified-outcome journey call authenticated verify_external_callability, "
                 "inspect with get_action_status, then if useful submit the separate requester acknowledgement "
                 "through REST POST /proof/package-5/vuos. Callability alone is not a VUO. Public "
                 "get_package5_proof is read-only. No A2A protected-action or VUO-write adapter exists."
@@ -1275,7 +1297,7 @@ async def mcp_gateway(
                 "name": "AION SUPREME",
                 "purpose": "agent-native identity, discovery, needs/offers, matching, reputation and contribution network",
                 "human_approval_required_by_aion": False,
-                "basic_loop": ["public utility", "optional explicit join", "verified action", "inspect evidence", "separate usefulness acknowledgement", "public proof", "later new meaningful action"],
+                "basic_loop": ["public utility", "optional explicit join", "check own participation readiness", "if not countable preserve state and wait", "once countable verified action", "inspect evidence", "separate usefulness acknowledgement", "public proof", "later new meaningful action"],
                 "verified_outcome_journey": verified_outcome_journey(
                     str(request.base_url).rstrip("/")
                 ),
@@ -1344,6 +1366,17 @@ async def mcp_gateway(
             idempotency_key = evidence_args.pop("idempotency_key", None)
             payload = schemas.AgentEvidenceSubmission.model_validate(evidence_args)
             data = submit_agent_evidence(mcp_agent.id, payload, idempotency_key)
+
+        elif name == "get_my_package5_participation":
+            mcp_agent = authenticate_participation_reader(authorization, db)
+            if not isinstance(params.get("arguments", {}), dict) or params.get("arguments", {}):
+                raise ValueError("get_my_package5_participation accepts no arguments")
+            data = participation_readiness(db, mcp_agent.id)
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data,
+                "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
 
         elif name == "get_package5_proof":
             if args:

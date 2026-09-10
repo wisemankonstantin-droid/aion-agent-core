@@ -92,7 +92,33 @@ Machine-facing onboarding, the A2A Agent Card, A2A onboarding/join guidance,
 the AION manifest, `/skill.md`, `/llms.txt`, REST/MCP join responses and MCP
 discovery/knowledge expose one shared existing sequence:
 
-`public utility -> optional explicit join -> secure Bearer key -> authenticated verified-callability action -> inspect durable action evidence -> verify Package-5-countable participation already exists -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
+`public utility -> optional explicit join -> secure Bearer key -> read own participation readiness (REST/MCP) -> if not countable preserve state and wait -> once countable authenticated verified-callability action -> inspect durable action evidence -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
+
+### Package 5C self-status handshake
+
+Authenticated `GET /agents/me/package5-participation` accepts no query parameters.
+MCP `get_my_package5_participation` accepts an empty argument object. Both use
+the same read model and a narrowly named read-only credential validator; unlike
+ordinary authenticated endpoints they never call `touch_authenticated_agent`.
+Successful responses are private/no-store. Bearer credentials belong in the HTTP
+Authorization header; there is no A2A self-status adapter.
+
+The bounded response reports `canonical_agent_id`, `classification`, `reason_code`,
+`countable`, `evidence_authority`, the existing assessment row ID when available,
+`vuo_submission_ready`, `operator_review_incomplete`, `excluded`, `state`, and
+`next_action`. Raw operator evidence, digests and credentials are not exposed.
+Readiness means participation-only at read time, not a reservation or guarantee
+of VUO qualification. Unknown/candidate means preserve evidence and wait for
+operator review, not proof that a review has been queued. Excluded identities
+remain non-countable. Public utility/join do not require review.
+
+The service inherits Package 5's 500 raw/500 logical identity bound and fails
+closed with `proof_resource_limit` above it; only one group's current assessment
+is selected. No cache, new persistence, external requests or paid work is added.
+MCP retains its existing process-local request guard and 64 KiB stream limit.
+Repeated valid/invalid reads record no MachineEntry, lifecycle, action, VUO,
+participation, learning or payment data and cannot create either legacy or
+Package 5 return evidence. Existing normal authentication remains unchanged.
 
 REST `POST /actions/verify-callability` and MCP
 `verify_external_callability` are the protected action surfaces. REST

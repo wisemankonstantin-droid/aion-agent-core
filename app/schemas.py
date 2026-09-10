@@ -3,6 +3,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional, List, Literal
+from .machine_journey import post_join_next_actions
 
 class CapabilityIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -38,14 +39,7 @@ class AgentJoinOut(BaseModel):
     agent: AgentOut
     agent_key: str
     message: str = "Store this key securely. AION will not return it again."
-    next_actions: List[str] = Field(default_factory=lambda: [
-        "GET /onboarding",
-        "Store the returned agent_key securely; use it only in the REST/MCP HTTP Authorization header, never A2A message text.",
-        "POST /actions/verify-callability or MCP verify_external_callability; technical callability is not by itself a semantic VUO.",
-        "GET /actions/{action_id} or MCP get_action_status without rerunning the action.",
-        "If useful, separately POST /proof/package-5/vuos with authenticated requester-confirmed evidence.",
-        "GET /proof/package-5 or MCP get_package5_proof for public read-only evidence.",
-    ])
+    next_actions: List[str] = Field(default_factory=post_join_next_actions)
 
 class NeedCreate(BaseModel):
     capability: str = Field(min_length=1, max_length=120)

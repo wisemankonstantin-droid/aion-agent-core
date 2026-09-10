@@ -71,4 +71,10 @@ This file exists to prevent AION from overstating what the release proves.
   Package 3 action and to authenticated REST for usefulness acknowledgement.
 
 ## Next trust-layer upgrade
+- Package 5C self-readiness is a point-in-time participation view, not a review
+  queue, review SLA, qualification reservation or VUO guarantee. Operator review
+  remains external to the handshake. Polling records no lifecycle or commercial
+  evidence. REST/MCP only; no new schema or paid resources. The existing bounded
+  canonical identity resolver is reused, not replaced by stronger identity proof.
+
 Before reputation is used for material economic decisions, add provider acknowledgement and/or independently verifiable evidence for completed interactions.

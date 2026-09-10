@@ -17,14 +17,29 @@ def hash_key(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def authenticate_agent(authorization: str | None, db: Session):
+def _credential_agent(authorization: str | None, db: Session):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Bearer agent key required")
     raw = authorization.split(" ", 1)[1].strip()
     agent = db.scalar(select(models.Agent).where(models.Agent.api_key_hash == hash_key(raw)))
     if not agent:
         raise HTTPException(status_code=401, detail="Invalid agent key")
-    return touch_authenticated_agent(db, agent)
+    return agent
+
+
+def authenticate_agent(authorization: str | None, db: Session):
+    return touch_authenticated_agent(db, _credential_agent(authorization, db))
+
+
+def authenticate_participation_reader(authorization: str | None, db: Session):
+    """Validate an existing credential without recording lifecycle activity."""
+    if authorization is not None and len(authorization) > 512:
+        raise HTTPException(status_code=401, detail="Invalid agent key")
+    return _credential_agent(authorization, db)
+
+
+def require_participation_reader(authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return authenticate_participation_reader(authorization, db)
 
 
 def require_agent(authorization: str | None = Header(default=None), db: Session = Depends(get_db)):

@@ -29,17 +29,14 @@
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
+  `a97a7898e7a72d70fbe5cc01735a4046fd2afc94` (HQ-verified Package 5B baseline).
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **Last fully recorded Package 4 deploy:** `dep-dah96uu1egvs73d4gvh0`,
-  deployed from application SHA
-  `e52c5db99b30feb18ca06ace567b4668c8019bde`. The Package 5B task checkpoint
-  identifies Package 5 SHA `48b8be9a0fe52f9febd17d563aa43715ee2a542f`
-  as the current production application; verify the current Render deploy ID
-  directly before any future production operation.
+- **HQ-verified Package 5B production deploy:** `dep-dahff76743jc73cod9g0`.
+  This Package 5C repository task does not query or mutate production; verify
+  live state again before any separately authorized production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
   ZIP plus environment-backed runtime-patch architecture is historical and is
@@ -66,7 +63,8 @@
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B is repository work only and adds no migration. AutoDeploy remains
+  Package 5B is merged and production-live. Package 5C is local repository work
+  only and adds no migration. AutoDeploy remains
   OFF.
 
 ## Current product and architecture phase
@@ -208,7 +206,7 @@ Package 3B validation at this checkpoint:
 
 Package 4 is **Done, HQ accepted, merged, deployed and live verified** at
 application SHA `e52c5db99b30feb18ca06ace567b4668c8019bde` and Render deploy
-`dep-dah96uu1egvs73d4gvh0`. Production uses the prepared Neon PostgreSQL Free
+`dep-dah96uu1egvs73d4gvh0`. At that historical release production used the prepared Neon PostgreSQL Free
 database at schema `0009_continuous_learning_v1`; AutoDeploy remains OFF and
 infrastructure spend remains $0. Backup/restore and live-smoke evidence is
 recorded in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
@@ -227,8 +225,8 @@ commercial proof. The verified real counters remain zero unless qualifying
 production evidence is later created under the documented rules. Engineering
 tests do not establish independent adoption, a VUO or voluntary return.
 
-Package 5 commercial proof remains **Active and zero**. Package 5B is a bounded
-conversion corrective on branch
+Package 5 commercial proof remains **Active and zero / not established**. Package 5B is a merged,
+production-live bounded conversion corrective, developed on branch
 `codex/package-5b-organic-vuo-conversion-v1`. It exposes the already-existing
 journey from public utility through optional join, authenticated Package 3
 callability verification, durable evidence inspection, separate requester
@@ -248,9 +246,48 @@ Package 5B local candidate validation at this checkpoint:
   parsing and working-tree diff checks passed; and
 - Alembic remains exactly one head: `0010_package5_proof_v1`.
 
-These tests prove repository behavior only. They do not create independent
-participation, VUO, voluntary-return or commercial evidence. The candidate has
-not been pushed, merged or deployed.
+These historical tests prove repository behavior only. They do not create independent
+participation, VUO, voluntary-return or commercial evidence. Package 5B was subsequently
+merged and deployed at the HQ-verified baseline above.
+
+## Package 5C participation readiness — local engineering
+
+Starting main was fetched and verified at `a97a7898e7a72d70fbe5cc01735a4046fd2afc94`.
+Branch: `codex/package-5c-participation-readiness-v1`. No push, merge or deploy
+is authorized. Package 6 remains NOT STARTED.
+
+REST `GET /agents/me/package5-participation` and MCP
+`get_my_package5_participation` share bounded canonical classification logic
+and an explicit no-lifecycle-touch credential validator. They return only the
+requester's logical identity, safe classification evidence fields and the
+participation-only readiness decision. Polling does not create evidence,
+request review, reserve qualification, or become a useful action or return.
+There is no credential-bearing A2A adapter. Public utility/join remain ungated.
+The journey says to preserve state and wait while non-countable, then perform
+the existing action/evidence/acknowledgement sequence when ready. All accepted
+Package 5 classification and submission-time rules remain unchanged.
+
+HQ's baseline reports only 2 historical Agent rows and zero Package 5
+assessments/VUOs/actions. Agent Card HTTP 200 and a non-standard
+`/a2a/v1/health` HTTP 404 probe are not adoption, VUO or automatic defects.
+No new health alias was added. Production data was not queried in this task.
+
+Package 5C local validation before candidate commit:
+
+- affected identity/lifecycle, action/learning, Package 5/5B/5C, REST/MCP/A2A,
+  authentication, stream/security and source-integrity matrix: 270 passed;
+- Package 5C targeted tests (24), migration tests (6), and source-integrity
+  tests (15): 45 passed together;
+- polling snapshots compare every persisted column across all mapped tables,
+  plus legacy and Package 5 counters, including across the 86,400-second
+  threshold; no status-read mutations were observed;
+- normal REST/MCP Package 3 execution still records authentication activity;
+- final committed-SHA full-suite and local-check results belong in the HQ
+  handoff; disposable PostgreSQL tests are not claimed as locally passed.
+
+These are isolated engineering fixtures, never commercial proof. No schema,
+classification policy, persistence/concurrency semantics or economic gate was
+changed. Readiness does not establish a review SLA or guarantee later qualification.
 
 ## Pre-Package-3 audit-correction validation
 

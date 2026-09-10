@@ -1,17 +1,17 @@
 {
   "product": "AION Agent Core",
-  "package": "Package 5B - Organic VUO Conversion V1",
+  "package": "Package 5C - Participation Readiness V1",
   "status": "repository_candidate_under_hq_review_not_merged_not_deployed",
-  "task_start_sha": "b9d3521f6b5a7fd9ac61c3670ac150d8a16df772",
+  "task_start_sha": "a97a7898e7a72d70fbe5cc01735a4046fd2afc94",
   "application_version": "0.7.1",
   "candidate_database_migration_head": "0010_package5_proof_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": null,
-    "deploy_id_status": "not_supplied_by_package_5b_checkpoint_verify_render",
-    "deployed_git_sha": "48b8be9a0fe52f9febd17d563aa43715ee2a542f",
+    "deploy_id": "dep-dahff76743jc73cod9g0",
+    "deploy_id_status": "hq_verified_package_5c_task_baseline",
+    "deployed_git_sha": "a97a7898e7a72d70fbe5cc01735a4046fd2afc94",
     "persistence": "prepared Neon PostgreSQL Free",
     "actual_live_database_revision": "0010_package5_proof_v1",
     "autodeploy": "off",
@@ -24,7 +24,7 @@
     "basis": "Package 5 engineering is live, but no qualifying independent production VUO or return is claimed; Package 5B guidance and tests are not commercial proof"
   },
   "required_candidate_gates": [
-    "Package 5B conversion and full regression suites",
+    "Package 5C participation readiness, Package 5B conversion and full regression suites",
     "Alembic head remains exactly 0010_package5_proof_v1 with no new migration",
     "AION CI on the exact final reviewed SHA",
     "source integrity, readiness, secret, compile, dependency and diff checks",

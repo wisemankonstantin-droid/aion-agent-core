@@ -173,6 +173,51 @@ def _classification_for_group(
     }
 
 
+def participation_readiness(db: Session, requester_agent_id: int) -> dict:
+    """Self-scoped read model; no assessment, lifecycle touch or other writes."""
+    groups = _bounded_logical_groups(db)
+    group = _group_for_agent(groups, requester_agent_id)
+    if group is None:
+        raise Package5ProofError(404, "agent_not_found", "Agent not found")
+    agents = {agent.id: agent for agent in db.scalars(
+        select(models.Agent).where(models.Agent.id.in_(group["row_ids"]))
+    )}
+    classification = _classification_for_group(db, group, agents)
+    ready = classification["countable"]
+    excluded = classification["classification"] in {
+        "aion_operated_internal", "synthetic_probe_test", "coordinated_design_partner",
+        "operator_invited_coordinated_test",
+    }
+    state = "participation_ready" if ready else "excluded" if excluded else "review_incomplete"
+    instruction = (
+        "Participation gate satisfied now, not a VUO guarantee. Run an explicitly authorized "
+        "verified action, inspect durable evidence, and only if genuinely useful submit the "
+        "separate authenticated requester acknowledgement. Classification must still be "
+        "countable at submission and proof read."
+        if ready else
+        "This identity is excluded from Package 5 independent proof. Do not submit a VUO "
+        "for qualification. Public utility remains available; do not create another identity "
+        "to bypass exclusion."
+        if excluded else
+        "Preserve your credential and evidence and wait for operator review; do not submit "
+        "a VUO for qualification yet. Candidate status is not countable. This read does not "
+        "request or guarantee a review; public utility and optional join do not require review."
+    )
+    return {
+        "canonical_agent_id": group["canonical_agent_id"],
+        **classification,
+        "vuo_submission_ready": ready,
+        "readiness_scope": "participation_only_at_read_time",
+        "operator_review_incomplete": not ready and not excluded,
+        "excluded": excluded,
+        "state": state,
+        "next_action": instruction,
+        "read_only": True,
+        "records_activity_or_commercial_evidence": False,
+        "late_reclassification_upgrades_prior_candidate": False,
+    }
+
+
 def record_participation_assessment(
     db: Session,
     *,

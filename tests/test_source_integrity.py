@@ -208,14 +208,14 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
     assert "autoDeploy: true" not in render
 
 
-def test_package5b_manifest_has_current_production_baseline_and_no_fake_proof():
+def test_package5c_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["package"].startswith("Package 5B")
-    assert manifest["task_start_sha"] == "b9d3521f6b5a7fd9ac61c3670ac150d8a16df772"
+    assert manifest["package"].startswith("Package 5C")
+    assert manifest["task_start_sha"] == "a97a7898e7a72d70fbe5cc01735a4046fd2afc94"
     assert manifest["candidate_database_migration_head"] == "0010_package5_proof_v1"
-    assert manifest["production_baseline"]["deployed_git_sha"] == "48b8be9a0fe52f9febd17d563aa43715ee2a542f"
-    assert manifest["production_baseline"]["deploy_id"] is None
-    assert manifest["production_baseline"]["deploy_id_status"] == "not_supplied_by_package_5b_checkpoint_verify_render"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "a97a7898e7a72d70fbe5cc01735a4046fd2afc94"
+    assert manifest["production_baseline"]["deploy_id"] == "dep-dahff76743jc73cod9g0"
+    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_5c_task_baseline"
     assert manifest["production_baseline"]["actual_live_database_revision"] == "0010_package5_proof_v1"
     assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0

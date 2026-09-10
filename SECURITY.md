@@ -76,4 +76,10 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   Bearer authentication or make public reads mutate Package 5 evidence.
 
 ## Before higher-scale production
+- Package 5C REST/MCP self-status validates Bearer credentials without lifecycle
+  writes. It accepts no identity selector, shares canonical classification and
+  group-wide exclusions, returns no operator evidence/digests/secrets, and marks
+  successful responses private/no-store. Ordinary authentication still touches
+  lifecycle state. No A2A credential-bearing status adapter exists.
+
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.
