@@ -10,7 +10,7 @@
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
     "deploy_id": null,
-    "deploy_id_status": "verify_current_render_deploy_directly",
+    "deploy_id_status": "not_supplied_by_package_5b_checkpoint_verify_render",
     "deployed_git_sha": "48b8be9a0fe52f9febd17d563aa43715ee2a542f",
     "persistence": "prepared Neon PostgreSQL Free",
     "actual_live_database_revision": "0010_package5_proof_v1",
