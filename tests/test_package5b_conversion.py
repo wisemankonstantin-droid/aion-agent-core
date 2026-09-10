@@ -100,8 +100,19 @@ def _assert_truthful_journey(journey: dict) -> None:
     assert status["REST"]["url_template"].endswith("/actions/{action_id}")
     assert status["MCP"]["tool"] == "get_action_status"
 
+    participation_gate = journey["package5_countable_participation_gate"]
+    assert participation_gate["required_for_qualifying_vuo_at_submission"] is True
+    assert participation_gate["required_classification"] == "independent_external_countable"
+    assert participation_gate["evidence_authority"] == "operator_reviewed_evidence"
+    assert participation_gate["public_self_promotion_available"] is False
+    assert participation_gate["public_assessment_write_surface_available"] is False
+    assert participation_gate["late_reclassification_upgrades_prior_noncountable_candidate"] is False
+    assert "do not submit the VUO acknowledgement" in participation_gate["guidance"]
+
     acknowledgement = journey["requester_usefulness_acknowledgement"]
     assert acknowledgement["authentication_required"] is True
+    assert acknowledgement["qualifying_participation_required_at_submission"] is True
+    assert acknowledgement["late_reclassification_does_not_upgrade_prior_noncountable_candidate"] is True
     assert acknowledgement["REST"]["url"].endswith("/proof/package-5/vuos")
     assert acknowledgement["REST"]["body"]["usefulness_evidence"] == "requester_confirms_goal_was_useful"
     assert acknowledgement["MCP"]["available"] is False
@@ -119,6 +130,10 @@ def _assert_truthful_journey(journey: dict) -> None:
     returned = journey["qualifying_return"]
     assert returned["minimum_seconds_after_qualifying_vuo"] == 86_400
     assert {"health", "readiness", "status", "telemetry", "documentation reads", "proof reads"} <= set(returned["does_not_qualify"])
+
+    truth = journey["truth_boundaries"]
+    assert truth["countable_participation_required_at_vuo_submission"] is True
+    assert truth["late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate"] is True
 
 
 def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
@@ -154,6 +169,8 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     assert "REST POST /actions/verify-callability" in guidance["description"]
     assert "MCP verify_external_callability" in guidance["description"]
     assert "REST POST /proof/package-5/vuos" in guidance["description"]
+    assert "independent_external_countable" in guidance["description"]
+    assert "late reclassification does not upgrade" in guidance["description"]
     assert "A2A has no protected-action or VUO-write adapter" in guidance["description"]
     assert "verify_external_callability" not in skills
     assert "submit_package5_vuo" not in skills
@@ -184,6 +201,8 @@ def test_skill_and_llms_are_complete_consistent_and_contain_no_real_credential()
         assert "POST http://testserver/actions/verify-callability" in document
         assert "MCP verify_external_callability" in document
         assert "GET http://testserver/actions/{action_id}" in document
+        assert "independent_external_countable" in document
+        assert "Late reclassification does not upgrade" in document
         assert "POST http://testserver/proof/package-5/vuos" in document
         assert "MCP get_package5_proof" in document
         assert "Callability alone is not a semantic VUO" in document
@@ -201,6 +220,8 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
     rest_actions = "\n".join(rest["next_actions"])
     assert "POST /actions/verify-callability" in rest_actions
     assert "GET /actions/{action_id}" in rest_actions
+    assert "independent_external_countable" in rest_actions
+    assert "late reclassification does not upgrade" in rest_actions
     assert "POST /proof/package-5/vuos" in rest_actions
     assert "GET /proof/package-5" in rest_actions
     assert "never in A2A message text" in rest_actions
@@ -212,6 +233,7 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
     mcp_actions = "\n".join(mcp["next_actions"])
     assert "MCP verify_external_callability" in mcp_actions
     assert "MCP get_action_status" in mcp_actions
+    assert "independent_external_countable" in mcp_actions
     assert "POST /proof/package-5/vuos" in mcp_actions
     _assert_truthful_journey(mcp["verified_outcome_journey"])
 
