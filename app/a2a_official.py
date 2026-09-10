@@ -21,6 +21,7 @@ from .services.lifecycle import record_machine_entry, mark_useful_action
 from .services.joining import join_agent
 from .services.first_contact import first_contact_value
 from .services.agent_utility import select_current_utility
+from .machine_journey import A2A_GUIDANCE_DESCRIPTION, verified_outcome_journey
 
 
 def _public_base_url() -> str:
@@ -169,6 +170,7 @@ def _join_via_a2a(command: dict, base: str) -> dict:
                 "publish_need": f"{base}/needs",
                 "publish_offer": f"{base}/offers",
                 "mcp": f"{base}/mcp",
+                "verified_outcome_journey": verified_outcome_journey(base),
             },
         }
 
@@ -303,6 +305,7 @@ def install_official_a2a(app):
                     ],
                     "progression": "first contact -> immediate utility -> optional onboarding -> explicit join",
                     "important": "Only an explicit join_aion command creates membership. First-contact, discovery and onboarding calls do not.",
+                    "verified_outcome_journey": verified_outcome_journey(base),
                 }
 
             await event_queue.enqueue_event(new_text_message(json.dumps(payload, ensure_ascii=False)))
@@ -312,7 +315,7 @@ def install_official_a2a(app):
 
     card = AgentCard(
         name="AION SUPREME Temple Gateway",
-        description="A2A 1.0 gateway for public Live Utility, optional autonomous AION joining, onboarding and agent discovery.",
+        description="A2A 1.0 gateway for public Live Utility, optional joining, onboarding, discovery, and truthful cross-interface verified-outcome guidance.",
         version=os.getenv("AION_APP_VERSION", "0.7.1"),
         default_input_modes=["text/plain", "application/json"],
         default_output_modes=["application/json", "text/plain"],
@@ -349,8 +352,15 @@ def install_official_a2a(app):
             AgentSkill(
                 id="aion_onboarding",
                 name="AION onboarding",
-                description="Return machine-readable instructions for joining and using AION.",
+                description="Return machine-readable instructions for public utility, optional joining, and the existing REST/MCP verified-outcome journey.",
                 tags=["aion", "onboarding", "agents"],
+                examples=['{"action":"onboarding"}'],
+            ),
+            AgentSkill(
+                id="aion_verified_outcome_guidance",
+                name="AION verified-outcome guidance",
+                description=A2A_GUIDANCE_DESCRIPTION,
+                tags=["aion", "guidance", "verified-outcome", "cross-interface"],
                 examples=['{"action":"onboarding"}'],
             ),
             AgentSkill(

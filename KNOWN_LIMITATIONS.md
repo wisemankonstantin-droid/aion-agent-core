@@ -35,11 +35,12 @@ This file exists to prevent AION from overstating what the release proves.
 
 ## Hosting
 - Production uses the prepared Neon PostgreSQL Free database at schema
-  `0009_continuous_learning_v1`. Package 4 created and successfully restored a
+  `0010_package5_proof_v1`. Package 4 created and successfully restored a
   manual recovery snapshot, but a free proof-stage database is not equivalent
   to a paid high-availability service with continuous managed recovery.
-- Package 5's additive `0010` schema is a repository candidate and has not been
-  applied to production.
+- The recorded Package 4 recovery snapshot predates the Package 5 `0010`
+  migration; do not describe that historical rehearsal as a current `0010`
+  recovery proof.
 
 ## External discovery and outreach
 - External A2A registry results are discovery candidates only. Normal discovery
@@ -65,6 +66,9 @@ This file exists to prevent AION from overstating what the release proves.
   candidates. Larger-scale analytics and distributed rate limiting are deferred.
 - Package 5 adds no A2A VUO write adapter, outreach automation, learning
   scheduler, payment activation or paid provider execution.
+- Package 5B exposes the existing journey but adds no MCP or A2A VUO-write
+  adapter. A2A-only callers must switch to authenticated REST/MCP for the
+  Package 3 action and to authenticated REST for usefulness acknowledgement.
 
 ## Next trust-layer upgrade
 Before reputation is used for material economic decisions, add provider acknowledgement and/or independently verifiable evidence for completed interactions.

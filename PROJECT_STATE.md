@@ -19,19 +19,27 @@
   `e52c5db99b30feb18ca06ace567b4668c8019bde`.
 - **Package 5 implementation starting checkpoint:**
   `8d508f5944c0810e5e52bed88645128857b369a0`.
+- **Package 5 accepted application checkpoint:**
+  `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
+- **Package 5B conversion-corrective starting checkpoint:**
+  `b9d3521f6b5a7fd9ac61c3670ac150d8a16df772`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
+  `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **Live deploy:** `dep-dah96uu1egvs73d4gvh0`, deployed from application SHA
-  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
+- **Last fully recorded Package 4 deploy:** `dep-dah96uu1egvs73d4gvh0`,
+  deployed from application SHA
+  `e52c5db99b30feb18ca06ace567b4668c8019bde`. The Package 5B task checkpoint
+  identifies Package 5 SHA `48b8be9a0fe52f9febd17d563aa43715ee2a542f`
+  as the current production application; verify the current Render deploy ID
+  directly before any future production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
   ZIP plus environment-backed runtime-patch architecture is historical and is
@@ -50,14 +58,16 @@
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0009_continuous_learning_v1`, verified by
-  the Package 4 release closeout.
+- **Production database revision:** `0010_package5_proof_v1` at the Package 5B
+  task checkpoint. Package 4's separately verified historical revision was
+  `0009_continuous_learning_v1`.
 - **Production recovery:** the Package 4 Neon manual recovery snapshot was
   restored on a separate rehearsal branch and integrity-checked. Canonical
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
-- **Production boundary:** Package 4 is deployed and live verified. Package 5
-  is repository work only; its `0010` migration and evidence model are not
-  deployed. Production remains on the SHA above and AutoDeploy remains OFF.
+- **Production boundary:** Package 5 engineering is merged, deployed and live
+  at the application SHA above; commercial proof remains legitimately zero.
+  Package 5B is repository work only and adds no migration. AutoDeploy remains
+  OFF.
 
 ## Current product and architecture phase
 
@@ -205,17 +215,42 @@ recorded in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 
 ## Current Package 5 implementation
 
-Package 5 is **Active**, not accepted, not merged and not deployed. The local
-candidate adds a truth-preserving evidence layer for operator-reviewed
+Package 5 engineering is **implemented, accepted, merged and production-live**
+at `48b8be9a0fe52f9febd17d563aa43715ee2a542f`. It adds a truth-preserving evidence layer for operator-reviewed
 canonical participation classification, requester-scoped VUO candidates that
 reference existing Package 3 action evidence, and later meaningful return
-evidence. Its additive candidate migration is `0010_package5_proof_v1`.
+evidence. Its additive migration is `0010_package5_proof_v1`.
 
 No current production row, historical row, test, fixture, synthetic probe,
 coordinated design partner or operator-invited test is claimed as Package 5
 commercial proof. The verified real counters remain zero unless qualifying
 production evidence is later created under the documented rules. Engineering
 tests do not establish independent adoption, a VUO or voluntary return.
+
+Package 5 commercial proof remains **Active and zero**. Package 5B is a bounded
+conversion corrective on branch
+`codex/package-5b-organic-vuo-conversion-v1`. It exposes the already-existing
+journey from public utility through optional join, authenticated Package 3
+callability verification, durable evidence inspection, separate requester
+usefulness acknowledgement, public Package 5 proof and a later new meaningful
+action. It does not change Package 5 qualification, classification, return or
+cost semantics and does not start Package 6.
+
+Package 5B local candidate validation at this checkpoint:
+
+- Package 5B journey tests: 8 passed;
+- affected Package 5, Package 3, A2A, MCP, onboarding/join, authentication,
+  request-boundary, source-integrity and outbound-security matrix: 209 passed;
+- full local suite: 351 passed, with 11 disposable-PostgreSQL-only tests
+  skipped locally and 100 upstream deprecation warnings;
+- migration suite: 6 passed;
+- readiness, secret scan, compileall, dependency integrity, workflow/manifest
+  parsing and working-tree diff checks passed; and
+- Alembic remains exactly one head: `0010_package5_proof_v1`.
+
+These tests prove repository behavior only. They do not create independent
+participation, VUO, voluntary-return or commercial evidence. The candidate has
+not been pushed, merged or deployed.
 
 ## Pre-Package-3 audit-correction validation
 

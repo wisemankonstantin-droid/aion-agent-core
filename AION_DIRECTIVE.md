@@ -286,9 +286,9 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 `audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
 
 The accepted delivery sequence and current package status are defined in
-`AION_MASTER_DELIVERY_ROADMAP.md`. Package 3 is HQ-accepted, merged and not
-deployed. The Economic Constitution alignment is HQ-accepted and merged.
-Package 3B is implemented and independently HQ-accepted with zero known
-reproducible defects; production deployment remains separate and has not
-occurred. Live merge/main status must be verified directly from GitHub. Each
-package remains subject to the criticality ordering and release gates above.
+`AION_MASTER_DELIVERY_ROADMAP.md`. Packages 3 and 3B are HQ-accepted, merged and
+production-released through Package 4. Package 5 engineering is merged and
+live, while independent commercial proof remains legitimately zero. Package
+5B is the active bounded conversion corrective and is not Package 6. Live
+merge/main and deployment status must still be verified directly. Each package
+remains subject to the criticality ordering and release gates above.

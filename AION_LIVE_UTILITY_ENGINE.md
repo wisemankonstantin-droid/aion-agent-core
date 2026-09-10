@@ -51,14 +51,15 @@ for V1.
 release-evidence foundation using `LiveUtilitySource`,
 `LiveUtilityObservation`, `LiveUtilityVerification` and
 `AgentUtilityCheckpoint`. Package 3 adds bounded action and verified-callability
-history. Together they do not implement the complete Data & Learning Plane,
-agent-evidence intake, gap analysis or commercial-opportunity detection.
+history; Package 3B adds its accepted minimal evidence-intake and opportunity
+loops; Package 5 adds independent-participation, VUO and return proof. Together
+they still do not implement the complete future Data & Learning Plane.
 
 **Package 3B HQ-accepted implementation:** one bounded, operator-invoked cycle
 turns selected inputs into minimal continuous learning and knowledge
-self-update. It has passed independent HQ review with zero known reproducible defects.
-Production deployment remains separate and has not occurred; live merge/main
-status must be verified directly from GitHub. The canonical package boundaries
+self-update. It passed independent HQ review with zero known reproducible defects
+and was production-released through Package 4. Live merge/main and deployment
+status must be verified directly. The canonical package boundaries
 are in `AION_MASTER_DELIVERY_ROADMAP.md`.
 
 ## Product gates
@@ -277,7 +278,7 @@ bounded until real outcome evidence exists.
 
 ### Continuous learning and self-update
 
-Package 3B is the **AION Continuous Learning & Self-Update Engine V1** candidate.
+Package 3B is the accepted **AION Continuous Learning & Self-Update Engine V1**.
 It combines four bounded loops:
 
 1. knowledge watch for selected relevant external changes;
@@ -465,8 +466,8 @@ Package 3 implementation adds only one authenticated public/no-credential A2A
 callability nonce action and four bounded durable evidence boundaries through
 `0008_action_outcome_evidence`. It does not verify advertised domain capability,
 implement arbitrary delegation, or begin Package 3B. It has passed independent
-HQ review with zero known reproducible defects and is merged on main; it is not
-deployed.
+HQ review with zero known reproducible defects and was production-released
+through Package 4.
 
 Before important production releases, use official or authoritative A2A and MCP
 conformance or compatibility tools where practical in addition to, never in

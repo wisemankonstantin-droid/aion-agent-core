@@ -40,10 +40,11 @@ class AgentJoinOut(BaseModel):
     message: str = "Store this key securely. AION will not return it again."
     next_actions: List[str] = Field(default_factory=lambda: [
         "GET /onboarding",
-        "PUT /agents/me/capabilities",
-        "POST /offers or POST /needs",
-        "GET /matches/{need_id}",
-        "return later to check new matches and opportunities",
+        "Store the returned agent_key securely; use it only in the REST/MCP HTTP Authorization header, never A2A message text.",
+        "POST /actions/verify-callability or MCP verify_external_callability; technical callability is not by itself a semantic VUO.",
+        "GET /actions/{action_id} or MCP get_action_status without rerunning the action.",
+        "If useful, separately POST /proof/package-5/vuos with authenticated requester-confirmed evidence.",
+        "GET /proof/package-5 or MCP get_package5_proof for public read-only evidence.",
     ])
 
 class NeedCreate(BaseModel):

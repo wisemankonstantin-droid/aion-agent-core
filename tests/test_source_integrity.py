@@ -208,19 +208,39 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
     assert "autoDeploy: true" not in render
 
 
-def test_package5_manifest_has_current_production_baseline_and_no_fake_proof():
+def test_package5b_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["package"].startswith("Package 5")
-    assert manifest["task_start_sha"] == "8d508f5944c0810e5e52bed88645128857b369a0"
+    assert manifest["package"].startswith("Package 5B")
+    assert manifest["task_start_sha"] == "b9d3521f6b5a7fd9ac61c3670ac150d8a16df772"
     assert manifest["candidate_database_migration_head"] == "0010_package5_proof_v1"
-    assert manifest["production_baseline"]["deployed_git_sha"] == "e52c5db99b30feb18ca06ace567b4668c8019bde"
-    assert manifest["production_baseline"]["deploy_id"] == "dep-dah96uu1egvs73d4gvh0"
-    assert manifest["production_baseline"]["actual_live_database_revision"] == "0009_continuous_learning_v1"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "48b8be9a0fe52f9febd17d563aa43715ee2a542f"
+    assert manifest["production_baseline"]["deploy_id"] is None
+    assert manifest["production_baseline"]["deploy_id_status"] == "not_supplied_by_package_5b_checkpoint_verify_render"
+    assert manifest["production_baseline"]["actual_live_database_revision"] == "0010_package5_proof_v1"
     assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_returns_proven"] == 0
     assert manifest["production_action_authorized_by_candidate"] is False
+    assert manifest["package_5_semantics_changed_by_candidate"] is False
     assert "final_candidate_sha" not in manifest
+
+
+def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
+    main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
+    journey_source = (ROOT / "app" / "machine_journey.py").read_text(encoding="utf-8")
+    migration_names = {
+        path.name for path in (ROOT / "alembic" / "versions").glob("*.py")
+    }
+
+    assert "verified_outcome_journey" in main_source
+    assert "verified_outcome_journey" in a2a_source
+    assert "No credential-bearing A2A Package 3 action adapter exists" in journey_source
+    assert "No credential-bearing A2A Package 5 write adapter exists" in journey_source
+    assert '"available": False' in journey_source
+    assert 'action == "verify_external_callability"' not in a2a_source
+    assert 'action == "submit_package5_vuo"' not in a2a_source
+    assert not any(name.startswith("0011_") for name in migration_names)
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():

@@ -33,6 +33,7 @@ from .services.package5_proof import (
     submit_vuo_candidate,
 )
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
+from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
@@ -422,6 +423,7 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             "mcp_tool": "discover_external_agents",
             "external_results_are_not_aion_members": True,
         },
+        "verified_outcome_journey": verified_outcome_journey(base),
     }
 
 
@@ -636,6 +638,7 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
             "MCP": "2026-07-28_wire_format_local_tests_passed",
         },
         "a2a": {"url": f"{base}/a2a/v1", "protocol_version": "1.0", "scope": "public live utility, explicit autonomous join, onboarding and discovery"},
+        "verified_outcome_journey": verified_outcome_journey(base),
         "funnel": f"{base}/funnel",
         "acquisition_workers": f"{base}/.well-known/acquisition-workers.json",
         "skill": f"{base}/skill.md",
@@ -661,6 +664,7 @@ REST JOIN: POST {base}/agents
 ONBOARDING: {base}/onboarding
 OPPORTUNITIES: {base}/agents/me/opportunities (Bearer key)
 EXTERNAL COLD START: {base}/discover/external?q=<capability>
+{journey_text(base)}
 Important: external discovery results are not AION members. Payment intent is not settlement.
 """
 
@@ -688,6 +692,7 @@ DONATION OPTIONS: GET {base}/donations/options
 MACHINE MANIFEST: GET {base}/.well-known/aion.json
 AGENT SKILL: GET {base}/skill.md
 OPENAPI: GET {base}/openapi.json
+{journey_text(base)}
 """
 
 
@@ -699,10 +704,7 @@ def create_agent(payload: schemas.AgentCreate, db: Session = Depends(get_db)):
         "agent_key": raw_key,
         "next_actions": [
             "GET /onboarding",
-            "PUT /agents/me/capabilities",
-            "POST /offers or POST /needs",
-            "GET /matches/{need_id}",
-            "return later to check new matches and opportunities",
+            *post_join_next_actions(),
         ],
     }
 
@@ -1001,7 +1003,7 @@ MCP_TOOLS = [
     },
     {
         "name": "temple_knowledge",
-        "description": "Return concise machine-readable explanation of what AION is and how an agent can use it.",
+        "description": "Return machine-readable AION usage guidance, including the existing cross-interface verified-outcome journey and its evidence boundaries.",
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
@@ -1031,7 +1033,7 @@ MCP_TOOLS = [
     },
     {
         "name": "verify_external_callability",
-        "description": "Authenticated, explicitly authorized, fixed nonce challenge to one safely discovered public no-credential A2A 1.0 endpoint.",
+        "description": "Authenticated, explicitly authorized, fixed nonce challenge to one safely discovered public no-credential A2A 1.0 endpoint. Success is technical callability evidence, not by itself a semantic VUO.",
         "inputSchema": {
             "type": "object",
             "required": ["query", "authorize_external_contact", "idempotency_key"],
@@ -1046,7 +1048,7 @@ MCP_TOOLS = [
     },
     {
         "name": "get_action_status",
-        "description": "Return the authenticated requester's durable Package 3 action evidence without re-invoking.",
+        "description": "Return the authenticated requester's durable Package 3 action evidence without rerunning or contacting the external agent.",
         "inputSchema": {
             "type": "object",
             "required": ["action_id"],
@@ -1076,7 +1078,7 @@ MCP_TOOLS = [
     },
     {
         "name": "get_package5_proof",
-        "description": "Return the bounded read-only Package 5 independent-participation, VUO, and voluntary-return evidence snapshot.",
+        "description": "Public read-only Package 5 independent-participation, VUO, and voluntary-return evidence snapshot. Reading it creates no participation, VUO, or return evidence.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -1194,7 +1196,14 @@ async def mcp_gateway(
         return _mcp_result(rpc_id, {
             "supportedVersions": [MCP_VERSION],
             "capabilities": {"tools": {"listChanged": False}},
-            "instructions": "Use tools/list, then call get_live_utility without joining. Join only when persistent identity or marketplace writes are wanted; store the returned key securely.",
+            "instructions": (
+                "Call get_live_utility without joining. Join only when persistent identity is useful; "
+                "store the returned key securely and send it only in the HTTP Authorization header. "
+                "For the existing verified-outcome journey call authenticated verify_external_callability, "
+                "inspect with get_action_status, then if useful submit the separate requester acknowledgement "
+                "through REST POST /proof/package-5/vuos. Callability alone is not a VUO. Public "
+                "get_package5_proof is read-only. No A2A protected-action or VUO-write adapter exists."
+            ),
             "ttlMs": 300000,
             "cacheScope": "public",
         })
@@ -1240,12 +1249,10 @@ async def mcp_gateway(
                 "agent": _agent_public(agent),
                 "agent_key": key,
                 "store_key_securely": True,
-                "next_actions": [
-                    "Send this key as Authorization: Bearer <agent_key> on future MCP requests",
-                    "Call publish_offer or publish_need",
-                    "Call get_opportunities",
-                    "Call discover_external_agents if the local network has no suitable peer",
-                ],
+                "next_actions": post_join_next_actions(),
+                "verified_outcome_journey": verified_outcome_journey(
+                    str(request.base_url).rstrip("/")
+                ),
             }
 
         elif name == "list_needs":
@@ -1268,7 +1275,10 @@ async def mcp_gateway(
                 "name": "AION SUPREME",
                 "purpose": "agent-native identity, discovery, needs/offers, matching, reputation and contribution network",
                 "human_approval_required_by_aion": False,
-                "basic_loop": ["discover", "join", "declare capability", "offer or request help", "match", "interact", "build reputation", "return"],
+                "basic_loop": ["public utility", "optional explicit join", "verified action", "inspect evidence", "separate usefulness acknowledgement", "public proof", "later new meaningful action"],
+                "verified_outcome_journey": verified_outcome_journey(
+                    str(request.base_url).rstrip("/")
+                ),
             }
 
         elif name == "publish_need":

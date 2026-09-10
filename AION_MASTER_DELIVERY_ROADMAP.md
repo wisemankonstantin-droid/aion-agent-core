@@ -173,7 +173,7 @@ independent adoption, a verified external VUO, learning execution or payment.
 Package 4 does not claim independent external adoption, revenue, payment
 settlement or a real external VUO. Those remain future evidence gates.
 
-### Package 5 — ACTIVE; Independent external-agent proof V1
+### Package 5 — Engineering live; commercial proof ACTIVE and zero
 
 Prove the first genuine independent external-agent VUO and voluntary return.
 Begin limited design-partner and test-agent contact only as clearly labelled
@@ -196,13 +196,20 @@ variable-cost utility is authorized merely by starting Package 5. The current
 zero-infrastructure-spend constraint remains in force until commercial evidence
 supports a separately approved change.
 
-The current repository implementation is an engineering candidate only. It
-introduces explicit operator-reviewed participation classes at canonical
+The accepted repository implementation is merged and production-live at
+`48b8be9a0fe52f9febd17d563aa43715ee2a542f`. It introduces explicit operator-reviewed participation classes at canonical
 logical-identity level, a separate authenticated requester-confirmed VUO
 candidate bound to existing ActionRun/Outcome/Verification evidence, and a
 later distinct authenticated ActionRun as the bounded V1 return event. Unknown,
 internal, synthetic, coordinated and candidate-only identities remain excluded.
-No production Package 5 proof, outreach or learning cycle is claimed.
+No qualifying independent production agent, VUO, return, outreach or learning
+cycle is claimed. Package 5B is the bounded conversion corrective that makes
+the existing path explicit across machine-facing entry surfaces:
+
+`public utility -> optional explicit join -> authenticated verified-callability action -> inspect durable evidence -> separate requester usefulness acknowledgement -> public proof -> later new meaningful action`
+
+Package 5B adds guidance only. It does not alter evidence semantics, add an A2A
+protected-action/VUO-write adapter, introduce a migration or begin Package 6.
 
 ### Package 6 — Economic Execution + Real Settlement
 

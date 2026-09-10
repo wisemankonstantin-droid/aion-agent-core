@@ -1,18 +1,19 @@
 {
   "product": "AION Agent Core",
-  "package": "Package 5 - Independent External Agent Proof V1",
-  "status": "implementation_active_local_candidate_not_pushed_not_merged_not_deployed",
-  "task_start_sha": "8d508f5944c0810e5e52bed88645128857b369a0",
+  "package": "Package 5B - Organic VUO Conversion V1",
+  "status": "conversion_guidance_active_local_candidate_not_pushed_not_merged_not_deployed",
+  "task_start_sha": "b9d3521f6b5a7fd9ac61c3670ac150d8a16df772",
   "application_version": "0.7.1",
   "candidate_database_migration_head": "0010_package5_proof_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": "dep-dah96uu1egvs73d4gvh0",
-    "deployed_git_sha": "e52c5db99b30feb18ca06ace567b4668c8019bde",
+    "deploy_id": null,
+    "deploy_id_status": "not_supplied_by_package_5b_checkpoint_verify_render",
+    "deployed_git_sha": "48b8be9a0fe52f9febd17d563aa43715ee2a542f",
     "persistence": "prepared Neon PostgreSQL Free",
-    "actual_live_database_revision": "0009_continuous_learning_v1",
+    "actual_live_database_revision": "0010_package5_proof_v1",
     "autodeploy": "off",
     "infrastructure_spend_usd": 0
   },
@@ -20,15 +21,16 @@
     "independent_agents_proven": 0,
     "qualifying_vuos_proven": 0,
     "qualifying_returns_proven": 0,
-    "basis": "engineering candidate and tests are not production commercial proof"
+    "basis": "Package 5 engineering is live, but no qualifying independent production VUO or return is claimed; Package 5B guidance and tests are not commercial proof"
   },
   "required_candidate_gates": [
-    "Package 5 targeted and full test suites",
-    "fresh and 0009-to-0010 additive migration proof",
-    "PostgreSQL 18 release gate on exact reviewed SHA",
+    "Package 5B conversion and full regression suites",
+    "Alembic head remains exactly 0010_package5_proof_v1 with no new migration",
+    "AION CI on the exact reviewed SHA",
     "source integrity, readiness, secret, compile, dependency and diff checks",
     "HQ independent review and exact-SHA push authorization"
   ],
+  "package_5_semantics_changed_by_candidate": false,
   "production_action_authorized_by_candidate": false,
   "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. This manifest does not claim its own future commit SHA."
 }

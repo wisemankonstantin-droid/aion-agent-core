@@ -3,6 +3,7 @@ import urllib.parse
 from sqlalchemy import select
 from .. import models
 from ..db import SessionLocal
+from ..machine_journey import verified_outcome_journey
 
 def _route(a):
     e=(a.endpoint or "").strip(); p=(a.protocol or "").strip()
@@ -78,6 +79,7 @@ def _marketplace_first_contact_value(base):
 def first_contact_value(base, utility=None):
     payload = _marketplace_first_contact_value(base)
     payload["immediate_value"]["utility_endpoint"] = f"{base}/utility/query"
+    payload["verified_outcome_journey"] = verified_outcome_journey(base)
     if utility is not None:
         payload["live_utility"] = utility
     return payload

@@ -6,8 +6,9 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- Production deployed SHA: `e52c5db99b30feb18ca06ace567b4668c8019bde`
-- Current deploy: `dep-dah96uu1egvs73d4gvh0`
+- Production deployed SHA: `48b8be9a0fe52f9febd17d563aa43715ee2a542f`
+- Last fully recorded Package 4 deploy: `dep-dah96uu1egvs73d4gvh0`; verify the
+  current Package 5 Render deploy ID directly before any production operation.
 - Status: live
 - Branch: `main`
 - AutoDeploy: OFF (`autoDeployTrigger: off`)
@@ -18,7 +19,9 @@ The controlled direct-source cutover is complete and production is live.
   persistence is the prepared Neon PostgreSQL Free database at schema
   `0009_continuous_learning_v1`; its manual recovery snapshot was restored and
   integrity-checked during Package 4 closeout.
-- Package 5 is repository-only and has not been deployed or migrated.
+- Package 5 engineering is merged and live at schema
+  `0010_package5_proof_v1`; its commercial proof counters remain legitimately
+  zero. Package 5B is repository-only guidance work and adds no migration.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

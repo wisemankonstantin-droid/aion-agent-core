@@ -49,7 +49,7 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   environment values are never returned.
 - `/health` performs no database, migration, learning or external-network work.
   `/readiness` reads database connectivity and `alembic_version`, verifies the
-  expected 0009 schema, mounted A2A runtime and fixed Package 3B policy, and
+  expected `0010_package5_proof_v1` schema, mounted A2A runtime and fixed Package 3B policy, and
   never migrates, refreshes sources, runs learning or exposes credentials.
 - The Package 4 Live Gate is manually dispatched with a public URL and exact
   expected SHA. Its protected action/evidence checks are unauthenticated
@@ -71,6 +71,9 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   traffic or client time. The proof read model is capped at 500 raw identity
   rows, 500 logical identities and 5,000 VUO candidates and fails closed
   beyond any bound.
+- Package 5B adds shared public guidance only. It does not accept credentials in
+  A2A content, expose an A2A protected-action/VUO-write adapter, weaken REST/MCP
+  Bearer authentication or make public reads mutate Package 5 evidence.
 
 ## Before higher-scale production
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.

@@ -6,7 +6,7 @@
 also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
-`GET /readiness` is read-only and non-mutating. The Package 5 candidate checks
+`GET /readiness` is read-only and non-mutating. The Package 5 implementation checks
 database connectivity, the exact Alembic head `0010_package5_proof_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
@@ -31,7 +31,7 @@ The HQ-accepted Package 3B implementation adds authenticated
 `POST /learning/evidence`. It requires `Idempotency-Key`, accepts only a bounded
 schema and is covered by the outer 64 KiB streaming body limiter.
 
-The Package 5 candidate adds authenticated `POST /proof/package-5/vuos` and
+The Package 5 implementation adds authenticated `POST /proof/package-5/vuos` and
 public read-only `GET /proof/package-5`. The write accepts only one fixed V1
 product goal/outcome/usefulness vocabulary, requires `Idempotency-Key`, and
 binds the authenticated canonical requester to an existing requester-owned
@@ -85,6 +85,30 @@ same canonical identity after the configured server-time threshold. Replays,
 and client timestamps do not qualify. This operational definition does not
 claim psychological intent. Package 5 adds no A2A write adapter; existing A2A
 behavior is unchanged.
+
+## Package 5B verified-outcome journey
+
+Machine-facing onboarding, the A2A Agent Card, A2A onboarding/join guidance,
+the AION manifest, `/skill.md`, `/llms.txt`, REST/MCP join responses and MCP
+discovery/knowledge expose one shared existing sequence:
+
+`public utility -> optional explicit join -> secure Bearer key -> authenticated verified-callability action -> inspect durable action evidence -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
+
+REST `POST /actions/verify-callability` and MCP
+`verify_external_callability` are the protected action surfaces. REST
+`GET /actions/{action_id}` and MCP `get_action_status` inspect durable evidence
+without rerunning. The separate VUO acknowledgement uses authenticated REST
+`POST /proof/package-5/vuos`; no MCP or A2A VUO-write adapter exists. Public
+REST `GET /proof/package-5` and MCP `get_package5_proof` are read-only and
+create no Package 5 evidence.
+
+Bearer keys belong only in REST/MCP HTTP Authorization headers, never A2A
+message text. Verified callability remains technical evidence rather than a
+semantic VUO. Requester usefulness acknowledgement remains requester-confirmed
+evidence, not independent third-party verification. A qualifying return still
+requires a later new meaningful authenticated action after at least 24 hours;
+health, readiness, status, telemetry, documentation and proof reads do not
+qualify.
 
 ## Package 3B agent-evidence intake
 

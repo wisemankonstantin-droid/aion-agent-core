@@ -14,6 +14,7 @@ release_identity = (root / "app/release_identity.py").read_text(encoding="utf-8"
 live_gate = (root / ".github/workflows/live-gate.yml").read_text(encoding="utf-8")
 postgres_gate = (root / ".github/workflows/postgres-release-gate.yml").read_text(encoding="utf-8")
 learning_cli = (root / "scripts/learning_cycle.py").read_text(encoding="utf-8")
+machine_journey = (root / "app/machine_journey.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -47,6 +48,13 @@ checks = {
         (root / "app/services/package5_proof.py").exists()
         and '@app.get("/proof/package-5")' in main
         and '@app.post("/proof/package-5/vuos")' in main
+    ),
+    "package_5b_conversion_journey": (
+        "verified_outcome_journey" in main
+        and "verify_external_callability" in machine_journey
+        and "/proof/package-5/vuos" in machine_journey
+        and '"available": False' in machine_journey
+        and "RETURN_THRESHOLD_SECONDS = 24 * 60 * 60" in machine_journey
     ),
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
@@ -90,9 +98,9 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 5 candidate.",
-    "Run AION CI and the PostgreSQL 18 release gate on the exact pushed Package 5 SHA.",
-    "Do not deploy or migrate Package 5 without a separate production Human Gate.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 5B conversion candidate.",
+    "Run AION CI on the exact pushed Package 5B SHA and any additional gate HQ requires.",
+    "Do not deploy Package 5B without a separate production Human Gate; Package 5B adds no migration.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

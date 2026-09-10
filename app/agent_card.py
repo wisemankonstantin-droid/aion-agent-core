@@ -1,9 +1,13 @@
 import os
+
+from .machine_journey import A2A_GUIDANCE_DESCRIPTION
+
+
 def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for public Live Utility, optional autonomous AION joining, onboarding and agent discovery.",
+        "description": "A2A 1.0 gateway for public Live Utility, optional joining, onboarding, discovery, and truthful cross-interface verified-outcome guidance.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
@@ -37,8 +41,15 @@ def get_agent_card(base_url: str):
             {
                 "id": "aion_onboarding",
                 "name": "AION onboarding",
-                "description": "Return machine-readable instructions for joining and using AION.",
+                "description": "Return machine-readable instructions for public utility, optional joining, and the existing REST/MCP verified-outcome journey.",
                 "tags": ["aion", "onboarding", "agents"],
+                "examples": ['{"action":"onboarding"}'],
+            },
+            {
+                "id": "aion_verified_outcome_guidance",
+                "name": "AION verified-outcome guidance",
+                "description": A2A_GUIDANCE_DESCRIPTION,
+                "tags": ["aion", "guidance", "verified-outcome", "cross-interface"],
                 "examples": ['{"action":"onboarding"}'],
             },
             {
