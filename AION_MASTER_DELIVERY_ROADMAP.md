@@ -47,7 +47,7 @@ compatibility, personalized delta and durable checkpoints through
 `0007_agent_utility_checkpoints`. Merged to main at
 `88bc6fae247a5bb454d435380c24d665ba48f512` with zero known defects.
 
-### Package 3 — Done; HQ accepted and merged
+### Package 3 — Done; HQ accepted, merged and production-released through Package 4
 
 Prove one narrow killer loop:
 
@@ -77,14 +77,16 @@ The HQ-accepted implementation provides a public/no-credential A2A callability p
 shared REST/MCP service semantics and additive migration
 `0008_action_outcome_evidence`. Its fixed nonce challenge distinguishes protocol
 response, verified callability and unverified domain capability. Package 3 has
-passed independent HQ review with zero known reproducible defects and is ready
-for use by later packages; it is merged but not deployed. This is not an independent VUO or
-capability-quality claim. A2A inbound action adaptation is deliberately outside
-this V1 implementation.
+passed independent HQ review with zero known reproducible defects and was later
+released to production as part of the accepted Package 4 exact-SHA release.
+This is not, by itself, an independent external VUO or capability-quality claim.
+A2A inbound action adaptation is deliberately outside this V1 implementation.
 
-### Package 3B — Continuous Learning & Self-Update Engine V1
+### Package 3B — Done; Continuous Learning & Self-Update Engine V1
 
-**Implemented; independently HQ accepted with zero known reproducible defects. Production deployment remains separate and has not occurred. Live merge/main status must be verified directly from GitHub.**
+**Implemented, independently HQ accepted with zero known reproducible defects,
+merged and production-released through Package 4. The learning cycle remains
+operator-invoked and is not an automatic scheduler.**
 
 Build the smallest production-usable learning layer around the proven utility
 path. It includes four bounded loops:
@@ -107,7 +109,7 @@ driven and incremental refresh. Paid source/watch execution is disabled by
 default unless a future real economic execution path funds it or an explicit
 bounded operator-funded experiment authorizes it.
 
-The V1 candidate implements one operator-invoked cycle rather than a resident
+The V1 implementation uses one operator-invoked cycle rather than a resident
 scheduler. It watches only the configured official A2A and MCP release sources,
 persists restart-safe watch leases/circuit state, reuses existing normalized
 observations, accepts bounded authenticated REST/MCP evidence, and recomputes
@@ -117,40 +119,82 @@ separate from genuine unmet demand. Automatic paid external spend is fixed at
 zero. A2A evidence intake, scheduling and autonomous code change are
 deliberately deferred.
 
-### Package 4 — Controlled Production Live Utility release
+### Package 4 — Done; HQ accepted, merged, deployed and live verified
 
-**Release candidate in preparation; pending HQ review, not merged and not
-deployed.**
+**Accepted production release SHA:**
+`e52c5db99b30feb18ca06ace567b4668c8019bde`.
 
-Release the Package 3/3B utility path only after all package and Human Gates
-pass. Use authoritative A2A/MCP conformance or compatibility tools where
-practical in addition to internal tests.
+**Render production deploy:** `dep-dah96uu1egvs73d4gvh0` on
+`aion-agent-core-live`. AutoDeploy remains OFF.
 
-The candidate must prove an exact runtime Git identity, schema-current
-readiness, the representative PostgreSQL 18 `0004 -> 0009` production jump,
-legacy-data preservation, additive-schema source rollback compatibility, a
-manual exact-SHA live gate, and a zero-side-effect learning-policy preflight.
-The first production learning cycle remains a separate Human-Gated one-shot
-operation; no automatic scheduler is introduced.
+Package 4 released the accepted Package 1–3B stack only after exact-SHA CI,
+PostgreSQL 18 migration proof, migration red-team review, rollback compatibility,
+release-identity validation, schema-current readiness, backup/recovery planning,
+HQ independent review and explicit production Human Gate approval.
 
-Ensure selected Data & Learning loops can run reliably in production, their
-freshness policies are operational, and their resource and cost limits are
-observable before relying on their output.
+The release preserved the expected Alembic head
+`0009_continuous_learning_v1` and added no Package 4 migration. The runtime
+reports the exact 40-hex Render Git commit identity and readiness refuses schema
+mismatch.
 
-The current Render PostgreSQL free plan externally reports expiration on
-**2026-10-06**. Before AION is relied on as a commercial production service,
-Package 4 planning must resolve database durability, backup and reliable uptime.
-This roadmap records the risk; it does not authorize a Render change, upgrade,
-deployment or production migration.
+The prior expiring Render Free PostgreSQL dependency was replaced with the
+prepared Neon PostgreSQL Free production database while keeping infrastructure
+spend at zero. Legacy production data was copied and verified before cutover.
+The full pre-cutover dataset included 2 agent rows, 3 capabilities, 1 need,
+2 offer rows and 657 historical `machine_entries`; the remaining action,
+interaction, payment, evidence and learning tables were empty as expected.
 
-### Package 5 — Independent external-agent proof
+A complete Neon manual recovery snapshot was created after the data copy and
+successfully restored on a separate rehearsal branch. The restored database
+matched Alembic `0009`, all 657 pre-cutover `machine_entries`, the business-row
+counts and continuous machine-entry IDs. The production Neon default branch was
+not switched during the final rehearsal.
+
+The live deployment then passed:
+
+- Render build and startup on the exact accepted SHA;
+- Alembic PostgreSQL startup against the prepared Neon database;
+- `/health` HTTP 200 with version `0.7.1`, A2A mounted and exact release SHA;
+- `/readiness` HTTP 200 with database, A2A runtime, schema-current, Package 3B
+  configuration and release identity all true;
+- exact production schema `0009_continuous_learning_v1`;
+- public REST, MCP and A2A discovery/utility surfaces;
+- unauthenticated Package 3 action and Package 3B evidence boundaries returning
+  401 before protected execution/persistence;
+- agent-row count unchanged at 2 before/after the safe live smoke; and
+- zero action, action-attempt, action-outcome, action-verification, evidence,
+  learning-run, interaction and payment-intent rows after the release checks.
+
+The safe live verification itself increments bounded `machine_entries`
+telemetry, so machine-entry count after the release checks is greater than the
+657 pre-cutover snapshot baseline. This is observability traffic, not membership,
+independent adoption, a verified external VUO, learning execution or payment.
+
+Package 4 does not claim independent external adoption, revenue, payment
+settlement or a real external VUO. Those remain future evidence gates.
+
+### Package 5 — NEXT; Independent external-agent proof
 
 Prove the first genuine independent external-agent VUO and voluntary return.
-Begin limited design-partner and test-agent contact around Packages 3–4 to learn
-pain points, missing capabilities, integration friction and willingness to pay,
-but label coordinated testing honestly. Commercial adoption proof remains a
-Package 5 outcome. Independent use begins supplying real demand, failure and
-outcome evidence to the learning plane.
+Begin limited design-partner and test-agent contact only as clearly labelled
+product discovery; coordinated testing must not be counted as independent
+commercial adoption. Package 5 must distinguish independent production use from
+AION-operated identities, synthetic probes, registrations and invited tests.
+
+Evidence progression:
+
+`first independent external agent -> first verified useful outcome -> first voluntary return -> 10 independent agents with useful outcomes and voluntary return`
+
+Package 5 should use the existing production utility/action/evidence stack before
+building broad acquisition machinery. It must capture evidence sufficient to
+show who/what was independent at the logical-identity level, what useful outcome
+was delivered, how outcome verification was established, whether the agent
+returned voluntarily, and what near-zero/zero infrastructure cost was incurred.
+
+No paid acquisition, paid external provider, payment activation or unfunded
+variable-cost utility is authorized merely by starting Package 5. The current
+zero-infrastructure-spend constraint remains in force until commercial evidence
+supports a separately approved change.
 
 ### Package 6 — Economic Execution + Real Settlement
 
