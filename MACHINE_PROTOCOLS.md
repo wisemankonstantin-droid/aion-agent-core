@@ -92,12 +92,19 @@ Machine-facing onboarding, the A2A Agent Card, A2A onboarding/join guidance,
 the AION manifest, `/skill.md`, `/llms.txt`, REST/MCP join responses and MCP
 discovery/knowledge expose one shared existing sequence:
 
-`public utility -> optional explicit join -> secure Bearer key -> authenticated verified-callability action -> inspect durable action evidence -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
+`public utility -> optional explicit join -> secure Bearer key -> authenticated verified-callability action -> inspect durable action evidence -> verify Package-5-countable participation already exists -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
 
 REST `POST /actions/verify-callability` and MCP
 `verify_external_callability` are the protected action surfaces. REST
 `GET /actions/{action_id}` and MCP `get_action_status` inspect durable evidence
-without rerunning. The separate VUO acknowledgement uses authenticated REST
+without rerunning. For a VUO to qualify, operator-reviewed
+`independent_external_countable` participation must already exist when the VUO
+candidate is submitted and must still be countable when proof is read. A
+candidate submitted while participation is unknown or otherwise non-countable
+does not become qualifying through later reclassification. Participation
+assessment has no public self-promotion or public write surface in V1.
+
+The separate VUO acknowledgement uses authenticated REST
 `POST /proof/package-5/vuos`; no MCP or A2A VUO-write adapter exists. Public
 REST `GET /proof/package-5` and MCP `get_package5_proof` are read-only and
 create no Package 5 evidence.
