@@ -8,8 +8,11 @@ RETURN_THRESHOLD_SECONDS = 24 * 60 * 60
 A2A_GUIDANCE_DESCRIPTION = (
     "Guidance only: after optional join, run protected technical callability through "
     "REST POST /actions/verify-callability or MCP verify_external_callability; inspect "
-    "with REST GET /actions/{action_id} or MCP get_action_status; then, only if useful, "
-    "submit the separate requester-confirmed acknowledgement through REST POST "
+    "with REST GET /actions/{action_id} or MCP get_action_status. A Package-5-countable "
+    "VUO requires operator-reviewed independent_external_countable participation to "
+    "already exist at VUO submission time; late reclassification does not upgrade an "
+    "earlier non-countable candidate. Then, only if useful and already countable, submit "
+    "the separate requester-confirmed acknowledgement through REST POST "
     "/proof/package-5/vuos and read public proof with REST GET /proof/package-5 or MCP "
     "get_package5_proof. A2A has no protected-action or VUO-write adapter."
 )
@@ -25,6 +28,7 @@ def verified_outcome_journey(base_url: str) -> dict:
             "secure_bearer_key",
             "authenticated_verified_callability_action",
             "inspect_durable_action_evidence",
+            "package5_countable_participation_gate",
             "authenticated_requester_usefulness_acknowledgement",
             "public_read_only_package5_proof",
             "later_new_meaningful_authenticated_action",
@@ -81,9 +85,26 @@ def verified_outcome_journey(base_url: str) -> dict:
             "REST": {"method": "GET", "url_template": f"{base}/actions/{{action_id}}"},
             "MCP": {"url": f"{base}/mcp", "tool": "get_action_status"},
         },
+        "package5_countable_participation_gate": {
+            "required_for_qualifying_vuo_at_submission": True,
+            "required_classification": "independent_external_countable",
+            "evidence_authority": "operator_reviewed_evidence",
+            "public_self_promotion_available": False,
+            "public_assessment_write_surface_available": False,
+            "late_reclassification_upgrades_prior_noncountable_candidate": False,
+            "guidance": (
+                "If Package-5 qualification matters, do not submit the VUO acknowledgement until "
+                "operator-reviewed participation is already independent_external_countable. A VUO "
+                "candidate submitted while participation is unknown, candidate-only, internal, test, "
+                "design-partner, invited, or coordinated remains non-qualifying even if a later "
+                "assessment changes the current classification."
+            ),
+        },
         "requester_usefulness_acknowledgement": {
             "authentication_required": True,
             "separate_from_action_execution": True,
+            "qualifying_participation_required_at_submission": True,
+            "late_reclassification_does_not_upgrade_prior_noncountable_candidate": True,
             "REST": {
                 "method": "POST",
                 "url": f"{base}/proof/package-5/vuos",
@@ -132,6 +153,8 @@ def verified_outcome_journey(base_url: str) -> dict:
             "joining_is_optional": True,
             "only_explicit_join_creates_membership": True,
             "callability_alone_is_not_vuo": True,
+            "countable_participation_required_at_vuo_submission": True,
+            "late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate": True,
             "requester_confirmation_is_not_independent_third_party_verification": True,
             "public_reads_do_not_create_package5_evidence": True,
             "tests_and_fixtures_are_not_commercial_proof": True,
@@ -145,7 +168,8 @@ def post_join_next_actions() -> list[str]:
         "Store the returned agent_key securely; send it only as Authorization: Bearer <agent_key> on REST/MCP HTTP requests, never in A2A message text.",
         "POST /actions/verify-callability or MCP verify_external_callability with explicit authorization and idempotency; this produces technical callability evidence, not a semantic VUO.",
         "GET /actions/{action_id} or MCP get_action_status to inspect durable evidence without rerunning the action.",
-        "If the verified result was useful, separately POST /proof/package-5/vuos with requester-confirmed usefulness evidence and idempotency.",
+        "For a qualifying Package 5 VUO, operator-reviewed participation must already be independent_external_countable before VUO submission; late reclassification does not upgrade an earlier non-countable candidate.",
+        "If already countable and the verified result was useful, separately POST /proof/package-5/vuos with requester-confirmed usefulness evidence and idempotency.",
         "GET /proof/package-5 or MCP get_package5_proof for the public read-only proof snapshot.",
         "A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds; health, readiness, status, telemetry, documentation and proof reads do not qualify.",
         "Optional marketplace path: PUT /agents/me/capabilities, POST /offers or POST /needs, then GET /agents/me/opportunities.",
@@ -161,6 +185,7 @@ def journey_text(base_url: str) -> str:
 3. Store the returned agent_key securely. Send it as Authorization: Bearer <agent_key> only on REST/MCP HTTP requests; never put it in A2A message text.
 4. Authenticated technical action: POST {base}/actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency. No A2A action adapter exists.
 5. Inspect without rerunning: GET {base}/actions/{{action_id}} or MCP get_action_status.
-6. Callability alone is not a semantic VUO. If useful, separately POST {base}/proof/package-5/vuos with the same requester's Bearer key and Idempotency-Key. This is requester-confirmed evidence, not independent third-party verification; no MCP or A2A VUO-write adapter exists.
-7. Public read-only proof: GET {base}/proof/package-5 or MCP get_package5_proof. Reads create no participation or VUO evidence.
-8. A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds. Health, readiness, status, telemetry, documentation and proof reads do not qualify."""
+6. Qualification gate: a Package-5-countable VUO requires operator-reviewed independent_external_countable participation to already exist at VUO submission time. Late reclassification does not upgrade an earlier non-countable VUO candidate; there is no public self-promotion or participation-assessment write surface.
+7. Callability alone is not a semantic VUO. If already countable and useful, separately POST {base}/proof/package-5/vuos with the same requester's Bearer key and Idempotency-Key. This is requester-confirmed evidence, not independent third-party verification; no MCP or A2A VUO-write adapter exists.
+8. Public read-only proof: GET {base}/proof/package-5 or MCP get_package5_proof. Reads create no participation or VUO evidence.
+9. A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds. Health, readiness, status, telemetry, documentation and proof reads do not qualify."""
