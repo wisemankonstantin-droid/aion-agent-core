@@ -6,28 +6,28 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- Production deployed SHA: `419f11b2a34fdec26269a216de65e9dcf955e963`
-- Current deploy: `dep-dafuu3v40ujc73d3fks0`
+- Production deployed SHA: `e52c5db99b30feb18ca06ace567b4668c8019bde`
+- Current deploy: `dep-dah96uu1egvs73d4gvh0`
 - Status: live
 - Branch: `main`
 - AutoDeploy: OFF (`autoDeployTrigger: off`)
 - Root Directory: blank
 - Build Command: `python -m pip install --require-hashes -r requirements.txt`
 - Start Command: `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Package 2 is merged to repository main but has not been deployed or migrated
-  in production.
-- The Render PostgreSQL free plan externally reports expiration on
-  **2026-10-06**. Database durability, backup and reliable uptime are a
-  mandatory Package 4 production-planning issue; this record does not authorize
-  an upgrade or configuration change.
+- Package 4 is HQ accepted, merged, deployed and live verified. Production
+  persistence is the prepared Neon PostgreSQL Free database at schema
+  `0009_continuous_learning_v1`; its manual recovery snapshot was restored and
+  integrity-checked during Package 4 closeout.
+- Package 5 is repository-only and has not been deployed or migrated.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately
 authorized production change.
 
-## Package 4 controlled-release procedure — current
+## Package 4 controlled-release procedure — historical
 
-The Package 4 candidate prepares release safety only. It does not authorize a
+The completed Package 4 candidate prepared release safety only. This retained
+procedure does not authorize a
 deploy, migration, database read/write, backup operation, plan change, secret
 change or learning cycle. `PRODUCTION_GATE.md` is the canonical ordered gate.
 

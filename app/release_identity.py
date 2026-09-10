@@ -1,4 +1,4 @@
-"""Safe immutable release and schema identity for Package 4 gates."""
+"""Safe immutable release and schema identity for release gates."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 import re
 
 
-EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"
+EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
 

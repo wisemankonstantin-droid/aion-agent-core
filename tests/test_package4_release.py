@@ -88,6 +88,8 @@ class FakeLiveClient:
             return 200, {"supportedInterfaces": [{"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}]}
         if path in {"/.well-known/aion.json", "/llms.txt", "/openapi.json", "/funnel", "/a2a/status"}:
             return 200, {}
+        if path == "/proof/package-5":
+            return 200, {"package": 5, "status": "evidence_snapshot"}
         if path == "/utility/query":
             return 200, {
                 "action": "live_utility",
@@ -97,7 +99,7 @@ class FakeLiveClient:
             }
         if path == "/a2a/v1":
             return 200, self._a2a(payload)
-        if path in {"/actions/verify-callability", "/learning/evidence"}:
+        if path in {"/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos"}:
             return 401, {"detail": "authentication required"}
         if path == "/mcp":
             rpc_method = payload["method"]
@@ -107,7 +109,10 @@ class FakeLiveClient:
                 result = {"tools": [{"name": name} for name in (
                     "get_live_utility", "verify_external_callability",
                     "get_action_status", "submit_learning_evidence",
+                    "get_package5_proof",
                 )]}
+            elif payload["params"].get("name") == "get_package5_proof":
+                result = {"structuredContent": {"package": 5, "status": "evidence_snapshot"}}
             else:
                 result = {"structuredContent": {
                     "action": "live_utility", "membership_required": False,
@@ -219,6 +224,7 @@ def test_live_smoke_checks_stack_without_join_action_or_evidence_mutation():
         "membership_created": False,
         "external_action_dispatched": False,
         "evidence_submitted": False,
+        "vuo_submitted": False,
         "learning_cycle_run": False,
     }
     paths = [(method, path) for method, path, _, _ in fake.calls]

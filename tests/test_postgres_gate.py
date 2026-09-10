@@ -11,7 +11,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
-from app.services import action_engine, external_registry, learning_engine
+from app.services import action_engine, external_registry, learning_engine, package5_proof
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -540,3 +540,118 @@ def test_postgres_concurrent_learning_source_claim_fetches_once():
         first_result["source_results"][0]["status"],
         second_result["source_results"][0]["status"],
     } == {"refreshed_changed", "source_busy"}
+
+
+def test_postgres_concurrent_package5_vuo_idempotency_is_single(monkeypatch):
+    token = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    with SessionLocal.begin() as db:
+        agent = models.Agent(
+            external_id="pg-package5-" + token,
+            name="PG Package 5 " + token,
+            api_key_hash="pg-package5-hash-" + token,
+        )
+        db.add(agent)
+        db.flush()
+        agent_id = agent.id
+        run = models.ActionRun(
+            action_id=str(uuid.uuid4()),
+            requester_agent_id=agent_id,
+            idempotency_key="pg-package5-action-" + token,
+            request_digest="sha256:" + "1" * 64,
+            requested_query="research",
+            requested_candidate_identifier=None,
+            authorize_external_contact=True,
+            state="completed",
+            failure_class=None,
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            duration_ms=1,
+            discovery_attempt_count=1,
+            action_attempt_count=1,
+            request_bytes=1,
+            response_bytes=1,
+            cost_amount="0",
+            cost_currency="USD",
+        )
+        db.add(run)
+        db.flush()
+        action_id = run.action_id
+        outcome = models.ActionOutcome(
+            action_run_id=run.id,
+            outcome_type="callability_challenge",
+            protocol_response_received=True,
+            callability_verified=True,
+            capability_verified=False,
+            verified_outcome=True,
+            normalized_result_kind="a2a_message",
+            failure_class=None,
+            response_digest="sha256:" + "2" * 64,
+            protocol_task_id=None,
+            protocol_message_id="pg-package5-reply",
+            proof_present=True,
+            completed_at=now,
+        )
+        db.add(outcome)
+        db.flush()
+        db.add(models.ActionVerification(
+            action_run_id=run.id,
+            action_outcome_id=outcome.id,
+            verification_method="a2a_nonce_echo",
+            state="verified",
+            challenge_digest="sha256:" + "3" * 64,
+            proof_digest="sha256:" + "4" * 64,
+            verified_at=now,
+            details=None,
+        ))
+
+    with SessionLocal() as db:
+        package5_proof.record_participation_assessment(
+            db,
+            agent_id=agent_id,
+            classification="independent_external_countable",
+            evidence_reference="pg-case:" + token,
+            evidence_summary="Disposable PostgreSQL concurrency evidence",
+            idempotency_key="pg-package5-assessment-" + token,
+        )
+
+    payload = schemas.Package5VuoSubmission(
+        action_id=action_id,
+        goal_kind="verify_external_agent_callability",
+        product_goal="find_verify_invoke_external_a2a_agent",
+        delivered_outcome="verified_external_agent_callability",
+        usefulness_confirmed=True,
+        usefulness_evidence="requester_confirms_goal_was_useful",
+    )
+    idem = "pg-package5-vuo-" + token
+    barrier = threading.Barrier(2)
+    original_digest = package5_proof._digest
+
+    def synchronized_digest(value):
+        barrier.wait(timeout=10)
+        return original_digest(value)
+
+    monkeypatch.setattr(package5_proof, "_digest", synchronized_digest)
+
+    def submit():
+        with SessionLocal() as db:
+            return package5_proof.submit_vuo_candidate(
+                db,
+                requester_agent_id=agent_id,
+                payload=payload,
+                idempotency_key=idem,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: submit(), range(2)))
+
+    assert results[0]["vuo_id"] == results[1]["vuo_id"]
+    assert {result["idempotent_replay"] for result in results} == {False, True}
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(models.Package5VuoProof).where(
+                models.Package5VuoProof.canonical_requester_agent_id == agent_id,
+                models.Package5VuoProof.idempotency_key == idem,
+            )
+        ) == 1

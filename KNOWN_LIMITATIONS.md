@@ -9,8 +9,12 @@ This file exists to prevent AION from overstating what the release proves.
 
 ## Activation telemetry
 - M1 counts machine-entry requests, not unique agents. Crawlers, tests and repeat requests may contribute.
-- v0.7.1 exposes raw rows separately from estimated unique external M2-M4 and excludes marked AION-operated/test identities. Identity resolution is evidence-based but still does not prove independent ownership, usefulness or economic value by itself.
-- No external adoption claim should be made until a genuinely external agent chooses to join and performs a real useful action.
+- Historical v0.7.1 funnel estimates remain separate from Package 5 proof. A
+  logical identity being merely unmarked as AION-operated/test does not prove
+  independent participation, usefulness or economic value.
+- Package 5 commercial counters require explicit operator-reviewed independent
+  participation plus qualifying VUO and return evidence. Tests, fixtures,
+  design partners and coordinated activity do not establish that proof.
 
 ## A2A direct join
 - Production v0.7.1 exposes explicit `join_aion` over A2A and optional same-call initial need/offer activation.
@@ -30,15 +34,37 @@ This file exists to prevent AION from overstating what the release proves.
 - AION must not claim that a payment completed merely because an intent record exists.
 
 ## Hosting
-- Durable Render PostgreSQL is attached to the current production service and persistence across a full redeploy was verified on 2026-09-06.
-- The current free Render PostgreSQL instance is still a proof-stage dependency and is not equivalent to a backed-up production database.
-- The Render account currently has many one-time validation static sites and has reached the Hobby service-count limit. Those obsolete helpers should be deleted; the existing live service is unaffected.
+- Production uses the prepared Neon PostgreSQL Free database at schema
+  `0009_continuous_learning_v1`. Package 4 created and successfully restored a
+  manual recovery snapshot, but a free proof-stage database is not equivalent
+  to a paid high-availability service with continuous managed recovery.
+- Package 5's additive `0010` schema is a repository candidate and has not been
+  applied to production.
 
 ## External discovery and outreach
-- External A2A registry results are discovery candidates only. v0.7.1 marks one verified only after a public HTTPS Agent Card and harmless A2A 1.0 handshake succeed. They are never counted as AION members, joins or activations.
-- DNS is validated before the request, but the standard URL client resolves again when connecting. A hardened implementation should pin the validated destination or revalidate the connected peer to close DNS-rebinding time-of-check/time-of-use risk.
+- External A2A registry results are discovery candidates only. Normal discovery
+  may validate a public HTTPS Agent Card and its declared interaction
+  destination but never invokes the agent or claims callability/VUO.
+- Registry, Agent Card and Package 3 action traffic use the shared public-only,
+  DNS-pinned HTTPS transport with TLS hostname verification, redirect rejection
+  and bounded bytes/attempts/timeouts.
 - AION-operated outreach identities, synthetic self-tests and declared external contributions must not be counted as external AION members.
 - Repeated unsolicited invitations should be avoided; use targeted, opt-in or clearly one-time outreach.
+
+## Package 5 proof V1
+- Participation assessment is a guarded operator process, not automatic owner
+  discovery, KYC or a public self-classification API.
+- V1 supports one narrow value path: verified external A2A callability plus a
+  separate authenticated requester confirmation. It does not prove the remote
+  agent's broader capability or independent third-party correctness.
+- V1 voluntary return means a later distinct authenticated ActionRun after the
+  configured server-time threshold and with no known exclusion marker. It does
+  not claim psychological intent.
+- The proof read model is process-local/single-instance bounded and recalculates
+  over at most 500 raw identity rows, 500 logical identities and 5,000 VUO
+  candidates. Larger-scale analytics and distributed rate limiting are deferred.
+- Package 5 adds no A2A VUO write adapter, outreach automation, learning
+  scheduler, payment activation or paid provider execution.
 
 ## Next trust-layer upgrade
 Before reputation is used for material economic decisions, add provider acknowledgement and/or independently verifiable evidence for completed interactions.

@@ -12,7 +12,7 @@ import urllib.request
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
-EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"
+EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"
 MAX_SMOKE_RESPONSE_BYTES = 1024 * 1024
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
@@ -123,6 +123,7 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         "/llms.txt",
         "/openapi.json",
         "/funnel",
+        "/proof/package-5",
         "/a2a/status",
     ):
         _ok(client, "GET", path)
@@ -152,6 +153,7 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         "verify_external_callability",
         "get_action_status",
         "submit_learning_evidence",
+        "get_package5_proof",
     }
     assert required_tools <= tool_names, (required_tools, tool_names)
     mcp_utility = _mcp(
@@ -164,6 +166,15 @@ def run_live_smoke(client, expected_sha: str) -> dict:
     assert mcp_utility["action"] == "live_utility", mcp_utility
     assert mcp_utility["membership_required"] is False, mcp_utility
     assert mcp_utility["network_fetch_performed"] is False, mcp_utility
+    package5 = _mcp(
+        client,
+        "tools/call",
+        "mcp-package5-proof",
+        {"name": "get_package5_proof", "arguments": {}, "_meta": meta},
+        name="get_package5_proof",
+    )["structuredContent"]
+    assert package5["package"] == 5, package5
+    assert package5["status"] == "evidence_snapshot", package5
 
     utility = _ok(client, "POST", "/utility/query", {"subject": "all"})
     assert utility["action"] == "live_utility", utility
@@ -203,6 +214,20 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         {"Idempotency-Key": "package-4-live-smoke-evidence"},
     )
     assert evidence_status in {401, 403}, evidence_status
+    vuo_status, _ = client.request(
+        "POST",
+        "/proof/package-5/vuos",
+        {
+            "action_id": "00000000-0000-0000-0000-000000000000",
+            "goal_kind": "verify_external_agent_callability",
+            "product_goal": "find_verify_invoke_external_a2a_agent",
+            "delivered_outcome": "verified_external_agent_callability",
+            "usefulness_confirmed": True,
+            "usefulness_evidence": "requester_confirms_goal_was_useful",
+        },
+        {"Idempotency-Key": "package-5-live-smoke-vuo"},
+    )
+    assert vuo_status in {401, 403}, vuo_status
 
     after = _ok(client, "GET", "/stats")
     assert after["agents_raw_rows"] == before["agents_raw_rows"], (before, after)
@@ -213,6 +238,7 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         "membership_created": False,
         "external_action_dispatched": False,
         "evidence_submitted": False,
+        "vuo_submitted": False,
         "learning_cycle_run": False,
     }
 

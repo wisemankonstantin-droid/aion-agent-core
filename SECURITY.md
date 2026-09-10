@@ -55,6 +55,22 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   expected SHA. Its protected action/evidence checks are unauthenticated
   rejection proofs; it supplies no credential and cannot dispatch or persist
   those operations.
+- Package 5 participation is never promoted by client-controlled attribution.
+  Only a guarded operator-reviewed assessment can mark a canonical logical
+  identity countable, while configured internal/test exclusions apply across
+  every duplicate raw row. The assessment surface is not exposed over REST,
+  MCP or A2A and stores only digests of its bounded evidence reference and
+  summary.
+- Package 5 VUO intake is bearer-authenticated, requester/canonical-identity
+  scoped, idempotent and limited by database uniqueness. It references the
+  existing Package 3 action/outcome/verification records and accepts only fixed
+  V1 semantic evidence values—no URL, method, credential, remote body, cost or
+  client timestamp. The outer 64 KiB streaming request limiter applies.
+- Package 5 return evidence uses a later distinct durable ActionRun and server
+  timestamps. It does not use `last_seen_at`, status/telemetry/machine-entry
+  traffic or client time. The proof read model is capped at 500 raw identity
+  rows, 500 logical identities and 5,000 VUO candidates and fails closed
+  beyond any bound.
 
 ## Before higher-scale production
 Move rate limiting to shared infrastructure, add abuse monitoring, add database backups/restore drills, put the service behind managed TLS/WAF, and perform an external security review before enabling real-value settlement.

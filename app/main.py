@@ -27,6 +27,11 @@ from .services.action_engine import (
     verify_external_callability,
 )
 from .services.learning_engine import LearningServiceError, submit_agent_evidence
+from .services.package5_proof import (
+    Package5ProofError,
+    package5_proof_snapshot,
+    submit_vuo_candidate,
+)
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 
 APP_VERSION = "0.7.1"
@@ -44,7 +49,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -177,6 +182,7 @@ def root():
         "skill": "/skill.md",
         "external_discovery": "/discover/external?q=web_research",
         "verified_callability_action": "POST /actions/verify-callability",
+        "package5_proof": "GET /proof/package-5",
         "donations": "/donations/options",
         "health": "/health",
         "join_rate_limit_per_minute": configured_join_limit(),
@@ -468,6 +474,32 @@ def learning_evidence_intake(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
         ) from exc
+
+
+@app.post("/proof/package-5/vuos")
+def package5_vuo_intake(
+    payload: schemas.Package5VuoSubmission,
+    db: Session = Depends(get_db),
+    agent=Depends(require_agent),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return submit_vuo_candidate(
+            db,
+            requester_agent_id=agent.id,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+    except Package5ProofError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+
+@app.get("/proof/package-5")
+def package5_proof(db: Session = Depends(get_db)):
+    return package5_proof_snapshot(db)
 
 
 
@@ -1043,6 +1075,15 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "get_package5_proof",
+        "description": "Return the bounded read-only Package 5 independent-participation, VUO, and voluntary-return evidence snapshot.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "get_opportunities",
         "description": "Authenticated agent gets matches for its needs and market needs matching its offers.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -1294,6 +1335,11 @@ async def mcp_gateway(
             payload = schemas.AgentEvidenceSubmission.model_validate(evidence_args)
             data = submit_agent_evidence(mcp_agent.id, payload, idempotency_key)
 
+        elif name == "get_package5_proof":
+            if args:
+                raise ValueError("get_package5_proof accepts no arguments")
+            data = package5_proof_snapshot(db)
+
         elif name == "get_opportunities":
             mcp_agent = authenticate_agent(authorization, db)
             data = opportunities_for_agent(db, mcp_agent.id)
@@ -1348,6 +1394,12 @@ async def mcp_gateway(
             "isError": True,
         })
     except LearningServiceError as exc:
+        return _mcp_result(rpc_id, {
+            "content": [{"type": "text", "text": exc.message}],
+            "structuredContent": {"code": exc.code, "status": exc.status_code},
+            "isError": True,
+        })
+    except Package5ProofError as exc:
         return _mcp_result(rpc_id, {
             "content": [{"type": "text", "text": exc.message}],
             "structuredContent": {"code": exc.code, "status": exc.status_code},

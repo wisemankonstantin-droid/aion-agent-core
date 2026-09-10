@@ -24,14 +24,15 @@ checks = {
     "migration_0007_agent_utility_checkpoints": (root / "alembic/versions/0007_agent_utility_checkpoints.py").exists(),
     "migration_0008_action_outcome_evidence": (root / "alembic/versions/0008_action_outcome_evidence.py").exists(),
     "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
+    "migration_0010_package5_proof_v1": (root / "alembic/versions/0010_package5_proof_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
-    "package_4_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"' in release_identity
+    "candidate_release_identity": (
+        'EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
-    "package_4_schema_readiness": (
+    "candidate_schema_readiness": (
         '"schema_current"' in main and "SELECT version_num FROM alembic_version" in main
     ),
     "package_4_exact_sha_live_gate": (
@@ -42,6 +43,11 @@ checks = {
         and "postgres_0004_release_proof.py verify" in postgres_gate
     ),
     "package_4_learning_preflight": "--plan" in learning_cli,
+    "package_5_proof_engine": (
+        (root / "app/services/package5_proof.py").exists()
+        and '@app.get("/proof/package-5")' in main
+        and '@app.post("/proof/package-5/vuos")' in main
+    ),
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
     "mcp_live_utility": '"name": "get_live_utility"' in main,
@@ -84,13 +90,11 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review of the exact Package 4 candidate before merge or production action.",
-    "Verify the live alembic_version read-only; do not infer it from deployed source.",
-    "Resolve the free production database durability/expiry blocker with explicit cost approval.",
-    "Verify a real production backup/recovery point, restore access and retention before migration.",
-    "Obtain an explicit Human Gate before exact-SHA deploy, migration or first production learning cycle.",
-    "Obtain the first genuinely external M2/M3 journey; AION-operated or synthetic identities must not be counted as external adoption.",
-    "Prove external activation and return before expanding distribution.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 5 candidate.",
+    "Run AION CI and the PostgreSQL 18 release gate on the exact pushed Package 5 SHA.",
+    "Do not deploy or migrate Package 5 without a separate production Human Gate.",
+    "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
+    "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",
 ]
 

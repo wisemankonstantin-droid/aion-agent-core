@@ -505,3 +505,139 @@ class LearningOpportunityCandidate(Base):
     margin_feasibility: Mapped[str | None] = mapped_column(String(40), nullable=True)
     last_evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Package5ParticipationAssessment(Base):
+    __tablename__ = "package5_participation_assessments"
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN ('aion_operated_internal', 'synthetic_probe_test', "
+            "'coordinated_design_partner', 'operator_invited_coordinated_test', "
+            "'independent_external_candidate', 'independent_external_countable')",
+            name="ck_package5_participation_classification",
+        ),
+        CheckConstraint(
+            "evidence_authority = 'operator_reviewed_evidence'",
+            name="ck_package5_participation_operator_authority",
+        ),
+        UniqueConstraint("assessment_id", name="uq_package5_participation_assessment_id"),
+        UniqueConstraint(
+            "canonical_agent_id", "idempotency_key",
+            name="uq_package5_participation_agent_idempotency",
+        ),
+        Index(
+            "ix_package5_participation_agent_assessed",
+            "canonical_agent_id", "assessed_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    canonical_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    assessment_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    classification: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(96), nullable=False)
+    evidence_authority: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_reference_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    evidence_summary_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    release_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Package5VuoProof(Base):
+    __tablename__ = "package5_vuo_proofs"
+    __table_args__ = (
+        CheckConstraint(
+            "goal_kind = 'verify_external_agent_callability'",
+            name="ck_package5_vuo_goal_kind_v1",
+        ),
+        CheckConstraint(
+            "product_goal = 'find_verify_invoke_external_a2a_agent'",
+            name="ck_package5_vuo_product_goal_v1",
+        ),
+        CheckConstraint(
+            "delivered_outcome = 'verified_external_agent_callability'",
+            name="ck_package5_vuo_delivered_outcome_v1",
+        ),
+        CheckConstraint(
+            "usefulness_state = 'requester_confirmed'",
+            name="ck_package5_vuo_usefulness_state_v1",
+        ),
+        CheckConstraint(
+            "usefulness_method = 'authenticated_requester_attestation'",
+            name="ck_package5_vuo_usefulness_method_v1",
+        ),
+        CheckConstraint(
+            "usefulness_evidence = 'requester_confirms_goal_was_useful'",
+            name="ck_package5_vuo_usefulness_evidence_v1",
+        ),
+        CheckConstraint(
+            "participation_classification_at_submission IN "
+            "('unknown_not_proven', 'aion_operated_internal', 'synthetic_probe_test', "
+            "'coordinated_design_partner', 'operator_invited_coordinated_test', "
+            "'independent_external_candidate', 'independent_external_countable')",
+            name="ck_package5_vuo_submission_classification",
+        ),
+        CheckConstraint(
+            "participation_classification_at_submission != 'independent_external_countable' "
+            "OR participation_assessment_id IS NOT NULL",
+            name="ck_package5_vuo_countable_has_assessment",
+        ),
+        CheckConstraint(
+            "cost_state IN ('unknown', 'known_zero', 'known_nonzero')",
+            name="ck_package5_vuo_cost_state",
+        ),
+        CheckConstraint(
+            "(cost_state = 'unknown' AND cost_amount IS NULL AND cost_currency IS NULL) OR "
+            "(cost_state IN ('known_zero', 'known_nonzero') AND cost_amount IS NOT NULL "
+            "AND cost_currency IS NOT NULL)",
+            name="ck_package5_vuo_cost_material",
+        ),
+        UniqueConstraint("vuo_id", name="uq_package5_vuo_id"),
+        UniqueConstraint("action_run_id", name="uq_package5_vuo_action_run"),
+        UniqueConstraint(
+            "canonical_requester_agent_id", "idempotency_key",
+            name="uq_package5_vuo_requester_idempotency",
+        ),
+        Index(
+            "ix_package5_vuo_requester_created",
+            "canonical_requester_agent_id", "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vuo_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    canonical_requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False
+    )
+    requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False
+    )
+    action_run_id: Mapped[int] = mapped_column(
+        ForeignKey("action_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    goal_kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    product_goal: Mapped[str] = mapped_column(String(500), nullable=False)
+    delivered_outcome: Mapped[str] = mapped_column(String(1000), nullable=False)
+    outcome_verification_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    outcome_verification_method: Mapped[str] = mapped_column(String(80), nullable=False)
+    usefulness_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    usefulness_method: Mapped[str] = mapped_column(String(80), nullable=False)
+    usefulness_evidence: Mapped[str] = mapped_column(String(500), nullable=False)
+    semantic_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    eligibility_reason_code: Mapped[str] = mapped_column(String(96), nullable=False)
+    participation_assessment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("package5_participation_assessments.id", ondelete="RESTRICT"), nullable=True
+    )
+    participation_classification_at_submission: Mapped[str] = mapped_column(String(64), nullable=False)
+    participation_reason_at_submission: Mapped[str] = mapped_column(String(96), nullable=False)
+    cost_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    cost_amount: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cost_currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    release_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

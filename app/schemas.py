@@ -211,3 +211,21 @@ class AgentEvidenceSubmission(BaseModel):
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("observed_at must include a timezone")
         return value
+
+
+class Package5VuoSubmission(BaseModel):
+    action_id: str = Field(min_length=36, max_length=36)
+    goal_kind: Literal["verify_external_agent_callability"]
+    product_goal: Literal["find_verify_invoke_external_a2a_agent"]
+    delivered_outcome: Literal["verified_external_agent_callability"]
+    usefulness_confirmed: Literal[True]
+    usefulness_evidence: Literal["requester_confirms_goal_was_useful"]
+
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+    @field_validator("action_id", "product_goal", "delivered_outcome", "usefulness_evidence")
+    @classmethod
+    def package5_no_control_characters(cls, value: str) -> str:
+        if any(ord(character) < 32 and character not in "\n\t" for character in value):
+            raise ValueError("control characters are not allowed")
+        return value

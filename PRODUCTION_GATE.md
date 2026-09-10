@@ -1,5 +1,12 @@
 # Package 4 controlled production release gate
 
+> Historical completed gate. Package 4 is now live at application SHA
+> `e52c5db99b30feb18ca06ace567b4668c8019bde`, deploy
+> `dep-dah96uu1egvs73d4gvh0`, on the prepared Neon PostgreSQL Free database at
+> schema `0009_continuous_learning_v1`. See
+> `PACKAGE_4_PRODUCTION_CLOSEOUT.md`. This file grants no Package 5 production
+> authorization.
+
 This is the canonical production gate for moving the HQ-accepted Package 1–3B
 stack from deployed SHA `419f11b2a34fdec26269a216de65e9dcf955e963` to a
 future exact approved release SHA. Preparing or merging a candidate does not

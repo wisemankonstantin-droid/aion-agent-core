@@ -14,7 +14,8 @@ remain zero until qualifying production evidence actually exists.
 
 ## Baseline
 
-Repository branch base: `f51eb2c65a3f199d55673963cbc3532a3e1b7c36`.
+Verified repository branch starting point:
+`8d508f5944c0810e5e52bed88645128857b369a0`.
 Package 4 production application SHA:
 `e52c5db99b30feb18ca06ace567b4668c8019bde`.
 Production schema before Package 5: `0009_continuous_learning_v1`.

@@ -105,6 +105,8 @@ def verify_0009_and_rollback_compatibility() -> None:
         "learning_source_watch_states",
         "agent_evidence_claims",
         "learning_opportunity_candidates",
+        "package5_participation_assessments",
+        "package5_vuo_proofs",
     }
     schema = inspect(engine)
     assert expected_tables <= set(schema.get_table_names())
@@ -126,7 +128,7 @@ def verify_0009_and_rollback_compatibility() -> None:
 
     with SessionLocal.begin() as db:
         revision = db.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0009_continuous_learning_v1", revision
+        assert revision == "0010_package5_proof_v1", revision
         requester = db.get(models.Agent, LEGACY_AGENT_IDS[0])
         provider = db.get(models.Agent, LEGACY_AGENT_IDS[1])
         assert requester.external_id == "package4-legacy-requester"

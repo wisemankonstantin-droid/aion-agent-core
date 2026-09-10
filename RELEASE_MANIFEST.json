@@ -1,51 +1,34 @@
 {
   "product": "AION Agent Core",
-  "package": "Package 4 - Controlled Production Live Utility Release",
-  "status": "release_candidate_pending_hq_review_not_merged_not_deployed",
-  "task_start_main_sha": "d9d4b699b688663ec46ee84fafb5c4d814fd4799",
+  "package": "Package 5 - Independent External Agent Proof V1",
+  "status": "implementation_active_local_candidate_not_pushed_not_merged_not_deployed",
+  "task_start_sha": "8d508f5944c0810e5e52bed88645128857b369a0",
   "application_version": "0.7.1",
-  "expected_database_migration_head": "0009_continuous_learning_v1",
+  "candidate_database_migration_head": "0010_package5_proof_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": "dep-dafuu3v40ujc73d3fks0",
-    "deployed_git_sha": "419f11b2a34fdec26269a216de65e9dcf955e963",
-    "source_contains_migrations_through": "0004_reputation_idempotency",
-    "actual_live_database_revision": "unknown_read_only_verification_required",
-    "autodeploy": "off"
+    "deploy_id": "dep-dah96uu1egvs73d4gvh0",
+    "deployed_git_sha": "e52c5db99b30feb18ca06ace567b4668c8019bde",
+    "persistence": "prepared Neon PostgreSQL Free",
+    "actual_live_database_revision": "0009_continuous_learning_v1",
+    "autodeploy": "off",
+    "infrastructure_spend_usd": 0
   },
-  "accepted_packages": {
-    "package_3": "hq_accepted_merged_not_deployed",
-    "package_3b": "hq_accepted_merged_not_deployed",
-    "package_3b_corrective_sha": "8e6b4a19263dcb687d20d6240f8752779685b90d",
-    "package_3b_acceptance_closeout_sha": "d9d4b699b688663ec46ee84fafb5c4d814fd4799"
+  "package_5_proof_state": {
+    "independent_agents_proven": 0,
+    "qualifying_vuos_proven": 0,
+    "qualifying_returns_proven": 0,
+    "basis": "engineering candidate and tests are not production commercial proof"
   },
-  "required_release_gates": [
-    "AION CI on exact reviewed SHA",
-    "PostgreSQL 18 pre-production release gate on exact reviewed SHA",
-    "durable production database and acceptable uptime confirmed",
-    "real backup or snapshot and restore readiness confirmed",
-    "read-only live alembic_version recorded and matched to a tested start state",
-    "explicit human authorization for exact production actions",
-    "runtime exact release SHA and schema-current readiness verified",
-    "non-mutating REST, MCP, A2A and Live Utility smoke passed",
-    "separately authorized first one-shot production learning cycle observed"
+  "required_candidate_gates": [
+    "Package 5 targeted and full test suites",
+    "fresh and 0009-to-0010 additive migration proof",
+    "PostgreSQL 18 release gate on exact reviewed SHA",
+    "source integrity, readiness, secret, compile, dependency and diff checks",
+    "HQ independent review and exact-SHA push authorization"
   ],
-  "hard_stop_blockers": {
-    "database_plan": "free",
-    "externally_reported_database_expiration": "2026-10-06T08:14:43.088322Z",
-    "production_database_durable": false,
-    "production_backup_verified": false,
-    "production_restore_rehearsed": false,
-    "production_database_revision_verified": false
-  },
-  "release_identity": {
-    "primary_source": "RENDER_GIT_COMMIT",
-    "fallback_source": "AION_RELEASE_SHA",
-    "required_format": "exact 40-hex Git commit",
-    "moving_branch_is_sufficient": false
-  },
   "production_action_authorized_by_candidate": false,
-  "live_state_authority": "Verify GitHub, Render and database state at the Human Gate; this manifest does not contain its own future commit SHA."
+  "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. This manifest does not claim its own future commit SHA."
 }

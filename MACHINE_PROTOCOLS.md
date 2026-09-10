@@ -6,8 +6,8 @@
 also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
-`GET /readiness` is read-only and non-mutating. It checks database
-connectivity, the exact Alembic head `0009_continuous_learning_v1`, A2A runtime
+`GET /readiness` is read-only and non-mutating. The Package 5 candidate checks
+database connectivity, the exact Alembic head `0010_package5_proof_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
@@ -31,6 +31,16 @@ The HQ-accepted Package 3B implementation adds authenticated
 `POST /learning/evidence`. It requires `Idempotency-Key`, accepts only a bounded
 schema and is covered by the outer 64 KiB streaming body limiter.
 
+The Package 5 candidate adds authenticated `POST /proof/package-5/vuos` and
+public read-only `GET /proof/package-5`. The write accepts only one fixed V1
+product goal/outcome/usefulness vocabulary, requires `Idempotency-Key`, and
+binds the authenticated canonical requester to an existing requester-owned
+Package 3 ActionRun. It cannot accept a participation classification, URL,
+remote response, cost, release identity or timestamp. The read model exposes
+bounded counts, evidence/reason breakdowns, qualifying record references,
+known-zero versus unknown cost and milestone progress without changing
+historical `/stats` or `/funnel` semantics.
+
 ## MCP 2026-07-28
 Single stateless POST endpoint: `/mcp`. The implementation validates protocol/client metadata and mirrored HTTP headers, exposes discovery/list/call, and keeps authentication in the normal Authorization header for protected tools.
 
@@ -45,6 +55,36 @@ argument equivalent to the REST header.
 The authenticated `submit_learning_evidence` tool uses the same Package 3B
 service as REST. Its `idempotency_key` argument is equivalent to the REST
 header. Bearer authentication remains in the HTTP Authorization header.
+
+The public read-only `get_package5_proof` tool accepts no arguments and returns
+the same bounded Package 5 evidence snapshot as REST. Participation assessment
+has no public REST, MCP or A2A write surface; the V1 path is an explicit guarded
+operator command whose evidence reference and summary are stored only as
+digests.
+
+## Package 5 proof semantics
+
+Package 5 independence is separate from logical-identity strength. A logical
+identity is countable only after operator-reviewed evidence classifies it as
+`independent_external_countable`; configured AION-operated identities and any
+internal/synthetic/probe/test marker on a duplicate raw row override that
+classification. Unknown, candidate, design-partner and invited/coordinated
+classifications are explicit and non-countable. Client attribution, name,
+description, endpoint and external ID never self-promote an identity.
+
+A qualifying VUO requires countable participation both when the VUO candidate
+is recorded and when proof is read, a completed requester-owned Package 3
+action, verified callability proof and ActionVerification, plus a distinct
+authenticated requester confirmation using the fixed V1 usefulness evidence.
+Callability alone never auto-converts to a VUO. Usefulness is requester-
+confirmed evidence, not third-party verification.
+
+The bounded V1 return event is a later distinct authenticated ActionRun for the
+same canonical identity after the configured server-time threshold. Replays,
+`last_seen_at`, health/readiness/status/telemetry calls, machine-entry traffic
+and client timestamps do not qualify. This operational definition does not
+claim psychological intent. Package 5 adds no A2A write adapter; existing A2A
+behavior is unchanged.
 
 ## Package 3B agent-evidence intake
 

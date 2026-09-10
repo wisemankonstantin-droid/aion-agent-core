@@ -173,7 +173,7 @@ independent adoption, a verified external VUO, learning execution or payment.
 Package 4 does not claim independent external adoption, revenue, payment
 settlement or a real external VUO. Those remain future evidence gates.
 
-### Package 5 — NEXT; Independent external-agent proof
+### Package 5 — ACTIVE; Independent external-agent proof V1
 
 Prove the first genuine independent external-agent VUO and voluntary return.
 Begin limited design-partner and test-agent contact only as clearly labelled
@@ -195,6 +195,14 @@ No paid acquisition, paid external provider, payment activation or unfunded
 variable-cost utility is authorized merely by starting Package 5. The current
 zero-infrastructure-spend constraint remains in force until commercial evidence
 supports a separately approved change.
+
+The current repository implementation is an engineering candidate only. It
+introduces explicit operator-reviewed participation classes at canonical
+logical-identity level, a separate authenticated requester-confirmed VUO
+candidate bound to existing ActionRun/Outcome/Verification evidence, and a
+later distinct authenticated ActionRun as the bounded V1 return event. Unknown,
+internal, synthetic, coordinated and candidate-only identities remain excluded.
+No production Package 5 proof, outreach or learning cycle is claimed.
 
 ### Package 6 — Economic Execution + Real Settlement
 

@@ -9,7 +9,7 @@ import pytest
 
 from app.db import SessionLocal
 from app import a2a_official, main
-from app.services import action_engine, external_registry, learning_engine, lifecycle, opportunities
+from app.services import action_engine, external_registry, learning_engine, lifecycle, opportunities, package5_proof
 from scripts import acquisition_scan
 
 
@@ -188,7 +188,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -208,13 +208,39 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
     assert "autoDeploy: true" not in render
 
 
-def test_package4_manifest_is_current_and_does_not_claim_production_actions():
+def test_package5_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["package"].startswith("Package 4")
-    assert manifest["task_start_main_sha"] == "d9d4b699b688663ec46ee84fafb5c4d814fd4799"
-    assert manifest["expected_database_migration_head"] == "0009_continuous_learning_v1"
-    assert manifest["production_baseline"]["deployed_git_sha"] == "419f11b2a34fdec26269a216de65e9dcf955e963"
-    assert manifest["production_baseline"]["actual_live_database_revision"].startswith("unknown")
-    assert manifest["hard_stop_blockers"]["production_backup_verified"] is False
+    assert manifest["package"].startswith("Package 5")
+    assert manifest["task_start_sha"] == "8d508f5944c0810e5e52bed88645128857b369a0"
+    assert manifest["candidate_database_migration_head"] == "0010_package5_proof_v1"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "e52c5db99b30feb18ca06ace567b4668c8019bde"
+    assert manifest["production_baseline"]["deploy_id"] == "dep-dah96uu1egvs73d4gvh0"
+    assert manifest["production_baseline"]["actual_live_database_revision"] == "0009_continuous_learning_v1"
+    assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
+    assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0
+    assert manifest["package_5_proof_state"]["qualifying_returns_proven"] == 0
     assert manifest["production_action_authorized_by_candidate"] is False
     assert "final_candidate_sha" not in manifest
+
+
+def test_package5_has_one_shared_read_model_and_no_public_classification_write():
+    source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert main.package5_proof_snapshot is package5_proof.package5_proof_snapshot
+    assert source.count("package5_proof_snapshot(db)") == 2
+    assert '@app.get("/proof/package-5")' in source
+    assert '@app.post("/proof/package-5/vuos")' in source
+    assert "/proof/package-5/class" not in source
+    assert "record_participation_assessment(" not in source
+    assert '"/proof/package-5/vuos"' in source
+
+
+def test_package5_migration_and_postgres_0009_gate_are_wired():
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    migration = (ROOT / "alembic" / "versions" / "0010_package5_proof_v1.py").read_text(encoding="utf-8")
+    assert 'down_revision = "0009_continuous_learning_v1"' in migration
+    assert "codex/package-5-independent-external-agent-proof-v1" in workflow
+    assert "upgrade 0009_continuous_learning_v1" in workflow
+    assert "postgres_0009_package5_proof.py seed" in workflow
+    assert "postgres_0009_package5_proof.py verify" in workflow
+    workflow_data = yaml.load(workflow, Loader=yaml.BaseLoader)
+    assert "schedule" not in workflow_data["on"]

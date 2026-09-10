@@ -15,19 +15,23 @@
   `a92964e0b7d29eacae8016e6ea54f084f6f3a4bf`.
 - **Package 3B acceptance/merge and Package 4 task-start checkpoint:**
   `d9d4b699b688663ec46ee84fafb5c4d814fd4799`.
+- **Package 4 accepted production application checkpoint:**
+  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
+- **Package 5 implementation starting checkpoint:**
+  `8d508f5944c0810e5e52bed88645128857b369a0`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `419f11b2a34fdec26269a216de65e9dcf955e963`.
+  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **Live deploy:** `dep-dafuu3v40ujc73d3fks0`, deployed from main SHA
-  `419f11b2a34fdec26269a216de65e9dcf955e963`.
+- **Live deploy:** `dep-dah96uu1egvs73d4gvh0`, deployed from application SHA
+  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
   ZIP plus environment-backed runtime-patch architecture is historical and is
@@ -39,24 +43,21 @@
   `python -m pip install --require-hashes -r requirements.txt`.
 - **Start Command:**
   `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Database:** Render PostgreSQL `aion-agent-db`
-  (`dpg-daei1sv40ujc73faqr70-a`), PostgreSQL 18, Frankfurt. The public external
-  `ipAllowList` is empty. The current free plan externally reports an
-  expiration date of **2026-10-06**. This is a mandatory Package 4 production-
-  planning risk: durability, backup and reliable uptime must be resolved before
-  AION is relied on as a commercial production service.
+- **Database:** the prepared Neon PostgreSQL Free production database. Package
+  4 copied and verified the legacy dataset before cutover and preserved the
+  zero-infrastructure-spend boundary.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** unknown in this release process. The
-  deployed source includes migrations only through 0004, but that is not proof
-  of the live database revision. A future Human-Gated release requires a
-  read-only `alembic_version` check.
-- **Production recovery:** no current backup/snapshot, restore rehearsal, HA,
-  PITR, RPO or RTO has been verified by Package 4.
-- **Production boundary:** Packages 3 and 3B have not been deployed or migrated
-  in production. Production remains on the SHA above and AutoDeploy remains OFF.
+- **Production database revision:** `0009_continuous_learning_v1`, verified by
+  the Package 4 release closeout.
+- **Production recovery:** the Package 4 Neon manual recovery snapshot was
+  restored on a separate rehearsal branch and integrity-checked. Canonical
+  evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
+- **Production boundary:** Package 4 is deployed and live verified. Package 5
+  is repository work only; its `0010` migration and evidence model are not
+  deployed. Production remains on the SHA above and AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -95,9 +96,9 @@ subject checkpoints through additive migration
 Package 2 does not perform remote action, arbitrary invocation or requester-
 selected retrieval. Anonymous utility creates no Agent identity. Only an
 authenticated existing agent receives a durable personalized delta; anonymous
-results explicitly report that limitation. Production remains on deployed SHA
-`419f11b2a34fdec26269a216de65e9dcf955e963`, with no Package 2 production
-migration or deployment.
+results explicitly report that limitation. At Package 2 close, production
+remained on SHA `419f11b2a34fdec26269a216de65e9dcf955e963`; the later accepted
+Package 4 release now supplies the current production state recorded above.
 
 The pre-Package-3 audit corrections are **Done**, HQ-accepted and merged at
 `d8465a17522044c0349609e44ac7ccd9f0facf82`. They moved legacy external
@@ -110,7 +111,8 @@ the repository-state documentation model. Resulting-main AION CI run
 
 Package 3 is **implemented and independently HQ-accepted with zero known
 reproducible defects**. It is merged to main at
-`d2ddb13797915788a06ad1bf4266fea7683ab462` but is not deployed. The accepted implementation provides one
+`d2ddb13797915788a06ad1bf4266fea7683ab462` and was deployed through the
+accepted Package 4 release. The implementation provides one
 narrow authenticated and explicitly authorized public/no-credential A2A
 callability action: bounded discovery, deterministic safe selection, one fixed
 server-generated nonce challenge, verification and durable correlated history.
@@ -135,8 +137,8 @@ not independent adoption or external VUO evidence.
 ## Current Package 3B implementation
 
 Package 3B is **implemented and independently HQ-accepted with zero known
-reproducible defects**. Production deployment remains separate and has not
-occurred. The accepted implementation adds a one-shot bounded learning cycle,
+reproducible defects** and was deployed through Package 4. The accepted
+implementation adds a one-shot bounded learning cycle,
 durable selected-source watch/circuit coordination, authenticated REST/MCP
 agent-evidence intake, and deterministic demand/gap opportunity candidates.
 It watches only the configured official A2A and MCP release sources and reuses
@@ -189,23 +191,31 @@ Package 3B validation at this checkpoint:
   four prior blockers and accepted Package 3B with zero known reproducible
   defects. The documentation closeout was merged at
   `d9d4b699b688663ec46ee84fafb5c4d814fd4799`; resulting-main AION CI run
-  `34385252760` passed. Package 3B remains not deployed.
+  `34385252760` passed. Package 3B was subsequently production-released by
+  Package 4.
 
-## Current Package 4 release candidate
+## Current Package 4 production release
 
-Package 4 is a **release candidate pending HQ review**. It is not merged and
-not deployed. It adds release engineering only: validated runtime Git identity,
-schema-aware non-mutating readiness, exact-SHA manual Live Gate enforcement,
-an anonymous/non-mutating Package 1–3B smoke, zero-side-effect Package 3B
-learning preflight, a seeded PostgreSQL 18 `0004 -> 0009` preservation and
-rollback-compatibility gate, and the current production Human Gate/runbook.
+Package 4 is **Done, HQ accepted, merged, deployed and live verified** at
+application SHA `e52c5db99b30feb18ca06ace567b4668c8019bde` and Render deploy
+`dep-dah96uu1egvs73d4gvh0`. Production uses the prepared Neon PostgreSQL Free
+database at schema `0009_continuous_learning_v1`; AutoDeploy remains OFF and
+infrastructure spend remains $0. Backup/restore and live-smoke evidence is
+recorded in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 
-The expected head remains `0009_continuous_learning_v1`; Package 4 adds no
-migration. Production remains at deploy `dep-dafuu3v40ujc73d3fks0` and SHA
-`419f11b2a34fdec26269a216de65e9dcf955e963`. No live database revision,
-backup, restore readiness or database durability is claimed. The free database
-expiry remains an unresolved production Human Gate. No Package 5 work has
-started.
+## Current Package 5 implementation
+
+Package 5 is **Active**, not accepted, not merged and not deployed. The local
+candidate adds a truth-preserving evidence layer for operator-reviewed
+canonical participation classification, requester-scoped VUO candidates that
+reference existing Package 3 action evidence, and later meaningful return
+evidence. Its additive candidate migration is `0010_package5_proof_v1`.
+
+No current production row, historical row, test, fixture, synthetic probe,
+coordinated design partner or operator-invited test is claimed as Package 5
+commercial proof. The verified real counters remain zero unless qualifying
+production evidence is later created under the documented rules. Engineering
+tests do not establish independent adoption, a VUO or voluntary return.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -236,7 +246,8 @@ started.
 - HQ independently accepted the corrected Package 3 implementation at
   `b34ae9b3d792f96fb3c71710d727a1db56d78cb3` after AION CI run
   `34325607999` and PostgreSQL 18 release gate run `34325608008` both passed
-  on that exact SHA. It is merged and remains undeployed; production is untouched.
+  on that exact SHA. It was not yet deployed at Package 3 acceptance and was
+  subsequently production-released through the accepted Package 4 gate.
 - The HQ-accepted corrective implementation preserves structured discovery status internally
   so operational, rate, configuration and budget failures cannot be persisted
   as a factual `no_result`. Public discovery lists remain compatible and
@@ -257,9 +268,10 @@ Profile, product tiers, and future cost/VUO and CM/VUO evidence.
 
 This is documentation and architecture policy only. No payment rail,
 settlement, wallet, balance ledger, paid-provider execution, dynamic pricing or
-other economic runtime is implemented. Package 3B does not weaken these rules.
-Production remains intentionally unchanged. Live merge/main status must be
-verified directly from GitHub under the repository state rule above.
+other economic runtime is implemented. Package 3B and Package 5 do not weaken
+these rules. No economic runtime or payment activation has changed the Package
+4 production baseline above. Live merge/main status must be verified directly
+from GitHub under the repository state rule above.
 
 ## Package 2 validation
 
