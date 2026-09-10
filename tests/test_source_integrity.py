@@ -187,11 +187,13 @@ def test_package4_live_gate_is_manual_exact_sha_only():
 def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
     assert 'EXPECTED_SCHEMA_REVISION = "0009_continuous_learning_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
     assert "codex/package-4-controlled-production-release" in workflow
+    assert "sys.path.insert(0, str(ROOT))" in proof
 
 
 def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():

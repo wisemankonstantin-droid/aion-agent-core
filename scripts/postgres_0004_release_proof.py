@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
+import sys
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 LEGACY_AGENT_IDS = (41001, 41002)
