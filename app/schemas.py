@@ -55,9 +55,21 @@ class InteractionCreate(BaseModel):
     need_id: Optional[int] = Field(default=None, gt=0)
 
 class PaymentIntentCreate(BaseModel):
-    purpose: str = Field(min_length=1, max_length=120)
-    amount: str = Field(min_length=1, max_length=120)
-    protocol: str = Field(default="x402", min_length=1, max_length=40)
+    purpose: str = Field(min_length=1, max_length=120, pattern=r"^[^\x00-\x1f\x7f]+$")
+    amount: str = Field(
+        min_length=1,
+        max_length=32,
+        pattern=r"^(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,6})?$",
+    )
+    protocol: Literal["x402", "manual"] = "x402"
+    model_config = {"extra": "forbid"}
+
+
+class EconomicPreflightRequest(BaseModel):
+    product_sku: Literal["aion.cached.utility.v1", "aion.verified.callability.v1"]
+    currency: str = Field(min_length=3, max_length=16, pattern=r"^[A-Z][A-Z0-9]{2,15}$")
+    requester_max_price: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    model_config = {"extra": "forbid"}
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=160)

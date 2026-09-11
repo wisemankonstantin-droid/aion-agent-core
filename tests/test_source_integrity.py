@@ -9,7 +9,7 @@ import pytest
 
 from app.db import SessionLocal
 from app import a2a_official, main
-from app.services import action_engine, external_registry, learning_engine, lifecycle, opportunities, package5_proof
+from app.services import action_engine, economic_kernel, external_registry, learning_engine, lifecycle, opportunities, package5_proof
 from scripts import acquisition_scan
 
 
@@ -188,7 +188,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0011_economic_execution_kernel_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -208,20 +208,21 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
     assert "autoDeploy: true" not in render
 
 
-def test_package5c_manifest_has_current_production_baseline_and_no_fake_proof():
+def test_package6a_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["package"].startswith("Package 5C")
-    assert manifest["task_start_sha"] == "a97a7898e7a72d70fbe5cc01735a4046fd2afc94"
-    assert manifest["candidate_database_migration_head"] == "0010_package5_proof_v1"
-    assert manifest["production_baseline"]["deployed_git_sha"] == "a97a7898e7a72d70fbe5cc01735a4046fd2afc94"
-    assert manifest["production_baseline"]["deploy_id"] == "dep-dahff76743jc73cod9g0"
-    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_5c_task_baseline"
+    assert manifest["package"].startswith("Package 6A")
+    assert manifest["task_start_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
+    assert manifest["candidate_database_migration_head"] == "0011_economic_execution_kernel_v1"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
+    assert manifest["production_baseline"]["deploy_id"] == "dep-dahgei67bikc73fq0g3g"
+    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_6a_task_baseline"
     assert manifest["production_baseline"]["actual_live_database_revision"] == "0010_package5_proof_v1"
     assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_returns_proven"] == 0
     assert manifest["production_action_authorized_by_candidate"] is False
     assert manifest["package_5_semantics_changed_by_candidate"] is False
+    assert not any(manifest["package_6a_money_state"].values())
     assert "final_candidate_sha" not in manifest
 
 
@@ -240,7 +241,30 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
     assert '"available": False' in journey_source
     assert 'action == "verify_external_callability"' not in a2a_source
     assert 'action == "submit_package5_vuo"' not in a2a_source
-    assert not any(name.startswith("0011_") for name in migration_names)
+    assert "0011_economic_execution_kernel_v1.py" in migration_names
+
+
+def test_package6a_kernel_is_single_shared_disabled_money_boundary():
+    main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    migration = (ROOT / "alembic" / "versions" / "0011_economic_execution_kernel_v1.py").read_text(encoding="utf-8")
+
+    assert economic_kernel.REAL_MONEY_EXECUTION_ENABLED is False
+    assert main.create_preflight is economic_kernel.create_preflight
+    assert main.get_operation is economic_kernel.get_operation
+    assert main_source.count("create_preflight(") == 2
+    assert "codex/package-6a-economic-execution-kernel-v1" in workflow
+    assert "0011_economic_execution_kernel_v1" in workflow
+    assert "upgrade 0010_package5_proof_v1" in workflow
+    assert "postgres_0010_economic_kernel_proof.py seed" in workflow
+    assert "postgres_0010_economic_kernel_proof.py verify" in workflow
+    assert 'revision = "0011_economic_execution_kernel_v1"' in migration
+    assert 'down_revision = "0010_package5_proof_v1"' in migration
+    assert "INSERT INTO economic_operations" not in migration
+    assert "payment_intents" not in migration
+    for action in ("economic_preflight", "payment_authorized", "funds_reserved", "settled"):
+        assert f'action == "{action}"' not in a2a_source
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():

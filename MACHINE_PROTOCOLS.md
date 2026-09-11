@@ -6,12 +6,14 @@
 also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
-`GET /readiness` is read-only and non-mutating. The Package 5 implementation checks
-database connectivity, the exact Alembic head `0010_package5_proof_v1`, A2A runtime
+`GET /readiness` is read-only and non-mutating. The Package 6A repository candidate checks
+database connectivity, the exact Alembic head `0011_economic_execution_kernel_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
 learning cycle and returns HTTP 503 when any required check fails.
+Production remains on Package 5C and schema `0010_package5_proof_v1`; the
+candidate head has not been deployed or applied there.
 
 ## REST
 Complete interface for identity, capabilities, marketplace writes, matching, interactions, telemetry and payment intents.
@@ -41,6 +43,18 @@ bounded counts, evidence/reason breakdowns, qualifying record references,
 known-zero versus unknown cost and milestone progress without changing
 historical `/stats` or `/funnel` semantics.
 
+Package 6A adds authenticated `POST /economic/preflight` and requester-scoped
+read-only `GET /economic/operations/{operation_id}`. Preflight selects only a
+trusted internal product profile; requester input may select the SKU/currency
+and state a maximum acceptable price, but cannot assert price, provider cost,
+rights, authorization, reserve, actual spend, settlement or revenue. Both
+responses are private/no-store and use the no-lifecycle-touch credential path,
+so quote/status polling creates no Package 5 activity, VUO or return evidence.
+The 64 KiB stream limiter covers preflight and legacy payment-intent writes.
+Free preflight creation also has a bounded process-local per-agent MVP guard
+(default 30/minute, at most 1,024 retained buckets); status reads remain
+read-only and MCP retains its existing shared request guard.
+
 ## MCP 2026-07-28
 Single stateless POST endpoint: `/mcp`. The implementation validates protocol/client metadata and mirrored HTTP headers, exposes discovery/list/call, and keeps authentication in the normal Authorization header for protected tools.
 
@@ -61,6 +75,12 @@ the same bounded Package 5 evidence snapshot as REST. Participation assessment
 has no public REST, MCP or A2A write surface; the V1 path is an explicit guarded
 operator command whose evidence reference and summary are stored only as
 digests.
+
+Authenticated `economic_preflight` and `get_economic_operation` mirror the
+Package 6A REST service and retain the same requester scope, trusted-input and
+no-lifecycle-touch semantics. MCP does not expose state transitions, mark-paid,
+reserve, execution, settlement or refund operations. Bearer credentials remain
+in the HTTP Authorization header.
 
 ## Package 5 proof semantics
 
@@ -241,4 +261,12 @@ V1 inbound action surfaces are REST and MCP. An A2A adapter is intentionally
 deferred; bearer credentials are never accepted inside A2A message text.
 
 ## Payments
-`/payments/intents` records intent. `/donations/options` exposes configured machine-readable rails. Settlement is not implemented or claimed until a real network/asset/recipient/facilitator verification path exists.
+`/payments/intents` records legacy intent-only scaffolding. Its strict bounded
+request does not create Package 6A authorization, reserve, payment, settlement,
+revenue or paid-VUO evidence, and migration `0011` performs no historical
+promotion. `/donations/options` exposes configured machine-readable rail
+options only. The Package 6A kernel persists immutable quote and transition
+evidence, but its real-money adapter is disabled and no public transition
+surface exists. A2A advertises no credential-bearing economic mutation.
+Settlement is not implemented or claimed until a separately authorized real
+network/asset/recipient/facilitator verification path exists.

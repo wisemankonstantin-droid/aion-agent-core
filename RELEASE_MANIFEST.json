@@ -1,17 +1,17 @@
 {
   "product": "AION Agent Core",
-  "package": "Package 5C - Participation Readiness V1",
-  "status": "repository_candidate_under_hq_review_not_merged_not_deployed",
-  "task_start_sha": "a97a7898e7a72d70fbe5cc01735a4046fd2afc94",
+  "package": "Package 6A - Economic Execution Kernel V1",
+  "status": "local_repository_candidate_not_pushed_not_merged_not_deployed",
+  "task_start_sha": "a2a53ff61ede7597651b2f1bac1ca3db809855f9",
   "application_version": "0.7.1",
-  "candidate_database_migration_head": "0010_package5_proof_v1",
+  "candidate_database_migration_head": "0011_economic_execution_kernel_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": "dep-dahff76743jc73cod9g0",
-    "deploy_id_status": "hq_verified_package_5c_task_baseline",
-    "deployed_git_sha": "a97a7898e7a72d70fbe5cc01735a4046fd2afc94",
+    "deploy_id": "dep-dahgei67bikc73fq0g3g",
+    "deploy_id_status": "hq_verified_package_6a_task_baseline",
+    "deployed_git_sha": "a2a53ff61ede7597651b2f1bac1ca3db809855f9",
     "persistence": "prepared Neon PostgreSQL Free",
     "actual_live_database_revision": "0010_package5_proof_v1",
     "autodeploy": "off",
@@ -21,11 +21,18 @@
     "independent_agents_proven": 0,
     "qualifying_vuos_proven": 0,
     "qualifying_returns_proven": 0,
-    "basis": "Package 5 engineering is live, but no qualifying independent production VUO or return is claimed; Package 5B guidance and tests are not commercial proof"
+    "basis": "Package 5 engineering, Package 5B and Package 5C are live, but no qualifying independent production VUO or return is claimed; Package 6A engineering and tests are not commercial proof"
+  },
+  "package_6a_money_state": {
+    "real_money_adapter_enabled": false,
+    "real_authorization_or_reserve": false,
+    "real_provider_spend": false,
+    "real_settlement_or_revenue": false,
+    "legacy_payment_intent_is_funding_evidence": false
   },
   "required_candidate_gates": [
-    "Package 5C participation readiness, Package 5B conversion and full regression suites",
-    "Alembic head remains exactly 0010_package5_proof_v1 with no new migration",
+    "Package 6A economics, idempotency, state-machine, security and full regression suites",
+    "Alembic fresh, 0010-to-0011, repeated-upgrade, check and PostgreSQL 18 gates",
     "AION CI on the exact final reviewed SHA",
     "source integrity, readiness, secret, compile, dependency and diff checks",
     "HQ independent review of the final corrective SHA"

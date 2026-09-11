@@ -641,3 +641,145 @@ class Package5VuoProof(Base):
     cost_currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
     release_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EconomicOperation(Base):
+    __tablename__ = "economic_operations"
+    __table_args__ = (
+        UniqueConstraint("operation_id", name="uq_economic_operations_operation_id"),
+        UniqueConstraint(
+            "requester_agent_id", "idempotency_key",
+            name="uq_economic_operations_requester_idempotency",
+        ),
+        CheckConstraint("maximum_attempts > 0", name="ck_economic_operations_attempts_positive"),
+        CheckConstraint(
+            "expected_margin_bps >= 0 AND expected_margin_bps <= 10000",
+            name="ck_economic_operations_margin_bps",
+        ),
+        CheckConstraint(
+            "commercial_rights_state IN ('allowed', 'unknown', 'prohibited')",
+            name="ck_economic_operations_rights",
+        ),
+        CheckConstraint(
+            "state IN ('quoted', 'payment_authorized', 'funds_reserved', "
+            "'execution_started', 'outcome_verified', 'settlement_ready', "
+            "'settled', 'reserve_released', 'failed', 'cancelled')",
+            name="ck_economic_operations_state",
+        ),
+        CheckConstraint(
+            "NOT funding_required OR NOT execution_eligible",
+            name="ck_economic_operations_no_unfunded_execution",
+        ),
+        CheckConstraint(
+            "parent_economic_operation_id IS NULL OR parent_economic_operation_id <> id",
+            name="ck_economic_operations_not_own_parent",
+        ),
+        CheckConstraint(
+            "state != 'payment_authorized' OR authorized_amount IS NOT NULL",
+            name="ck_economic_operations_authorized_state_evidence",
+        ),
+        CheckConstraint(
+            "state != 'funds_reserved' OR (authorized_amount IS NOT NULL AND reserved_amount IS NOT NULL)",
+            name="ck_economic_operations_reserved_state_evidence",
+        ),
+        CheckConstraint(
+            "state NOT IN ('execution_started', 'outcome_verified', 'settlement_ready', 'settled', 'reserve_released') "
+            "OR NOT funding_required OR reserved_amount IS NOT NULL",
+            name="ck_economic_operations_funded_execution_evidence",
+        ),
+        CheckConstraint(
+            "state NOT IN ('outcome_verified', 'settlement_ready', 'settled', 'reserve_released') "
+            "OR action_run_id IS NOT NULL",
+            name="ck_economic_operations_outcome_state_evidence",
+        ),
+        CheckConstraint(
+            "state NOT IN ('settlement_ready', 'settled', 'reserve_released') OR actual_cost IS NOT NULL",
+            name="ck_economic_operations_cost_state_evidence",
+        ),
+        CheckConstraint(
+            "state NOT IN ('settled', 'reserve_released') OR settlement_amount IS NOT NULL",
+            name="ck_economic_operations_settlement_state_evidence",
+        ),
+        CheckConstraint(
+            "state != 'reserve_released' OR released_amount IS NOT NULL",
+            name="ck_economic_operations_release_state_evidence",
+        ),
+        UniqueConstraint("action_run_id", name="uq_economic_operations_action_run"),
+        Index("ix_economic_operations_requester_created", "requester_agent_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    operation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False
+    )
+    parent_economic_operation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("economic_operations.id", ondelete="RESTRICT"), nullable=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    product_sku: Mapped[str] = mapped_column(String(120), nullable=False)
+    currency: Mapped[str] = mapped_column(String(16), nullable=False)
+    customer_price: Mapped[str] = mapped_column(String(48), nullable=False)
+    expected_variable_cost: Mapped[str] = mapped_column(String(48), nullable=False)
+    maximum_variable_cost: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    verification_cost: Mapped[str] = mapped_column(String(48), nullable=False)
+    payment_fee_allowance: Mapped[str] = mapped_column(String(48), nullable=False)
+    expected_total_cost: Mapped[str] = mapped_column(String(48), nullable=False)
+    maximum_total_spend: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    contribution_amount: Mapped[str] = mapped_column(String(48), nullable=False)
+    expected_margin_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_cost_per_verified_outcome: Mapped[str] = mapped_column(String(48), nullable=False)
+    maximum_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    commercial_rights_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    funding_required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    policy_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    execution_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    decision_reasons: Mapped[list] = mapped_column(JSON, nullable=False)
+    adapter_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    authorized_amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    reserved_amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    actual_cost: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    settlement_amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    released_amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    action_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("action_runs.id", ondelete="RESTRICT"), nullable=True
+    )
+    release_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quote_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EconomicTransition(Base):
+    __tablename__ = "economic_transitions"
+    __table_args__ = (
+        UniqueConstraint("transition_id", name="uq_economic_transitions_transition_id"),
+        UniqueConstraint(
+            "economic_operation_id", "sequence",
+            name="uq_economic_transitions_operation_sequence",
+        ),
+        UniqueConstraint(
+            "economic_operation_id", "idempotency_key",
+            name="uq_economic_transitions_operation_idempotency",
+        ),
+        Index("ix_economic_transitions_operation_created", "economic_operation_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transition_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    economic_operation_id: Mapped[int] = mapped_column(
+        ForeignKey("economic_operations.id", ondelete="RESTRICT"), nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    transition_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    from_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(96), nullable=False)
+    evidence_authority: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -211,16 +211,27 @@ the existing path explicit across machine-facing entry surfaces:
 Package 5B adds guidance only. It does not alter evidence semantics, add an A2A
 protected-action/VUO-write adapter, introduce a migration or begin Package 6.
 
-Package 5B is merged and production-live at the HQ-verified checkpoint
-`a97a7898e7a72d70fbe5cc01735a4046fd2afc94`, deploy
-`dep-dahff76743jc73cod9g0`. Package 5C is the local bounded participation-readiness
-corrective: after join/key storage, read self-status via REST/MCP without
+Package 5B is merged and production-live at its accepted checkpoint. Package
+5C is also merged and production-live at
+`a2a53ff61ede7597651b2f1bac1ca3db809855f9`, deploy
+`dep-dahgei67bikc73fq0g3g`. Its bounded participation-readiness handshake lets
+an agent, after join/key storage, read self-status via REST/MCP without
 lifecycle changes; if non-countable, preserve state and wait for review before
 seeking a qualifying VUO. Once countable, follow the existing action/evidence/
 usefulness sequence. This is not a gate on public utility or joining, a review
 request queue, a classification write path, or commercial proof.
 
 ### Package 6 — Economic Execution + Real Settlement
+
+Package 6A is the active repository-only kernel slice. It implements trusted
+immutable quote inputs, exact-decimal policy decisions, the 40% hard margin
+floor, known maximum and recursive child-spend bounds, requester-scoped
+idempotency, an auditable state/transition model and authenticated REST/MCP
+preflight/status. Its real-money adapter is fixed disabled: no authorization,
+reserve, spend, settlement or paid-provider call is performed or claimed.
+Candidate migration `0011_economic_execution_kernel_v1` is additive and has not
+been applied to production. Package 6B/real-rail activation has not started and
+requires separate acceptance and production Human Gates.
 
 Implement the controlled economic path:
 

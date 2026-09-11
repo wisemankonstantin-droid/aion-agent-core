@@ -14,6 +14,10 @@ _EVIDENCE_LIMIT = max(1, int(os.getenv("AION_EVIDENCE_RATE_PER_MINUTE", "20")))
 _EVIDENCE_AGENT_BUCKETS = 1024
 _evidence_events = OrderedDict()
 _evidence_lock = Lock()
+_ECONOMIC_PREFLIGHT_LIMIT = max(1, int(os.getenv("AION_ECONOMIC_PREFLIGHT_RATE_PER_MINUTE", "30")))
+_ECONOMIC_AGENT_BUCKETS = 1024
+_economic_events = OrderedDict()
+_economic_lock = Lock()
 
 
 def _allow(events: deque, lock: Lock, limit: int) -> bool:
@@ -67,3 +71,26 @@ def allow_evidence_submission(agent_id: int, now: float | None = None) -> bool:
 
 def configured_evidence_limit() -> int:
     return _EVIDENCE_LIMIT
+
+
+def allow_economic_preflight(agent_id: int, now: float | None = None) -> bool:
+    """Bound free durable quote creation per agent in the single-instance MVP."""
+
+    current = time.monotonic() if now is None else now
+    cutoff = current - _WINDOW_SECONDS
+    with _economic_lock:
+        events = _economic_events.pop(agent_id, deque())
+        while events and events[0] <= cutoff:
+            events.popleft()
+        if len(events) >= _ECONOMIC_PREFLIGHT_LIMIT:
+            _economic_events[agent_id] = events
+            return False
+        events.append(current)
+        _economic_events[agent_id] = events
+        while len(_economic_events) > _ECONOMIC_AGENT_BUCKETS:
+            _economic_events.popitem(last=False)
+        return True
+
+
+def configured_economic_preflight_limit() -> int:
+    return _ECONOMIC_PREFLIGHT_LIMIT

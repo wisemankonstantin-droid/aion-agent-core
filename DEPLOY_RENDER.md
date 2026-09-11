@@ -6,8 +6,8 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- HQ-verified Package 5B production SHA: `a97a7898e7a72d70fbe5cc01735a4046fd2afc94`
-- HQ-verified deploy: `dep-dahff76743jc73cod9g0`; verify live state again before
+- HQ-verified Package 5C production SHA: `a2a53ff61ede7597651b2f1bac1ca3db809855f9`
+- HQ-verified deploy: `dep-dahgei67bikc73fq0g3g`; verify live state again before
   any separately authorized production operation.
 - Status: live
 - Branch: `main`
@@ -21,8 +21,9 @@ The controlled direct-source cutover is complete and production is live.
   integrity-checked during Package 4 closeout.
 - Package 5 engineering is merged and live at schema
   `0010_package5_proof_v1`; its commercial proof counters remain legitimately
-  zero. Package 5B is merged and live; Package 5C is repository-only participation
-  readiness work and adds no migration.
+  zero. Package 5B and Package 5C are merged and live. Package 6A is
+  repository-only, adds candidate migration `0011_economic_execution_kernel_v1`,
+  and has not been deployed or applied to production.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

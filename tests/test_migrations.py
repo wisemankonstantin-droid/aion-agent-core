@@ -141,7 +141,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
             if index[2] == 1
         }
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert {
         "agents",
         "machine_entries",
@@ -203,7 +203,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert {
         "live_utility_sources",
         "live_utility_observations",
@@ -264,7 +264,7 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='migration-agent'"
         ).fetchone()
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
@@ -315,7 +315,7 @@ def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
         ).fetchone()
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
     assert ("requester_agent_id", "idempotency_key") in unique_columns
     assert ("action_id",) in unique_columns
@@ -352,7 +352,7 @@ def test_existing_0008_database_upgrades_to_continuous_learning_v1(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'"
         ).fetchone()
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert {
         "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
         "learning_opportunity_candidates",
@@ -401,7 +401,7 @@ def test_existing_0009_database_upgrades_additively_without_fake_package5_proof(
             for index in vuo_indexes if index[2] == 1
         }
 
-    assert revision == "0010_package5_proof_v1"
+    assert revision == "0011_economic_execution_kernel_v1"
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= tables
     assert assessments == vuos == 0
     assert sentinel == ("package-5-sentinel",)
@@ -410,3 +410,49 @@ def test_existing_0009_database_upgrades_additively_without_fake_package5_proof(
     assert "evidence_summary_digest" in assessment_columns
     assert "evidence_summary" not in assessment_columns
     assert ("participation_assessment_id", "package5_participation_assessments") in vuo_foreign_keys
+
+
+def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-6a-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+    _alembic(root, url, "upgrade", "0010_package5_proof_v1")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
+            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-6a-sentinel", "Package 6A Sentinel", "", "REST", 0,
+             "package-6a-hash", 0, "declared", 0, "2026-09-11 12:00:00"),
+        )
+        agent_id = connection.execute("SELECT id FROM agents WHERE external_id='package-6a-sentinel'").fetchone()[0]
+        connection.execute(
+            "INSERT INTO payment_intents (agent_id, purpose, amount, protocol, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (agent_id, "legacy-only", "untrusted-string", "manual", "created", "2026-09-11 12:00:00"),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+    with sqlite3.connect(database) as connection:
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        legacy = connection.execute("SELECT amount, status FROM payment_intents WHERE purpose='legacy-only'").fetchone()
+        operations = connection.execute("SELECT COUNT(*) FROM economic_operations").fetchone()[0]
+        transitions = connection.execute("SELECT COUNT(*) FROM economic_transitions").fetchone()[0]
+        indexes = connection.execute("PRAGMA index_list('economic_operations')").fetchall()
+        unique_columns = {
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in indexes if index[2] == 1
+        }
+        operation_foreign_keys = {
+            (row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('economic_operations')")
+        }
+    assert revision == "0011_economic_execution_kernel_v1"
+    assert {"economic_operations", "economic_transitions"} <= tables
+    assert legacy == ("untrusted-string", "created")
+    assert operations == transitions == 0
+    assert ("requester_agent_id", "idempotency_key") in unique_columns
+    assert ("operation_id",) in unique_columns
+    assert ("action_run_id",) in unique_columns
+    assert ("parent_economic_operation_id", "economic_operations") in operation_foreign_keys
+    assert ("action_run_id", "action_runs") in operation_foreign_keys

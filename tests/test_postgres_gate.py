@@ -4,6 +4,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text, select, func, event
@@ -11,7 +12,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
-from app.services import action_engine, external_registry, learning_engine, package5_proof
+from app.services import action_engine, economic_kernel, external_registry, learning_engine, package5_proof
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -20,6 +21,215 @@ from app.services.safe_http import FetchPolicy, FetchResult
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(os.getenv("AION_POSTGRES_GATE") != "1", reason="disposable PostgreSQL gate only")
+
+
+def _postgres_economic_agent(token: str) -> int:
+    with SessionLocal() as db:
+        row = models.Agent(
+            external_id="pg-economic-" + token,
+            name="PostgreSQL Economic " + token,
+            protocol="REST",
+            api_key_hash="pg-economic-hash-" + token,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row.id
+
+
+def test_postgres_concurrent_economic_preflight_idempotency_is_single(monkeypatch):
+    token = uuid.uuid4().hex
+    agent_id = _postgres_economic_agent(token)
+    barrier = threading.Barrier(2)
+    original_canonical = economic_kernel._canonical_agent_id
+
+    def synchronized_canonical(db, requested_agent_id):
+        result = original_canonical(db, requested_agent_id)
+        barrier.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(economic_kernel, "_canonical_agent_id", synchronized_canonical)
+
+    def worker():
+        with SessionLocal() as db:
+            return economic_kernel.create_preflight(
+                db, requester_agent_id=agent_id,
+                product_sku="aion.verified.callability.v1", requested_currency="USD",
+                requester_max_price=None, idempotency_key="pg-economic-idem-" + token,
+            )["operation_id"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        operation_ids = [future.result() for future in (pool.submit(worker), pool.submit(worker))]
+    assert operation_ids[0] == operation_ids[1]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.EconomicOperation).where(
+            models.EconomicOperation.requester_agent_id == agent_id
+        )) == 1
+
+
+class _PostgresVerifiedEconomicFixtureAdapter:
+    enabled = True
+
+    def verify(self, transition, evidence_reference):
+        authorities = {
+            "payment_authorized": "payment_rail_verified",
+            "funds_reserved": "payment_rail_verified",
+            "execution_started": "internal_executor_verified",
+            "settlement_ready": "provider_meter_verified",
+            "settled": "payment_rail_verified",
+        }
+        assert evidence_reference.startswith("pg-fixture:")
+        return {"authority": authorities[transition], "digest": "sha256:" + "e" * 64}
+
+
+def _postgres_verified_action(agent_id: int, token: str) -> str:
+    now = datetime.now(timezone.utc)
+    action_id = str(uuid.uuid4())
+    with SessionLocal() as db:
+        run = models.ActionRun(
+            action_id=action_id, requester_agent_id=agent_id,
+            idempotency_key="pg-economic-action-" + token,
+            request_digest="sha256:" + "1" * 64,
+            requested_query="package6a fixture", requested_candidate_identifier=None,
+            authorize_external_contact=True, state="completed", failure_class=None,
+            created_at=now, started_at=now, completed_at=now, duration_ms=1,
+            discovery_attempt_count=1, action_attempt_count=1,
+            request_bytes=1, response_bytes=1, cost_amount="6", cost_currency="USD",
+        )
+        db.add(run)
+        db.flush()
+        outcome = models.ActionOutcome(
+            action_run_id=run.id, outcome_type="callability_challenge",
+            protocol_response_received=True, callability_verified=True,
+            capability_verified=False, verified_outcome=True,
+            normalized_result_kind="a2a_message", failure_class=None,
+            response_digest="sha256:" + "2" * 64, protocol_task_id=None,
+            protocol_message_id="pg-economic-reply", proof_present=True,
+            completed_at=now,
+        )
+        db.add(outcome)
+        db.flush()
+        db.add(models.ActionVerification(
+            action_run_id=run.id, action_outcome_id=outcome.id,
+            verification_method="a2a_nonce_echo", state="verified",
+            challenge_digest="sha256:" + "3" * 64,
+            proof_digest="sha256:" + "4" * 64, verified_at=now,
+            details={"fixture": True},
+        ))
+        db.commit()
+    return action_id
+
+
+def test_postgres_concurrent_economic_transitions_are_single(monkeypatch):
+    token = uuid.uuid4().hex
+    agent_id = _postgres_economic_agent(token)
+    with SessionLocal() as db:
+        operation_id = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id,
+            product_sku="aion.verified.callability.v1", requested_currency="USD",
+            requester_max_price=None, idempotency_key="pg-transition-op-" + token,
+        )["operation_id"]
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    adapter = _PostgresVerifiedEconomicFixtureAdapter()
+
+    def concurrent_transition(state, *, amount=None, currency=None, action_id=None):
+        barrier = threading.Barrier(2)
+
+        def worker():
+            barrier.wait(timeout=10)
+            with SessionLocal() as db:
+                return economic_kernel.apply_economic_transition(
+                    db, requester_agent_id=agent_id, operation_id=operation_id,
+                    to_state=state, idempotency_key="pg-transition-" + state + token,
+                    adapter=adapter, evidence_reference="pg-fixture:" + state,
+                    amount=amount, currency=currency, action_id=action_id,
+                )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = [future.result() for future in (pool.submit(worker), pool.submit(worker))]
+        assert results[0]["operation_id"] == results[1]["operation_id"] == operation_id
+        assert sum(result["idempotent_replay"] for result in results) == 1
+
+    concurrent_transition("payment_authorized", amount="10", currency="USD")
+    concurrent_transition("funds_reserved", amount="10", currency="USD")
+    concurrent_transition("execution_started", amount="6", currency="USD")
+    action_id = _postgres_verified_action(agent_id, token)
+    concurrent_transition("outcome_verified", action_id=action_id)
+    concurrent_transition("settlement_ready", amount="6", currency="USD")
+    concurrent_transition("settled", amount="10", currency="USD")
+
+    with SessionLocal() as db:
+        operation = db.scalar(select(models.EconomicOperation).where(
+            models.EconomicOperation.operation_id == operation_id
+        ))
+        transitions = db.scalars(select(models.EconomicTransition).where(
+            models.EconomicTransition.economic_operation_id == operation.id
+        )).all()
+        assert operation.state == "settled"
+        assert len(transitions) == 7
+        for state in (
+            "quoted", "payment_authorized", "funds_reserved", "execution_started",
+            "outcome_verified", "settlement_ready", "settled",
+        ):
+            assert sum(row.to_state == state for row in transitions) == 1
+
+
+def test_postgres_parent_row_lock_prevents_concurrent_child_budget_escape(monkeypatch):
+    from dataclasses import replace
+
+    token = uuid.uuid4().hex
+    agent_id = _postgres_economic_agent(token)
+    parent_plan = replace(
+        economic_kernel.TRUSTED_PRODUCT_PROFILES["aion.verified.callability.v1"],
+        product_sku="pg.fixture.parent", expected_variable_cost="5", maximum_variable_cost="6",
+        verification_cost="0", maximum_total_spend_cap="6", direct_expected_cost_per_vuo="5",
+    )
+    child_plan = replace(
+        parent_plan, product_sku="pg.fixture.child", expected_variable_cost="4",
+        maximum_variable_cost="4", maximum_total_spend_cap="4", direct_expected_cost_per_vuo="4",
+    )
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, "pg.fixture.parent", parent_plan)
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, "pg.fixture.child", child_plan)
+    with SessionLocal() as db:
+        parent_id = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku="pg.fixture.parent",
+            requested_currency="USD", requester_max_price=None,
+            idempotency_key="pg-parent-" + token,
+        )["operation_id"]
+
+    barrier = threading.Barrier(2)
+    original_canonical = economic_kernel._canonical_agent_id
+
+    def synchronized_canonical(db, requested_agent_id):
+        result = original_canonical(db, requested_agent_id)
+        barrier.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(economic_kernel, "_canonical_agent_id", synchronized_canonical)
+
+    def worker(suffix):
+        with SessionLocal() as db:
+            try:
+                result = economic_kernel.create_preflight(
+                    db, requester_agent_id=agent_id, product_sku="pg.fixture.child",
+                    requested_currency="USD", requester_max_price=None,
+                    idempotency_key="pg-child-" + suffix + token,
+                    parent_operation_id=parent_id,
+                )
+                return "created", result["operation_id"]
+            except economic_kernel.EconomicKernelError as exc:
+                return exc.code, None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = [future.result() for future in (pool.submit(worker, "a"), pool.submit(worker, "b"))]
+    assert sorted(result[0] for result in results) == ["child_budget_exceeds_parent_remaining", "created"]
+    with SessionLocal() as db:
+        parent = db.scalar(select(models.EconomicOperation).where(models.EconomicOperation.operation_id == parent_id))
+        children = db.scalars(select(models.EconomicOperation).where(
+            models.EconomicOperation.parent_economic_operation_id == parent.id
+        )).all()
+        assert len(children) == 1
+        assert Decimal(children[0].maximum_total_spend) <= Decimal(parent.maximum_total_spend)
 
 
 @pytest.mark.parametrize("same_external", [True, False])

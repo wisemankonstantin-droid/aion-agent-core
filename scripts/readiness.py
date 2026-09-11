@@ -15,6 +15,7 @@ live_gate = (root / ".github/workflows/live-gate.yml").read_text(encoding="utf-8
 postgres_gate = (root / ".github/workflows/postgres-release-gate.yml").read_text(encoding="utf-8")
 learning_cli = (root / "scripts/learning_cycle.py").read_text(encoding="utf-8")
 machine_journey = (root / "app/machine_journey.py").read_text(encoding="utf-8")
+economic_kernel = (root / "app/services/economic_kernel.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -26,10 +27,11 @@ checks = {
     "migration_0008_action_outcome_evidence": (root / "alembic/versions/0008_action_outcome_evidence.py").exists(),
     "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
     "migration_0010_package5_proof_v1": (root / "alembic/versions/0010_package5_proof_v1.py").exists(),
+    "migration_0011_economic_execution_kernel_v1": (root / "alembic/versions/0011_economic_execution_kernel_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "candidate_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0010_package5_proof_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0011_economic_execution_kernel_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
@@ -48,6 +50,13 @@ checks = {
         (root / "app/services/package5_proof.py").exists()
         and '@app.get("/proof/package-5")' in main
         and '@app.post("/proof/package-5/vuos")' in main
+    ),
+    "package_6a_economic_kernel": (
+        '@app.post("/economic/preflight")' in main
+        and '"name": "economic_preflight"' in main
+        and "REAL_MONEY_EXECUTION_ENABLED = False" in economic_kernel
+        and "MINIMUM_MARGIN_BPS = 4_000" in economic_kernel
+        and "parent_economic_operation_id" in models
     ),
     "package_5b_conversion_journey": (
         "verified_outcome_journey" in main
@@ -98,9 +107,9 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 5C participation-readiness candidate.",
-    "Run AION CI on the exact pushed Package 5C SHA and any additional gate HQ requires.",
-    "Do not deploy Package 5C without a separate production Human Gate; Package 5C adds no migration.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 6A economic-kernel candidate.",
+    "Run AION CI and the PostgreSQL release gate on the exact pushed Package 6A SHA.",
+    "Do not deploy or migrate Package 6A without a separate production Human Gate.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

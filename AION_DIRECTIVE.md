@@ -289,7 +289,8 @@ The accepted delivery sequence and current package status are defined in
 `AION_MASTER_DELIVERY_ROADMAP.md`. Packages 3 and 3B are HQ-accepted, merged and
 production-released through Package 4. Package 5 engineering is merged and
 live, while independent commercial proof remains legitimately zero. Package
-5B is merged and live; Package 5C is the local participation-readiness corrective,
-not Package 6. Live
+5B and Package 5C are merged and live. Package 6A is the repository-only
+Economic Execution Kernel candidate; all real-money adapters remain disabled
+and Package 6B has not started. Live
 merge/main and deployment status must still be verified directly. Each package
 remains subject to the criticality ordering and release gates above.

@@ -10,6 +10,8 @@ MACHINE_PATHS = (
     "/actions/verify-callability",
     "/learning/evidence",
     "/proof/package-5/vuos",
+    "/payments/intents",
+    "/economic/preflight",
     "/mcp",
     "/a2a/v1",
 )

@@ -23,11 +23,12 @@ def machine_payment_requirements(intent: PaymentIntent):
             "payment_protocol": "x402",
             "purpose": intent.purpose,
             "amount": intent.amount,
-            "note": "Production deployment must populate verified network, asset, recipient and facilitator metadata."
+            "note": "Legacy intent-only scaffolding: not authorization, reserve, payment, settlement, revenue, or Package 6A funding evidence. A future verified rail adapter is required."
         }
     return {
         "status": 200,
         "payment_protocol": intent.protocol,
         "purpose": intent.purpose,
         "amount": intent.amount,
+        "note": "Legacy intent-only scaffolding; no payment or settlement is claimed.",
     }

@@ -352,6 +352,13 @@ not bind its long-term economy to one rail. Payment intent, authorization,
 submission, settlement, refund and verified outcome are separate states and
 must not be conflated.
 
+The Package 6A repository candidate implements only the rail-neutral economic
+kernel: trusted immutable profiles, exact-decimal policy, bounded parent/child
+maximum spend, requester-scoped quote/status and an auditable transition seam.
+The real-money adapter is disabled, and neither REST, MCP nor A2A exposes a
+requester-controlled authorization, reserve, spend or settlement transition.
+This is not production payment or revenue evidence.
+
 Before consequential third-party actions, credentials must be handled with
 minimum necessary collection, least privilege, narrow scopes, revocation and
 short-lived access where possible, and secret references instead of casual

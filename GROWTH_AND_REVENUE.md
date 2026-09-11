@@ -96,8 +96,9 @@ remain applicable where they actually exist.
 
 ## Economic execution contract
 
-The permanent economic invariants are in `AION_DIRECTIVE.md`. The future
-cost-bearing execution gate is:
+The permanent economic invariants are in `AION_DIRECTIVE.md`. Package 6A
+implements a repository-only deterministic kernel and disabled adapter seam;
+the future real cost-bearing execution gate remains:
 
 `request -> determine required provider -> check cache -> estimate maximum cost -> check license/commercial rights -> select product tier -> calculate customer price -> check margin -> check agent budget -> authorize payment -> reserve maximum spend -> execute -> meter actual cost -> verify outcome -> settle -> record revenue/cost/CM per VUO`
 
@@ -105,6 +106,11 @@ Failure of a required gate means no paid execution. Unknown maximum cost,
 insufficient funds, missing authorization, expected contribution margin below
 40%, incompatible commercial rights, or recursive spend beyond the authorized
 maximum are **RED: NO EXECUTION**.
+
+Package 6A does not activate a rail or establish funds. Its requester budget
+field is a preference, trusted product economics remain internal, and legacy
+payment intents are not authorization, reserve, settlement or revenue. Real
+money, provider spend and Package 6B remain behind separate Human Gates.
 
 **GREEN** means valid payment capability, price within the authorized budget,
 funds reserved, clear cost/outcome boundaries and an expected contribution

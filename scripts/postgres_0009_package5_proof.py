@@ -91,7 +91,9 @@ def verify() -> None:
     schema = inspect(engine)
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= set(schema.get_table_names())
     with SessionLocal.begin() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "0010_package5_proof_v1"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "0011_economic_execution_kernel_v1"
+        assert db.scalar(text("SELECT COUNT(*) FROM economic_operations")) == 0
+        assert db.scalar(text("SELECT COUNT(*) FROM economic_transitions")) == 0
         assert db.get(models.Agent, 52001).external_id == "package5-0009-sentinel"
         assert db.get(models.ActionRun, 52002).action_id == "00000000-0000-0000-0000-000000005202"
         assert db.get(models.ActionOutcome, 52003).verified_outcome is True

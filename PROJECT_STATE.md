@@ -1,4 +1,4 @@
-# Project checkpoint — 2026-09-10
+# Project checkpoint — 2026-09-11
 
 ## Current production state
 
@@ -23,19 +23,21 @@
   `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
 - **Package 5B conversion-corrective starting checkpoint:**
   `b9d3521f6b5a7fd9ac61c3670ac150d8a16df772`.
+- **Package 5C accepted production application checkpoint and Package 6A
+  repository baseline:** `a2a53ff61ede7597651b2f1bac1ca3db809855f9`.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `a97a7898e7a72d70fbe5cc01735a4046fd2afc94` (HQ-verified Package 5B baseline).
+  `a2a53ff61ede7597651b2f1bac1ca3db809855f9` (HQ-verified Package 5C baseline).
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **HQ-verified Package 5B production deploy:** `dep-dahff76743jc73cod9g0`.
-  This Package 5C repository task does not query or mutate production; verify
+- **HQ-verified Package 5C production deploy:** `dep-dahgei67bikc73fq0g3g`.
+  This Package 6A repository task does not query or mutate production; verify
   live state again before any separately authorized production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
@@ -63,9 +65,9 @@
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B is merged and production-live. Package 5C is local repository work
-  only and adds no migration. AutoDeploy remains
-  OFF.
+  Package 5B and Package 5C are merged and production-live. Package 6A is
+  repository-only engineering and is not merged or deployed. AutoDeploy
+  remains OFF.
 
 ## Current product and architecture phase
 
@@ -250,11 +252,13 @@ These historical tests prove repository behavior only. They do not create indepe
 participation, VUO, voluntary-return or commercial evidence. Package 5B was subsequently
 merged and deployed at the HQ-verified baseline above.
 
-## Package 5C participation readiness — local engineering
+## Package 5C participation readiness — production live
 
 Starting main was fetched and verified at `a97a7898e7a72d70fbe5cc01735a4046fd2afc94`.
-Branch: `codex/package-5c-participation-readiness-v1`. No push, merge or deploy
-is authorized. Package 6 remains NOT STARTED.
+The accepted Package 5C implementation is merged and production-live at
+`a2a53ff61ede7597651b2f1bac1ca3db809855f9`, Render deploy
+`dep-dahgei67bikc73fq0g3g`. It added no migration; production remains at
+`0010_package5_proof_v1` and AutoDeploy remains OFF.
 
 REST `GET /agents/me/package5-participation` and MCP
 `get_my_package5_participation` share bounded canonical classification logic
@@ -288,6 +292,38 @@ Package 5C local validation before candidate commit:
 These are isolated engineering fixtures, never commercial proof. No schema,
 classification policy, persistence/concurrency semantics or economic gate was
 changed. Readiness does not establish a review SLA or guarantee later qualification.
+
+## Package 6A Economic Execution Kernel V1 — repository engineering
+
+Package 6A is active only on branch
+`codex/package-6a-economic-execution-kernel-v1`, based on the accepted Package
+5C checkpoint above. It adds the deterministic economic policy/state-machine
+kernel and additive candidate migration `0011_economic_execution_kernel_v1`.
+The repository candidate provides authenticated requester-scoped REST/MCP
+preflight and read-only status, trusted immutable product profiles, exact
+decimal money and a durable append-only transition trail. It enforces the 40%
+hard contribution-margin floor, known maximum spend, commercial rights,
+bounded child allocations, idempotency and verified ActionRun outcome binding.
+
+All real-money adapters remain disabled. Requester budget is not funding;
+legacy `PaymentIntent(status="created")` is only intent scaffolding and is not
+authorization, reserve, payment, settlement, revenue or paid VUO evidence.
+There is no A2A credential-bearing economic mutation surface. No real payment,
+reserve, provider spend, settlement, revenue or paid VUO is claimed. Package
+6A is not merged, not deployed and has not changed the production schema.
+
+Package 6A final local validation at this checkpoint:
+
+- Package 6A economic, migration, source-integrity and request-stream matrix:
+  121 passed;
+- full SQLite/local suite: 421 passed, with 14 disposable-PostgreSQL-only
+  concurrency tests skipped locally and 101 upstream deprecation warnings;
+- the PostgreSQL 18 gate is wired to prove fresh-to-head, direct `0010 -> 0011`,
+  repeated upgrade, Alembic check and real quote/transition/child-budget
+  concurrency after an exact-SHA push; those 14 cases are not claimed as
+  locally passed; and
+- readiness, secret scan (136 files, zero findings), compileall, dependency,
+  workflow/manifest parsing, Alembic head and working-tree diff checks passed.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -338,12 +374,14 @@ contribution-margin floors and targets, lawful paid-source use,
 prepaid/reserved funding, recursive spend limits, the Economic Capability
 Profile, product tiers, and future cost/VUO and CM/VUO evidence.
 
-This is documentation and architecture policy only. No payment rail,
-settlement, wallet, balance ledger, paid-provider execution, dynamic pricing or
-other economic runtime is implemented. Package 3B and Package 5 do not weaken
-these rules. No economic runtime or payment activation has changed the Package
-4 production baseline above. Live merge/main status must be verified directly
-from GitHub under the repository state rule above.
+The accepted alignment itself was documentation and architecture policy. The
+separate Package 6A repository candidate now implements only its deterministic
+kernel, disabled adapter seam and durable evidence state machine. No payment
+rail, wallet, real authorization/reserve/settlement, balance ledger,
+paid-provider execution or dynamic pricing is enabled. Package 3B and Package
+5 do not weaken these rules. No economic runtime or payment activation has
+changed the production baseline above. Live merge/main status must be verified
+directly from GitHub under the repository state rule above.
 
 ## Package 2 validation
 

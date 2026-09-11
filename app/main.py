@@ -35,6 +35,7 @@ from .services.package5_proof import (
     participation_readiness,
     submit_vuo_candidate,
 )
+from .services.economic_kernel import EconomicKernelError, create_preflight, get_operation
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
 
@@ -53,7 +54,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -915,7 +916,41 @@ def update_interaction(interaction_id: int, payload: schemas.InteractionUpdate, 
 @app.post("/payments/intents")
 def payment_intent(payload: schemas.PaymentIntentCreate, agent=Depends(require_agent), db: Session = Depends(get_db)):
     intent = create_payment_intent(db, agent_id=agent.id, **payload.model_dump())
-    return {"intent_id": intent.id, "status": intent.status, "requirements": machine_payment_requirements(intent)}
+    return {
+        "intent_id": intent.id, "status": intent.status,
+        "semantic_class": "legacy_intent_only_not_authorization_reserve_payment_settlement_or_revenue",
+        "economic_kernel_funding_evidence": False,
+        "requirements": machine_payment_requirements(intent),
+    }
+
+
+def _raise_economic(exc: EconomicKernelError):
+    raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+
+
+@app.post("/economic/preflight")
+def economic_preflight(
+    payload: schemas.EconomicPreflightRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    agent=Depends(require_participation_reader), db: Session = Depends(get_db),
+):
+    try:
+        data = create_preflight(
+            db, requester_agent_id=agent.id, product_sku=payload.product_sku,
+            requested_currency=payload.currency, requester_max_price=payload.requester_max_price,
+            idempotency_key=idempotency_key,
+        )
+        return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+    except EconomicKernelError as exc:
+        _raise_economic(exc)
+
+
+@app.get("/economic/operations/{operation_id}")
+def economic_status(operation_id: str, agent=Depends(require_participation_reader), db: Session = Depends(get_db)):
+    try:
+        return JSONResponse(get_operation(db, requester_agent_id=agent.id, operation_id=operation_id), headers={"Cache-Control": "private, no-store"})
+    except EconomicKernelError as exc:
+        _raise_economic(exc)
 
 
 @app.get("/donations/options")
@@ -924,8 +959,9 @@ def donation_options():
         "recipient": "AION SUPREME",
         "human_required_by_aion": False,
         "repeat_contributions_allowed": True,
-        "methods": [{"protocol": "x402", "status": "adapter_pending", "intent_endpoint": "/payments/intents"}],
-        "note": "AION accepts repeat voluntary contributions. Settlement is not claimed until a real x402 facilitator/wallet rail is configured.",
+        "methods": [{"protocol": "x402", "status": "legacy_intent_only_adapter_disabled", "intent_endpoint": "/payments/intents"}],
+        "real_money_execution_enabled": False,
+        "note": "The endpoint records intent only. It is not authorization, reserve, payment, settlement or revenue; no real x402 facilitator/wallet rail is configured.",
     }
 
 
@@ -1022,7 +1058,7 @@ MCP_TOOLS = [
     },
     {
         "name": "donation_options",
-        "description": "Return AION machine-payment and contribution options.",
+        "description": "Return legacy intent-only contribution options. No real payment, authorization, reserve or settlement adapter is enabled.",
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
@@ -1089,6 +1125,24 @@ MCP_TOOLS = [
             },
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "economic_preflight",
+        "description": "Authenticated Package 6A quote/economic-policy preflight from trusted internal product profiles. Requester budget is a preference, not funds. Real payment, reserve, spend and settlement are disabled.",
+        "inputSchema": {
+            "type": "object", "required": ["product_sku", "currency", "idempotency_key"],
+            "properties": {
+                "product_sku": {"type": "string", "enum": ["aion.cached.utility.v1", "aion.verified.callability.v1"]},
+                "currency": {"type": "string", "pattern": "^[A-Z][A-Z0-9]{2,15}$"},
+                "requester_max_price": {"type": ["string", "null"], "maxLength": 32},
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+            }, "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_economic_operation",
+        "description": "Authenticated requester-scoped read-only Package 6A economic operation status. Reading it records no lifecycle, VUO, return, payment or settlement evidence.",
+        "inputSchema": {"type": "object", "required": ["operation_id"], "properties": {"operation_id": {"type": "string", "format": "uuid"}}, "additionalProperties": False},
     },
     {
         "name": "get_my_package5_participation",
@@ -1378,6 +1432,31 @@ async def mcp_gateway(
                 "isError": False,
             }), headers={"Cache-Control": "private, no-store"})
 
+        elif name == "economic_preflight":
+            mcp_agent = authenticate_participation_reader(authorization, db)
+            economic_args = dict(args)
+            key = economic_args.pop("idempotency_key", None)
+            payload = schemas.EconomicPreflightRequest.model_validate(economic_args)
+            data = create_preflight(
+                db, requester_agent_id=mcp_agent.id, product_sku=payload.product_sku,
+                requested_currency=payload.currency, requester_max_price=payload.requester_max_price,
+                idempotency_key=key,
+            )
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data, "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
+
+        elif name == "get_economic_operation":
+            mcp_agent = authenticate_participation_reader(authorization, db)
+            if set(args) != {"operation_id"}:
+                raise ValueError("exactly operation_id is required")
+            data = get_operation(db, requester_agent_id=mcp_agent.id, operation_id=str(args["operation_id"]))
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data, "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
+
         elif name == "get_package5_proof":
             if args:
                 raise ValueError("get_package5_proof accepts no arguments")
@@ -1443,6 +1522,12 @@ async def mcp_gateway(
             "isError": True,
         })
     except Package5ProofError as exc:
+        return _mcp_result(rpc_id, {
+            "content": [{"type": "text", "text": exc.message}],
+            "structuredContent": {"code": exc.code, "status": exc.status_code},
+            "isError": True,
+        })
+    except EconomicKernelError as exc:
         return _mcp_result(rpc_id, {
             "content": [{"type": "text", "text": exc.message}],
             "structuredContent": {"code": exc.code, "status": exc.status_code},
