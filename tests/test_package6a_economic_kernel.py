@@ -407,6 +407,182 @@ def test_parent_child_maximum_spend_is_one_nonexpanding_budget(monkeypatch):
         assert delegated.value.code == "parent_budget_delegated_to_children"
 
 
+def test_parent_funded_child_cannot_create_a_second_customer_charge(monkeypatch):
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    agent_id, _ = _agent()
+    parent_plan = replace(
+        economic_kernel.TRUSTED_PRODUCT_PROFILES["aion.verified.callability.v1"],
+        product_sku="fixture.delegating-parent", expected_variable_cost="4",
+        maximum_variable_cost="6", verification_cost="0",
+        maximum_total_spend_cap="6", direct_expected_cost_per_vuo="4",
+    )
+    child_plan = replace(
+        parent_plan, product_sku="fixture.delegated-child", expected_variable_cost="3",
+        maximum_variable_cost="4", maximum_total_spend_cap="4", direct_expected_cost_per_vuo="3",
+    )
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, parent_plan.product_sku, parent_plan)
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, child_plan.product_sku, child_plan)
+    with SessionLocal() as db:
+        proof_before = package5_proof.package5_proof_snapshot(db)["counts"]
+        parent = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku=parent_plan.product_sku,
+            requested_currency="USD", requester_max_price=None, idempotency_key="delegating-parent",
+        )
+        child = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku=child_plan.product_sku,
+            requested_currency="USD", requester_max_price=None, idempotency_key="delegated-child",
+            parent_operation_id=parent["operation_id"],
+        )
+        assert child["funding_scope"] == "parent_reserved_budget"
+        assert child["customer_settlement_scope"] == "parent_only"
+        assert child["independent_customer_payment_allowed"] is False
+        assert child["payment_authorized"] is child["reserve_established"] is False
+        assert child["authorized_amount"] is child["reserved_amount"] is None
+        assert child["real_settlement_revenue"] == "0"
+        assert child["truth_boundaries"]["child_creates_independent_customer_charge"] is False
+        for state in ("payment_authorized", "funds_reserved", "settled", "reserve_released"):
+            with pytest.raises(EconomicKernelError) as forbidden:
+                _transition(db, agent_id, child["operation_id"], state, "child-" + state, amount="10", currency="USD")
+            assert forbidden.value.code == "child_uses_parent_funding"
+        with pytest.raises(EconomicKernelError) as unfunded:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "child-unfunded", amount="4", currency="USD")
+        assert unfunded.value.code == "parent_reserve_not_established"
+        _transition(db, agent_id, parent["operation_id"], "payment_authorized", "parent-auth", amount="10", currency="USD")
+        _transition(db, agent_id, parent["operation_id"], "funds_reserved", "parent-reserve", amount="10", currency="USD")
+        with pytest.raises(EconomicKernelError) as fallback:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "child-fallback", amount="4.01", currency="USD")
+        assert fallback.value.code == "paid_fallback_requires_reauthorization"
+        monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", False)
+        with pytest.raises(EconomicKernelError) as disabled:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "child-disabled", amount="4", currency="USD")
+        assert disabled.value.code == "real_money_adapter_disabled"
+        monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+        started = _transition(db, agent_id, child["operation_id"], "execution_started", "child-start", amount="4", currency="USD")
+        assert started["transitions"][-1]["reason_code"] == "delegated_execution_under_parent_reserve"
+        action_id = _action(agent_id, cost_amount="4", cost_currency="USD")
+        _transition(db, agent_id, child["operation_id"], "outcome_verified", "child-outcome", action_id=action_id)
+        ready = _transition(db, agent_id, child["operation_id"], "settlement_ready", "child-cost", amount="4", currency="USD")
+        assert ready["state"] == "settlement_ready"
+        assert ready["actual_cost"] == "4"
+        assert ready["settlement_amount"] is None
+        assert ready["real_settlement_revenue"] == "0"
+        with pytest.raises(EconomicKernelError) as settlement:
+            _transition(db, agent_id, child["operation_id"], "settled", "child-settle", amount="10", currency="USD")
+        assert settlement.value.code == "child_uses_parent_funding"
+        parent_status = economic_kernel.get_operation(
+            db, requester_agent_id=agent_id, operation_id=parent["operation_id"]
+        )
+        assert parent_status["state"] == "funds_reserved"
+        assert parent_status["real_settlement_revenue"] == "0"
+        assert package5_proof.package5_proof_snapshot(db)["counts"] == proof_before
+
+
+def test_parent_reserve_must_cover_full_delegated_maximum_risk(monkeypatch):
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    agent_id, _ = _agent()
+    parent_plan = TrustedEconomicPlan(
+        product_sku="fixture.parent-reserve-five", currency="USD", customer_price="5",
+        expected_variable_cost="3", maximum_variable_cost="6", verification_cost="0",
+        payment_fee_allowance="0", maximum_attempts=1, commercial_rights_state="allowed",
+        maximum_total_spend_cap="6", direct_expected_cost_per_vuo="3",
+    )
+    child_plan = replace(
+        parent_plan, product_sku="fixture.child-risk-six", expected_variable_cost="3",
+        customer_price="5", direct_expected_cost_per_vuo="3",
+    )
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, parent_plan.product_sku, parent_plan)
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, child_plan.product_sku, child_plan)
+    with SessionLocal() as db:
+        parent = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku=parent_plan.product_sku,
+            requested_currency="USD", requester_max_price=None, idempotency_key="reserve-five-parent",
+        )
+        child = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku=child_plan.product_sku,
+            requested_currency="USD", requester_max_price=None, idempotency_key="risk-six-child",
+            parent_operation_id=parent["operation_id"],
+        )
+        _transition(db, agent_id, parent["operation_id"], "payment_authorized", "reserve-five-auth", amount="5", currency="USD")
+        _transition(db, agent_id, parent["operation_id"], "funds_reserved", "reserve-five", amount="5", currency="USD")
+        status = economic_kernel.get_operation(db, requester_agent_id=agent_id, operation_id=child["operation_id"])
+        assert status["parent_funding_ready"] is False
+        assert status["decision_reasons"] == ["parent_reserve_insufficient_for_delegated_budget"]
+        with pytest.raises(EconomicKernelError) as insufficient:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "risk-six-start", amount="5", currency="USD")
+        assert insufficient.value.code == "parent_reserve_insufficient_for_delegated_budget"
+
+
+def test_child_rejects_unverified_parent_funding_fields(monkeypatch):
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    agent_id, _ = _agent()
+    with SessionLocal() as db:
+        parent = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku="aion.verified.callability.v1",
+            requested_currency="USD", requester_max_price=None, idempotency_key="unverified-parent",
+        )
+        child = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku="aion.verified.callability.v1",
+            requested_currency="USD", requester_max_price=None, idempotency_key="unverified-child",
+            parent_operation_id=parent["operation_id"],
+        )
+        parent_row = db.scalar(select(models.EconomicOperation).where(
+            models.EconomicOperation.operation_id == parent["operation_id"]
+        ))
+        parent_row.state = "funds_reserved"
+        parent_row.authorized_amount = parent_row.customer_price
+        parent_row.reserved_amount = parent_row.customer_price
+        parent_row.adapter_state = "verified_adapter_evidence"
+        db.commit()
+        with pytest.raises(EconomicKernelError) as invalid:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "invalid-parent-evidence", amount="6", currency="USD")
+        assert invalid.value.code == "parent_funding_evidence_invalid"
+
+
+def test_child_parent_scope_rejects_other_requester_currency_and_expiry(monkeypatch):
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    agent_id, _ = _agent()
+    other_id, _ = _agent()
+    parent = None
+    with SessionLocal() as db:
+        parent = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku="aion.verified.callability.v1",
+            requested_currency="USD", requester_max_price=None, idempotency_key="scope-parent",
+        )
+        with pytest.raises(EconomicKernelError) as requester:
+            economic_kernel.create_preflight(
+                db, requester_agent_id=other_id, product_sku="aion.verified.callability.v1",
+                requested_currency="USD", requester_max_price=None, idempotency_key="wrong-requester-child",
+                parent_operation_id=parent["operation_id"],
+            )
+        assert requester.value.code == "parent_operation_forbidden"
+        eur = replace(
+            economic_kernel.TRUSTED_PRODUCT_PROFILES["aion.verified.callability.v1"],
+            product_sku="fixture.eur-child", currency="EUR",
+        )
+        monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, eur.product_sku, eur)
+        with pytest.raises(EconomicKernelError) as currency:
+            economic_kernel.create_preflight(
+                db, requester_agent_id=agent_id, product_sku=eur.product_sku,
+                requested_currency="EUR", requester_max_price=None, idempotency_key="wrong-currency-child",
+                parent_operation_id=parent["operation_id"],
+            )
+        assert currency.value.code == "currency_mismatch"
+        child = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku="aion.verified.callability.v1",
+            requested_currency="USD", requester_max_price=None, idempotency_key="expiring-child",
+            parent_operation_id=parent["operation_id"],
+        )
+        _transition(db, agent_id, parent["operation_id"], "payment_authorized", "expiry-auth", amount="10", currency="USD")
+        _transition(db, agent_id, parent["operation_id"], "funds_reserved", "expiry-reserve", amount="10", currency="USD")
+        parent_row = db.scalar(select(models.EconomicOperation).where(
+            models.EconomicOperation.operation_id == parent["operation_id"]
+        ))
+        monkeypatch.setattr(economic_kernel, "_now", lambda: economic_kernel._aware(parent_row.quote_expires_at) + timedelta(seconds=1))
+        with pytest.raises(EconomicKernelError) as expired:
+            _transition(db, agent_id, child["operation_id"], "execution_started", "expired-child", amount="6", currency="USD")
+        assert expired.value.code == "parent_funding_expired"
+
+
 def test_quote_expiry_and_resource_bound_fail_closed(monkeypatch):
     _, key = _agent()
     operation = _rest_preflight(key).json()

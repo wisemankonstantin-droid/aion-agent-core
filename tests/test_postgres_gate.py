@@ -232,6 +232,81 @@ def test_postgres_parent_row_lock_prevents_concurrent_child_budget_escape(monkey
         assert Decimal(children[0].maximum_total_spend) <= Decimal(parent.maximum_total_spend)
 
 
+def test_postgres_parent_reserve_lock_blocks_concurrent_delegated_overspend(monkeypatch):
+    from dataclasses import replace
+
+    token = uuid.uuid4().hex
+    agent_id = _postgres_economic_agent(token)
+    parent_plan = economic_kernel.TrustedEconomicPlan(
+        product_sku="pg.fixture.reserve-parent", currency="USD", customer_price="5",
+        expected_variable_cost="3", maximum_variable_cost="6", verification_cost="0",
+        payment_fee_allowance="0", maximum_attempts=1, commercial_rights_state="allowed",
+        maximum_total_spend_cap="6", direct_expected_cost_per_vuo="3",
+    )
+    child_plan = replace(
+        parent_plan, product_sku="pg.fixture.reserve-child",
+        maximum_variable_cost="3", maximum_total_spend_cap="3",
+    )
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, parent_plan.product_sku, parent_plan)
+    monkeypatch.setitem(economic_kernel.TRUSTED_PRODUCT_PROFILES, child_plan.product_sku, child_plan)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    adapter = _PostgresVerifiedEconomicFixtureAdapter()
+    with SessionLocal() as db:
+        parent_id = economic_kernel.create_preflight(
+            db, requester_agent_id=agent_id, product_sku=parent_plan.product_sku,
+            requested_currency="USD", requester_max_price=None,
+            idempotency_key="pg-reserve-parent-" + token,
+        )["operation_id"]
+        child_ids = [
+            economic_kernel.create_preflight(
+                db, requester_agent_id=agent_id, product_sku=child_plan.product_sku,
+                requested_currency="USD", requester_max_price=None,
+                idempotency_key=f"pg-reserve-child-{suffix}-{token}",
+                parent_operation_id=parent_id,
+            )["operation_id"]
+            for suffix in ("a", "b")
+        ]
+        for state, amount in (("payment_authorized", "5"), ("funds_reserved", "5")):
+            economic_kernel.apply_economic_transition(
+                db, requester_agent_id=agent_id, operation_id=parent_id,
+                to_state=state, idempotency_key=f"pg-reserve-{state}-{token}",
+                adapter=adapter, evidence_reference="pg-fixture:" + state,
+                amount=amount, currency="USD",
+            )
+
+    barrier = threading.Barrier(2)
+
+    def worker(child_id):
+        barrier.wait(timeout=10)
+        with SessionLocal() as db:
+            try:
+                economic_kernel.apply_economic_transition(
+                    db, requester_agent_id=agent_id, operation_id=child_id,
+                    to_state="execution_started", idempotency_key="pg-child-start-" + child_id,
+                    adapter=adapter, evidence_reference="pg-fixture:execution_started",
+                    amount="3", currency="USD",
+                )
+                return "started"
+            except economic_kernel.EconomicKernelError as exc:
+                return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = [future.result() for future in (pool.submit(worker, child_ids[0]), pool.submit(worker, child_ids[1]))]
+    assert results == [
+        "parent_reserve_insufficient_for_delegated_budget",
+        "parent_reserve_insufficient_for_delegated_budget",
+    ]
+    with SessionLocal() as db:
+        child_rows = db.scalars(select(models.EconomicOperation).where(
+            models.EconomicOperation.operation_id.in_(child_ids)
+        )).all()
+        assert {row.state for row in child_rows} == {"quoted"}
+        assert db.scalar(select(func.count()).select_from(models.EconomicTransition).where(
+            models.EconomicTransition.economic_operation_id.in_([row.id for row in child_rows]),
+            models.EconomicTransition.to_state == "execution_started",
+        )) == 0
+
+
 @pytest.mark.parametrize("same_external", [True, False])
 def test_real_advisory_lock_blocks_competing_join(monkeypatch, same_external):
     token = uuid.uuid4().hex

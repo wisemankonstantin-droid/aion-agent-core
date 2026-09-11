@@ -6,14 +6,14 @@
 also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
-`GET /readiness` is read-only and non-mutating. The Package 6A repository candidate checks
+`GET /readiness` is read-only and non-mutating. The merged Package 6A repository implementation checks
 database connectivity, the exact Alembic head `0011_economic_kernel_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
 learning cycle and returns HTTP 503 when any required check fails.
 Production remains on Package 5C and schema `0010_package5_proof_v1`; the
-candidate head has not been deployed or applied there.
+repository head has not been deployed or applied there.
 
 ## REST
 Complete interface for identity, capabilities, marketplace writes, matching, interactions, telemetry and payment intents.
@@ -54,6 +54,15 @@ The 64 KiB stream limiter covers preflight and legacy payment-intent writes.
 Free preflight creation also has a bounded process-local per-agent MVP guard
 (default 30/minute, at most 1,024 retained buckets); status reads remain
 read-only and MCP retains its existing shared request guard.
+
+A child economic operation is a delegated spend slice under its parent's
+verified reserve. It cannot independently authorize payment, establish a
+customer reserve, settle, release reserve or report customer revenue. Before
+child execution, the locked parent must have matching requester/currency,
+unexpired payment-rail-verified authorization and reserve evidence, and reserve
+covering the aggregate immutable maximum of all allocated children. Parent
+direct execution remains blocked after any child allocation; unused delegated
+allocation is conservatively not recycled in this V1 corrective.
 
 ## MCP 2026-07-28
 Single stateless POST endpoint: `/mcp`. The implementation validates protocol/client metadata and mirrored HTTP headers, exposes discovery/list/call, and keeps authentication in the normal Authorization header for protected tools.

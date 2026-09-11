@@ -66,8 +66,8 @@
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
   Package 5B and Package 5C are merged and production-live. Package 6A is
-  repository-only engineering and is not merged or deployed. AutoDeploy
-  remains OFF.
+  merged engineering but is not deployed and migration `0011_economic_kernel_v1`
+  has not been applied to production. AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -293,13 +293,14 @@ These are isolated engineering fixtures, never commercial proof. No schema,
 classification policy, persistence/concurrency semantics or economic gate was
 changed. Readiness does not establish a review SLA or guarantee later qualification.
 
-## Package 6A Economic Execution Kernel V1 — repository engineering
+## Package 6A Economic Execution Kernel V1 — merged, not deployed
 
-Package 6A is active only on branch
-`codex/package-6a-economic-execution-kernel-v1`, based on the accepted Package
-5C checkpoint above. It adds the deterministic economic policy/state-machine
-kernel and additive candidate migration `0011_economic_kernel_v1`.
-The repository candidate provides authenticated requester-scoped REST/MCP
+Package 6A is merged to main, based on the accepted Package 5C checkpoint
+above, but remains absent from production. The bounded post-merge parent-funding
+corrective is developed on `codex/package-6a-parent-funding-corrective-v1`.
+Package 6A adds the deterministic economic policy/state-machine kernel and
+additive migration `0011_economic_kernel_v1`. The repository implementation
+provides authenticated requester-scoped REST/MCP
 preflight and read-only status, trusted immutable product profiles, exact
 decimal money and a durable append-only transition trail. It enforces the 40%
 hard contribution-margin floor, known maximum spend, commercial rights,
@@ -309,8 +310,10 @@ All real-money adapters remain disabled. Requester budget is not funding;
 legacy `PaymentIntent(status="created")` is only intent scaffolding and is not
 authorization, reserve, payment, settlement, revenue or paid VUO evidence.
 There is no A2A credential-bearing economic mutation surface. No real payment,
-reserve, provider spend, settlement, revenue or paid VUO is claimed. Package
-6A is not merged, not deployed and has not changed the production schema.
+reserve, provider spend, settlement, revenue or paid VUO is claimed. A child
+operation is a delegated maximum-spend slice of verified parent reserve, never
+a second customer authorization, reserve, settlement or revenue event. Package
+6A is not deployed and has not changed the production schema.
 
 Package 6A final local validation at this checkpoint:
 
@@ -324,6 +327,14 @@ Package 6A final local validation at this checkpoint:
   locally passed; and
 - readiness, secret scan (136 files, zero findings), compileall, dependency,
   workflow/manifest parsing, Alembic head and working-tree diff checks passed.
+
+The post-merge parent-funding corrective adds no migration and leaves the sole
+head at `0011_economic_kernel_v1`. Focused Package 6A/source/PostgreSQL wiring
+validation passed with 47 tests and 15 disposable-PostgreSQL-only tests skipped
+locally. The final local suite passed with 425 tests and the same 15 PostgreSQL
+tests skipped; exact PostgreSQL locking evidence remains pending the corrective
+SHA's pre-production gate. Real money remains disabled, and these fixtures are
+not payment, settlement, revenue, VUO or adoption evidence.
 
 ## Pre-Package-3 audit-correction validation
 
@@ -375,7 +386,7 @@ prepaid/reserved funding, recursive spend limits, the Economic Capability
 Profile, product tiers, and future cost/VUO and CM/VUO evidence.
 
 The accepted alignment itself was documentation and architecture policy. The
-separate Package 6A repository candidate now implements only its deterministic
+merged Package 6A repository implementation provides only its deterministic
 kernel, disabled adapter seam and durable evidence state machine. No payment
 rail, wallet, real authorization/reserve/settlement, balance ledger,
 paid-provider execution or dynamic pricing is enabled. Package 3B and Package

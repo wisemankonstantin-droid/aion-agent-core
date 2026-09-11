@@ -223,14 +223,16 @@ request queue, a classification write path, or commercial proof.
 
 ### Package 6 — Economic Execution + Real Settlement
 
-Package 6A is the active repository-only kernel slice. It implements trusted
+Package 6A is merged engineering but is not production-live. It implements trusted
 immutable quote inputs, exact-decimal policy decisions, the 40% hard margin
 floor, known maximum and recursive child-spend bounds, requester-scoped
 idempotency, an auditable state/transition model and authenticated REST/MCP
 preflight/status. Its real-money adapter is fixed disabled: no authorization,
 reserve, spend, settlement or paid-provider call is performed or claimed.
-Candidate migration `0011_economic_kernel_v1` is additive and has not
-been applied to production. Package 6B/real-rail activation has not started and
+Migration `0011_economic_kernel_v1` is additive and has not been applied to
+production. Parent-funded children consume bounded verified parent reserve and
+cannot create a second customer authorization, reserve, settlement or revenue.
+Package 6B/real-rail activation has not started and
 requires separate acceptance and production Human Gates.
 
 Implement the controlled economic path:

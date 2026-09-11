@@ -30,12 +30,12 @@ checks = {
     "migration_0011_economic_kernel_v1": (root / "alembic/versions/0011_economic_kernel_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
-    "candidate_release_identity": (
+    "repository_release_identity": (
         'EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
-    "candidate_schema_readiness": (
+    "repository_schema_readiness": (
         '"schema_current"' in main and "SELECT version_num FROM alembic_version" in main
     ),
     "package_4_exact_sha_live_gate": (
@@ -107,8 +107,8 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 6A economic-kernel candidate.",
-    "Run AION CI and the PostgreSQL release gate on the exact pushed Package 6A SHA.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 6A parent-funding corrective.",
+    "Run AION CI and the PostgreSQL release gate on the exact pushed corrective SHA.",
     "Do not deploy or migrate Package 6A without a separate production Human Gate.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",

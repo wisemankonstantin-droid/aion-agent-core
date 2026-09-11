@@ -284,7 +284,8 @@ def create_preflight(
         maximum_total_spend=evaluated["maximum_total_spend"], contribution_amount=evaluated["contribution_amount"],
         expected_margin_bps=evaluated["expected_margin_bps"], expected_cost_per_verified_outcome=evaluated["expected_cost_per_verified_outcome"],
         maximum_attempts=evaluated["maximum_attempts"], commercial_rights_state=evaluated["commercial_rights_state"],
-        funding_required=evaluated["funding_required"], policy_eligible=evaluated["policy_eligible"],
+        funding_required=False if parent is not None else evaluated["funding_required"],
+        policy_eligible=evaluated["policy_eligible"],
         execution_eligible=evaluated["execution_eligible"], decision_reasons=evaluated["decision_reasons"],
         adapter_state="real_money_disabled", state="quoted", release_sha=release_identity()["release_sha"],
         quote_expires_at=now + timedelta(seconds=QUOTE_TTL_SECONDS), created_at=now, updated_at=now,
@@ -342,9 +343,36 @@ def serialize_operation(db: Session, row: models.EconomicOperation, *, idempoten
         parent_operation_id = db.scalar(select(models.EconomicOperation.operation_id).where(
             models.EconomicOperation.id == row.parent_economic_operation_id
         ))
+    is_child = row.parent_economic_operation_id is not None
+    parent_funding = _parent_funding_state(db, row)
+    child_execution_eligible = (
+        is_child and row.policy_eligible and row.state == "quoted" and not expired
+        and parent_funding["ready"] and REAL_MONEY_EXECUTION_ENABLED
+    )
+    if is_child:
+        if expired:
+            decision_reasons = ["quote_expired"]
+        elif not parent_funding["ready"]:
+            decision_reasons = [parent_funding["reason"]]
+        elif not REAL_MONEY_EXECUTION_ENABLED:
+            decision_reasons = ["real_money_adapter_disabled"]
+        else:
+            decision_reasons = ["parent_reserved_budget_verified"]
+    else:
+        decision_reasons = ["quote_expired"] if expired else row.decision_reasons
     return {
         "operation_id": row.operation_id, "canonical_requester_agent_id": row.requester_agent_id,
         "parent_operation_id": parent_operation_id,
+        "funding_scope": "parent_reserved_budget" if is_child else "direct_customer_authorization",
+        "customer_settlement_scope": "parent_only" if is_child else "operation",
+        "independent_customer_payment_allowed": not is_child,
+        "parent_funding_ready": parent_funding["ready"] if is_child else None,
+        "parent_reserved_amount": (
+            parent_funding["parent"].reserved_amount if is_child and parent_funding["parent"] is not None else None
+        ),
+        "parent_allocated_child_maximum_spend": (
+            _canonical_signed_calculation(parent_funding["allocated"]) if is_child else None
+        ),
         "product_sku": row.product_sku, "currency": row.currency, "customer_price": row.customer_price,
         "expected_variable_cost": row.expected_variable_cost, "maximum_variable_cost": row.maximum_variable_cost,
         "verification_cost": row.verification_cost, "payment_fee_allowance": row.payment_fee_allowance,
@@ -361,19 +389,25 @@ def serialize_operation(db: Session, row: models.EconomicOperation, *, idempoten
         "expected_cost_per_verified_outcome": row.expected_cost_per_verified_outcome,
         "maximum_attempts": row.maximum_attempts, "commercial_rights_state": row.commercial_rights_state,
         "funding_required": row.funding_required, "policy_eligible": row.policy_eligible,
-        "execution_eligible": row.execution_eligible and not expired and row.state == "quoted",
-        "decision_reasons": ["quote_expired"] if expired else row.decision_reasons,
+        "execution_eligible": child_execution_eligible or (
+            not is_child and row.execution_eligible and not expired and row.state == "quoted"
+        ),
+        "decision_reasons": decision_reasons,
         "state": row.state, "adapter_state": row.adapter_state,
-        "payment_authorized": row.authorized_amount is not None, "reserve_established": row.reserved_amount is not None,
-        "authorized_amount": row.authorized_amount, "reserved_amount": row.reserved_amount,
-        "actual_cost": row.actual_cost, "settlement_amount": row.settlement_amount,
-        "released_amount": row.released_amount,
+        "payment_authorized": not is_child and row.authorized_amount is not None,
+        "reserve_established": not is_child and row.reserved_amount is not None,
+        "authorized_amount": None if is_child else row.authorized_amount,
+        "reserved_amount": None if is_child else row.reserved_amount,
+        "actual_cost": row.actual_cost, "settlement_amount": None if is_child else row.settlement_amount,
+        "released_amount": None if is_child else row.released_amount,
         "execution_started": row.state in {"execution_started", "outcome_verified", "settlement_ready", "settled", "reserve_released"},
         "outcome_verified": row.state in {"outcome_verified", "settlement_ready", "settled", "reserve_released"},
         "settlement_ready": row.state in {"settlement_ready", "settled", "reserve_released"},
-        "settlement_completed": row.state in {"settled", "reserve_released"},
-        "real_settlement_revenue": row.settlement_amount or "0",
-        "real_settlement_state": "not_enabled" if row.settlement_amount is None else "adapter_verified",
+        "settlement_completed": not is_child and row.state in {"settled", "reserve_released"},
+        "real_settlement_revenue": "0" if is_child else (row.settlement_amount or "0"),
+        "real_settlement_state": (
+            "parent_only" if is_child else ("not_enabled" if row.settlement_amount is None else "adapter_verified")
+        ),
         "quote_expires_at": row.quote_expires_at.isoformat(), "idempotent_replay": idempotent_replay,
         "transitions": [{"transition_id": t.transition_id, "sequence": t.sequence, "from_state": t.from_state,
                          "to_state": t.to_state, "reason_code": t.reason_code,
@@ -381,7 +415,8 @@ def serialize_operation(db: Session, row: models.EconomicOperation, *, idempoten
                          "amount": t.amount, "currency": t.currency, "created_at": t.created_at.isoformat()} for t in transitions],
         "truth_boundaries": {"requester_budget_is_not_funds": True, "legacy_payment_intent_is_not_funding": True,
                              "payment_authorization_is_not_settlement": True, "real_money_adapter_enabled": False,
-                             "creates_vuo_or_return_evidence": False},
+                             "creates_vuo_or_return_evidence": False,
+                             "child_creates_independent_customer_charge": False},
     }
 
 
@@ -413,6 +448,54 @@ def _direct_child_allocation(db: Session, row_id: int) -> Decimal:
         models.EconomicOperation.parent_economic_operation_id == row_id
     )).all()
     return sum((Decimal(value) for value in values if value is not None), Decimal("0"))
+
+
+def _parent_funding_state(db: Session, child: models.EconomicOperation, *, lock: bool = False) -> dict:
+    if child.parent_economic_operation_id is None:
+        return {"parent": None, "ready": False, "reason": None, "allocated": Decimal("0")}
+    statement = select(models.EconomicOperation).where(
+        models.EconomicOperation.id == child.parent_economic_operation_id
+    )
+    parent = db.scalar(statement.with_for_update() if lock else statement)
+    if parent is None:
+        return {"parent": None, "ready": False, "reason": "parent_operation_not_found", "allocated": Decimal("0")}
+    allocated = _direct_child_allocation(db, parent.id)
+    if parent.requester_agent_id != child.requester_agent_id:
+        reason = "parent_operation_forbidden"
+    elif parent.currency != child.currency:
+        reason = "currency_mismatch"
+    elif parent.maximum_total_spend is None or child.maximum_total_spend is None:
+        reason = "unknown_maximum_cost"
+    elif allocated > Decimal(parent.maximum_total_spend):
+        reason = "child_budget_exceeds_parent_remaining"
+    elif _aware(parent.quote_expires_at) <= _now():
+        reason = "parent_funding_expired"
+    elif parent.state != "funds_reserved":
+        reason = "parent_reserve_not_established"
+    elif parent.authorized_amount is None or parent.reserved_amount is None:
+        reason = "parent_reserve_not_established"
+    else:
+        payment = db.scalar(select(models.EconomicTransition).where(
+            models.EconomicTransition.economic_operation_id == parent.id,
+            models.EconomicTransition.to_state == "payment_authorized",
+        ))
+        reserve = db.scalar(select(models.EconomicTransition).where(
+            models.EconomicTransition.economic_operation_id == parent.id,
+            models.EconomicTransition.to_state == "funds_reserved",
+        ))
+        if (
+            parent.adapter_state != "verified_adapter_evidence"
+            or payment is None or payment.evidence_authority != "payment_rail_verified"
+            or payment.amount != parent.authorized_amount or payment.currency != parent.currency
+            or reserve is None or reserve.evidence_authority != "payment_rail_verified"
+            or reserve.amount != parent.reserved_amount or reserve.currency != parent.currency
+        ):
+            reason = "parent_funding_evidence_invalid"
+        elif allocated > Decimal(parent.reserved_amount):
+            reason = "parent_reserve_insufficient_for_delegated_budget"
+        else:
+            reason = None
+    return {"parent": parent, "ready": reason is None, "reason": reason, "allocated": allocated}
 
 
 def _adapter_evidence(adapter, transition: str, evidence_reference: str) -> tuple[str, str]:
@@ -454,6 +537,14 @@ def apply_economic_transition(
         raise EconomicKernelError(404, "economic_operation_not_found", "Economic operation not found")
     if row.requester_agent_id != canonical_id:
         raise EconomicKernelError(403, "economic_operation_forbidden", "Economic operation belongs to another logical requester")
+    parent_funding = _parent_funding_state(db, row, lock=True)
+    if row.parent_economic_operation_id is not None and to_state in {
+        "payment_authorized", "funds_reserved", "settled", "reserve_released",
+    }:
+        raise EconomicKernelError(
+            409, "child_uses_parent_funding",
+            "A delegated child cannot create independent customer authorization, reserve, settlement, or release evidence",
+        )
     existing = db.scalar(select(models.EconomicTransition).where(
         models.EconomicTransition.economic_operation_id == row.id,
         models.EconomicTransition.idempotency_key == key,
@@ -481,6 +572,11 @@ def apply_economic_transition(
         return serialize_operation(db, row, idempotent_replay=True)
     if to_state not in _ALLOWED_TRANSITIONS.get(row.state, set()):
         raise EconomicKernelError(409, "illegal_economic_transition", f"Cannot transition from {row.state} to {to_state}")
+    if row.parent_economic_operation_id is not None and to_state == "execution_started" and not parent_funding["ready"]:
+        raise EconomicKernelError(
+            409, parent_funding["reason"],
+            "Delegated execution requires valid parent funding that covers every allocated child maximum",
+        )
     if _aware(row.quote_expires_at) <= _now() and row.state in {"quoted", "payment_authorized"}:
         raise EconomicKernelError(409, "quote_expired", "Expired quote cannot authorize execution")
     if not row.policy_eligible and to_state not in {"failed", "cancelled"}:
@@ -509,7 +605,10 @@ def apply_economic_transition(
             raise EconomicKernelError(409, "paid_fallback_requires_reauthorization", "Higher-cost execution requires a new quote and new authorization")
         if _direct_child_allocation(db, row.id) > 0:
             raise EconomicKernelError(409, "parent_budget_delegated_to_children", "A parent operation with allocated child budget cannot also execute directly")
-        if row.funding_required:
+        if row.parent_economic_operation_id is not None:
+            evidence_authority, evidence_digest = _adapter_evidence(adapter, to_state, evidence_reference)
+            reason_code = "delegated_execution_under_parent_reserve"
+        elif row.funding_required:
             if row.reserved_amount is None:
                 raise EconomicKernelError(409, "reserve_not_established", "Execution requires a verified reserve")
             if amount_value > Decimal(row.reserved_amount):

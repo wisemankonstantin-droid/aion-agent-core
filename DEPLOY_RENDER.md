@@ -21,9 +21,10 @@ The controlled direct-source cutover is complete and production is live.
   integrity-checked during Package 4 closeout.
 - Package 5 engineering is merged and live at schema
   `0010_package5_proof_v1`; its commercial proof counters remain legitimately
-  zero. Package 5B and Package 5C are merged and live. Package 6A is
-  repository-only, adds candidate migration `0011_economic_kernel_v1`,
-  and has not been deployed or applied to production.
+  zero. Package 5B and Package 5C are merged and live. Package 6A is merged,
+  adds migration `0011_economic_kernel_v1`, and has not been deployed or
+  applied to production. Its post-merge parent-funding corrective remains a
+  repository review item and does not authorize deployment.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

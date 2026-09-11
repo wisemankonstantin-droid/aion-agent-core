@@ -214,7 +214,8 @@ def test_package6a_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
     assert manifest["package"].startswith("Package 6A")
     assert manifest["task_start_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
-    assert manifest["candidate_database_migration_head"] == "0011_economic_kernel_v1"
+    assert manifest["repository_database_migration_head"] == "0011_economic_kernel_v1"
+    assert manifest["status"] == "package_6a_merged_not_deployed_parent_funding_corrective_under_review"
     assert manifest["production_baseline"]["deployed_git_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
     assert manifest["production_baseline"]["deploy_id"] == "dep-dahgei67bikc73fq0g3g"
     assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_6a_task_baseline"
@@ -251,6 +252,7 @@ def test_package6a_kernel_is_single_shared_disabled_money_boundary():
     a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     migration = (ROOT / "alembic" / "versions" / "0011_economic_kernel_v1.py").read_text(encoding="utf-8")
+    kernel = (ROOT / "app" / "services" / "economic_kernel.py").read_text(encoding="utf-8")
 
     assert economic_kernel.REAL_MONEY_EXECUTION_ENABLED is False
     assert main.create_preflight is economic_kernel.create_preflight
@@ -265,6 +267,11 @@ def test_package6a_kernel_is_single_shared_disabled_money_boundary():
     assert 'down_revision = "0010_package5_proof_v1"' in migration
     assert "INSERT INTO economic_operations" not in migration
     assert "payment_intents" not in migration
+    assert '"child_uses_parent_funding"' in kernel
+    assert '"parent_reserved_budget"' in kernel
+    assert '"customer_settlement_scope": "parent_only"' in kernel
+    assert "parent_reserve_insufficient_for_delegated_budget" in kernel
+    assert "REAL_MONEY_EXECUTION_ENABLED = False" in kernel
     for action in ("economic_preflight", "payment_authorized", "funds_reserved", "settled"):
         assert f'action == "{action}"' not in a2a_source
 
