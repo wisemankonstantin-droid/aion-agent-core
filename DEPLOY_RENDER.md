@@ -22,7 +22,7 @@ The controlled direct-source cutover is complete and production is live.
 - Package 5 engineering is merged and live at schema
   `0010_package5_proof_v1`; its commercial proof counters remain legitimately
   zero. Package 5B and Package 5C are merged and live. Package 6A is
-  repository-only, adds candidate migration `0011_economic_execution_kernel_v1`,
+  repository-only, adds candidate migration `0011_economic_kernel_v1`,
   and has not been deployed or applied to production.
 
 Production builds direct tracked source from GitHub main. A push or merge is not

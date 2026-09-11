@@ -229,7 +229,7 @@ floor, known maximum and recursive child-spend bounds, requester-scoped
 idempotency, an auditable state/transition model and authenticated REST/MCP
 preflight/status. Its real-money adapter is fixed disabled: no authorization,
 reserve, spend, settlement or paid-provider call is performed or claimed.
-Candidate migration `0011_economic_execution_kernel_v1` is additive and has not
+Candidate migration `0011_economic_kernel_v1` is additive and has not
 been applied to production. Package 6B/real-rail activation has not started and
 requires separate acceptance and production Human Gates.
 

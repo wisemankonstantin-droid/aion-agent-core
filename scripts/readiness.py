@@ -27,11 +27,11 @@ checks = {
     "migration_0008_action_outcome_evidence": (root / "alembic/versions/0008_action_outcome_evidence.py").exists(),
     "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
     "migration_0010_package5_proof_v1": (root / "alembic/versions/0010_package5_proof_v1.py").exists(),
-    "migration_0011_economic_execution_kernel_v1": (root / "alembic/versions/0011_economic_execution_kernel_v1.py").exists(),
+    "migration_0011_economic_kernel_v1": (root / "alembic/versions/0011_economic_kernel_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "candidate_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0011_economic_execution_kernel_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),

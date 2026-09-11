@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import sys
 import yaml
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 import pytest
 
@@ -188,7 +190,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0011_economic_execution_kernel_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -212,7 +214,7 @@ def test_package6a_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
     assert manifest["package"].startswith("Package 6A")
     assert manifest["task_start_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
-    assert manifest["candidate_database_migration_head"] == "0011_economic_execution_kernel_v1"
+    assert manifest["candidate_database_migration_head"] == "0011_economic_kernel_v1"
     assert manifest["production_baseline"]["deployed_git_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
     assert manifest["production_baseline"]["deploy_id"] == "dep-dahgei67bikc73fq0g3g"
     assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_6a_task_baseline"
@@ -241,30 +243,37 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
     assert '"available": False' in journey_source
     assert 'action == "verify_external_callability"' not in a2a_source
     assert 'action == "submit_package5_vuo"' not in a2a_source
-    assert "0011_economic_execution_kernel_v1.py" in migration_names
+    assert "0011_economic_kernel_v1.py" in migration_names
 
 
 def test_package6a_kernel_is_single_shared_disabled_money_boundary():
     main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
-    migration = (ROOT / "alembic" / "versions" / "0011_economic_execution_kernel_v1.py").read_text(encoding="utf-8")
+    migration = (ROOT / "alembic" / "versions" / "0011_economic_kernel_v1.py").read_text(encoding="utf-8")
 
     assert economic_kernel.REAL_MONEY_EXECUTION_ENABLED is False
     assert main.create_preflight is economic_kernel.create_preflight
     assert main.get_operation is economic_kernel.get_operation
     assert main_source.count("create_preflight(") == 2
     assert "codex/package-6a-economic-execution-kernel-v1" in workflow
-    assert "0011_economic_execution_kernel_v1" in workflow
+    assert "0011_economic_kernel_v1" in workflow
     assert "upgrade 0010_package5_proof_v1" in workflow
     assert "postgres_0010_economic_kernel_proof.py seed" in workflow
     assert "postgres_0010_economic_kernel_proof.py verify" in workflow
-    assert 'revision = "0011_economic_execution_kernel_v1"' in migration
+    assert 'revision = "0011_economic_kernel_v1"' in migration
     assert 'down_revision = "0010_package5_proof_v1"' in migration
     assert "INSERT INTO economic_operations" not in migration
     assert "payment_intents" not in migration
     for action in ("economic_preflight", "payment_authorized", "funds_reserved", "settled"):
         assert f'action == "{action}"' not in a2a_source
+
+
+def test_alembic_revision_ids_fit_version_table_storage():
+    revisions = list(ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).walk_revisions())
+    assert len(revisions) == len({revision.revision for revision in revisions})
+    assert all(len(revision.revision) <= 32 for revision in revisions)
+    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0011_economic_kernel_v1"]
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():

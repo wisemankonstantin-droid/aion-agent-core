@@ -128,7 +128,7 @@ def verify_0009_and_rollback_compatibility() -> None:
 
     with SessionLocal.begin() as db:
         revision = db.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0011_economic_execution_kernel_v1", revision
+        assert revision == "0011_economic_kernel_v1", revision
         requester = db.get(models.Agent, LEGACY_AGENT_IDS[0])
         provider = db.get(models.Agent, LEGACY_AGENT_IDS[1])
         assert requester.external_id == "package4-legacy-requester"

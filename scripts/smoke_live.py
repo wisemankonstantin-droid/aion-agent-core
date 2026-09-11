@@ -12,7 +12,7 @@ import urllib.request
 
 APP_VERSION = "0.7.1"
 MCP_VERSION = "2026-07-28"
-EXPECTED_SCHEMA_REVISION = "0011_economic_execution_kernel_v1"
+EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"
 MAX_SMOKE_RESPONSE_BYTES = 1024 * 1024
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 

@@ -7,7 +7,7 @@ also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
 `GET /readiness` is read-only and non-mutating. The Package 6A repository candidate checks
-database connectivity, the exact Alembic head `0011_economic_execution_kernel_v1`, A2A runtime
+database connectivity, the exact Alembic head `0011_economic_kernel_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or

@@ -1,6 +1,6 @@
 """add Package 6A economic execution kernel v1
 
-Revision ID: 0011_economic_execution_kernel_v1
+Revision ID: 0011_economic_kernel_v1
 Revises: 0010_package5_proof_v1
 """
 
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0011_economic_execution_kernel_v1"
+revision = "0011_economic_kernel_v1"
 down_revision = "0010_package5_proof_v1"
 branch_labels = None
 depends_on = None

@@ -4,7 +4,7 @@
   "status": "local_repository_candidate_not_pushed_not_merged_not_deployed",
   "task_start_sha": "a2a53ff61ede7597651b2f1bac1ca3db809855f9",
   "application_version": "0.7.1",
-  "candidate_database_migration_head": "0011_economic_execution_kernel_v1",
+  "candidate_database_migration_head": "0011_economic_kernel_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",

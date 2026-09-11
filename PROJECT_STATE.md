@@ -298,7 +298,7 @@ changed. Readiness does not establish a review SLA or guarantee later qualificat
 Package 6A is active only on branch
 `codex/package-6a-economic-execution-kernel-v1`, based on the accepted Package
 5C checkpoint above. It adds the deterministic economic policy/state-machine
-kernel and additive candidate migration `0011_economic_execution_kernel_v1`.
+kernel and additive candidate migration `0011_economic_kernel_v1`.
 The repository candidate provides authenticated requester-scoped REST/MCP
 preflight and read-only status, trusted immutable product profiles, exact
 decimal money and a durable append-only transition trail. It enforces the 40%
