@@ -190,7 +190,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0012_ambassador_pilot_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -210,15 +210,15 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
     assert "autoDeploy: true" not in render
 
 
-def test_package6a_manifest_has_current_production_baseline_and_no_fake_proof():
+def test_package5d_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["package"].startswith("Package 6A")
-    assert manifest["task_start_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
-    assert manifest["repository_database_migration_head"] == "0011_economic_kernel_v1"
-    assert manifest["status"] == "package_6a_merged_not_deployed_parent_funding_corrective_under_review"
+    assert manifest["package"].startswith("Package 5D")
+    assert manifest["task_start_sha"] == "1201eb1944457bf6745b4f1a4ad7ae1c7e42be54"
+    assert manifest["repository_database_migration_head"] == "0012_ambassador_pilot_v1"
+    assert manifest["status"] == "package_5d_repository_candidate_not_deployed_no_outreach"
     assert manifest["production_baseline"]["deployed_git_sha"] == "a2a53ff61ede7597651b2f1bac1ca3db809855f9"
     assert manifest["production_baseline"]["deploy_id"] == "dep-dahgei67bikc73fq0g3g"
-    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_6a_task_baseline"
+    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_5d_task_baseline"
     assert manifest["production_baseline"]["actual_live_database_revision"] == "0010_package5_proof_v1"
     assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0
@@ -226,6 +226,8 @@ def test_package6a_manifest_has_current_production_baseline_and_no_fake_proof():
     assert manifest["production_action_authorized_by_candidate"] is False
     assert manifest["package_5_semantics_changed_by_candidate"] is False
     assert not any(manifest["package_6a_money_state"].values())
+    assert manifest["package_5d_distribution_state"]["outbound_enabled_by_default"] is False
+    assert manifest["package_5d_distribution_state"]["real_outreach_performed"] is False
     assert "final_candidate_sha" not in manifest
 
 
@@ -245,6 +247,7 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
     assert 'action == "verify_external_callability"' not in a2a_source
     assert 'action == "submit_package5_vuo"' not in a2a_source
     assert "0011_economic_kernel_v1.py" in migration_names
+    assert "0012_ambassador_pilot_v1.py" in migration_names
 
 
 def test_package6a_kernel_is_single_shared_disabled_money_boundary():
@@ -280,7 +283,29 @@ def test_alembic_revision_ids_fit_version_table_storage():
     revisions = list(ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})
     assert all(len(revision.revision) <= 32 for revision in revisions)
-    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0011_economic_kernel_v1"]
+    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0012_ambassador_pilot_v1"]
+
+
+def test_package5d_is_one_bounded_operator_gated_distribution_boundary():
+    source = (ROOT / "app" / "services" / "ambassador.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    cli = (ROOT / "scripts" / "ambassador_pilot.py").read_text(encoding="utf-8")
+    migration = (ROOT / "alembic" / "versions" / "0012_ambassador_pilot_v1.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    assert "MAX_CAMPAIGN_TARGETS = 30" in source
+    assert "MAX_MESSAGE_BYTES = 2_048" in source
+    assert "PEER_REFERRAL_MAX_USES = 5" in source
+    assert 'os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"' in source
+    assert 'os.getenv("AION_AMBASSADOR_OPERATOR") != "1"' in source
+    assert "max_attempts=1" in source
+    assert "discover_external_agents_with_status" in source
+    assert "--send" in cli and "json.load(sys.stdin)" in cli
+    assert 'revision = "0012_ambassador_pilot_v1"' in migration
+    assert 'down_revision = "0011_economic_kernel_v1"' in migration
+    assert "codex/package-5d-active-distribution-pilot-v1" in workflow
+    assert "AION_AMBASSADOR_OUTBOUND_ENABLED=1" not in workflow
+    assert "send_contact(" not in main_source
+    assert "MIN_CONTACT_INTERVAL_SECONDS = 5" in source
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():

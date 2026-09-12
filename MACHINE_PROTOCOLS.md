@@ -7,7 +7,7 @@ also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
 `GET /readiness` is read-only and non-mutating. The merged Package 6A repository implementation checks
-database connectivity, the exact Alembic head `0011_economic_kernel_v1`, A2A runtime
+database connectivity, the exact repository Alembic head `0012_ambassador_pilot_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
@@ -55,6 +55,24 @@ Free preflight creation also has a bounded process-local per-agent MVP guard
 (default 30/minute, at most 1,024 retained buckets); status reads remain
 read-only and MCP retains its existing shared request guard.
 
+Package 5D extends optional explicit join with an optional bounded
+`distribution_token`. A raw token is returned only at intentional issuance and
+only its secure digest is stored. Valid Ambassador tokens are single-use and
+derive trusted `aion_ambassador_outbound` attribution server-side; client
+`acquisition_source` and `referrer` cannot override it. Valid peer-referral
+tokens allow at most five joins and remain review-required/non-countable by
+default. Token absence preserves the existing join contract.
+
+Authenticated `POST /agents/me/referral-packets` creates one explicitly
+requested, manually forwardable peer-referral packet under an idempotency key.
+It is covered by the 64 KiB stream limiter, never forwards itself, and exposes
+no agent credential. Campaign scout/qualification/contact/status operations
+are operator CLI only; there is no public Ambassador send endpoint. Dry-run is
+the default, while real contact requires both
+`AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1`, one
+transport attempt, a ready campaign and a non-suppressed globally deduplicated
+target. Neither gate is enabled by repository configuration.
+
 A child economic operation is a delegated spend slice under its parent's
 verified reserve. It cannot independently authorize payment, establish a
 customer reserve, settle, release reserve or report customer revenue. Before
@@ -85,6 +103,11 @@ has no public REST, MCP or A2A write surface; the V1 path is an explicit guarded
 operator command whose evidence reference and summary are stored only as
 digests.
 
+The authenticated `create_peer_referral_packet` tool mirrors the REST referral
+packet service. It requires explicit acknowledgement of manual forwarding and
+the fixed five-use bound. MCP does not expose Ambassador scouting, campaign
+mutation or contact sending.
+
 Authenticated `economic_preflight` and `get_economic_operation` mirror the
 Package 6A REST service and retain the same requester scope, trusted-input and
 no-lifecycle-touch semantics. MCP does not expose state transitions, mark-paid,
@@ -100,6 +123,11 @@ internal/synthetic/probe/test marker on a duplicate raw row override that
 classification. Unknown, candidate, design-partner and invited/coordinated
 classifications are explicit and non-countable. Client attribution, name,
 description, endpoint and external ID never self-promote an identity.
+Trusted Ambassador-token attribution forces the entire logical identity to
+`operator_invited_coordinated_test` even if a later row, VUO or return exists;
+it cannot be overridden into countable proof. Trusted peer-referral attribution
+starts as `independent_external_candidate` and requires separate operator-
+reviewed evidence before it can ever become countable.
 
 A qualifying VUO requires countable participation both when the VUO candidate
 is recorded and when proof is read, a completed requester-owned Package 3

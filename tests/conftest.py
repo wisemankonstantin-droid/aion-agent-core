@@ -29,7 +29,7 @@ if not POSTGRES_GATE:
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL)"))
         connection.execute(text("DELETE FROM alembic_version"))
-        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0011_economic_kernel_v1')"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0012_ambassador_pilot_v1')"))
 
 
 def pytest_sessionfinish(session, exitstatus):

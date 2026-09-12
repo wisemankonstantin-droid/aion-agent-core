@@ -97,7 +97,21 @@ def _bounded_logical_groups(db: Session) -> list[dict]:
     return groups
 
 
-def _forced_exclusion(group: dict, agents_by_id: dict[int, models.Agent]) -> dict | None:
+def _forced_exclusion(db: Session, group: dict, agents_by_id: dict[int, models.Agent]) -> dict | None:
+    trusted_ambassador = db.scalar(
+        select(models.DistributionJoinAttribution.id).where(
+            models.DistributionJoinAttribution.agent_id.in_(group["row_ids"]),
+            models.DistributionJoinAttribution.kind == "ambassador_invite",
+        ).limit(1)
+    )
+    if trusted_ambassador is not None:
+        return {
+            "classification": "operator_invited_coordinated_test",
+            "reason_code": "trusted_aion_ambassador_outbound_attribution",
+            "countable": False,
+            "evidence_authority": "server_verified_distribution_token",
+            "assessment_id": None,
+        }
     configured = {
         value.strip().lower()
         for value in os.getenv("AION_OPERATED_EXTERNAL_IDS", "").split(",")
@@ -139,7 +153,7 @@ def _classification_for_group(
     group: dict,
     agents_by_id: dict[int, models.Agent],
 ) -> dict:
-    forced = _forced_exclusion(group, agents_by_id)
+    forced = _forced_exclusion(db, group, agents_by_id)
     if forced is not None:
         return forced
     assessment = db.scalar(
@@ -152,6 +166,20 @@ def _classification_for_group(
         .limit(1)
     )
     if assessment is None:
+        trusted_peer_referral = db.scalar(
+            select(models.DistributionJoinAttribution.id).where(
+                models.DistributionJoinAttribution.agent_id.in_(group["row_ids"]),
+                models.DistributionJoinAttribution.kind == "peer_referral",
+            ).limit(1)
+        )
+        if trusted_peer_referral is not None:
+            return {
+                "classification": "independent_external_candidate",
+                "reason_code": "trusted_peer_referral_requires_operator_review",
+                "countable": False,
+                "evidence_authority": "server_verified_distribution_token",
+                "assessment_id": None,
+            }
         return {
             "classification": "unknown_not_proven",
             "reason_code": "no_trusted_package5_participation_assessment",

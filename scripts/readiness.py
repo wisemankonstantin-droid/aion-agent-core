@@ -16,6 +16,7 @@ postgres_gate = (root / ".github/workflows/postgres-release-gate.yml").read_text
 learning_cli = (root / "scripts/learning_cycle.py").read_text(encoding="utf-8")
 machine_journey = (root / "app/machine_journey.py").read_text(encoding="utf-8")
 economic_kernel = (root / "app/services/economic_kernel.py").read_text(encoding="utf-8")
+ambassador = (root / "app/services/ambassador.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -28,10 +29,11 @@ checks = {
     "migration_0009_continuous_learning_v1": (root / "alembic/versions/0009_continuous_learning_v1.py").exists(),
     "migration_0010_package5_proof_v1": (root / "alembic/versions/0010_package5_proof_v1.py").exists(),
     "migration_0011_economic_kernel_v1": (root / "alembic/versions/0011_economic_kernel_v1.py").exists(),
+    "migration_0012_ambassador_pilot_v1": (root / "alembic/versions/0012_ambassador_pilot_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "repository_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0011_economic_kernel_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0012_ambassador_pilot_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
@@ -57,6 +59,14 @@ checks = {
         and "REAL_MONEY_EXECUTION_ENABLED = False" in economic_kernel
         and "MINIMUM_MARGIN_BPS = 4_000" in economic_kernel
         and "parent_economic_operation_id" in models
+    ),
+    "package_5d_ambassador_pilot": (
+        (root / "scripts/ambassador_pilot.py").exists()
+        and "MAX_CAMPAIGN_TARGETS = 30" in ambassador
+        and 'os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"' in ambassador
+        and 'os.getenv("AION_AMBASSADOR_OPERATOR") != "1"' in ambassador
+        and "discover_external_agents_with_status" in ambassador
+        and "aion_ambassador_outbound" in ambassador
     ),
     "package_5b_conversion_journey": (
         "verified_outcome_journey" in main
@@ -107,9 +117,10 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 6A parent-funding corrective.",
-    "Run AION CI and the PostgreSQL release gate on the exact pushed corrective SHA.",
-    "Do not deploy or migrate Package 6A without a separate production Human Gate.",
+    "Obtain HQ review and exact-SHA push authorization for the Package 5D repository candidate.",
+    "Run AION CI and the PostgreSQL 18 release gate on the exact pushed Package 5D SHA.",
+    "Do not enable Ambassador outbound or perform outreach without a separate Human Gate.",
+    "Do not deploy or migrate Package 5D without a separate production Human Gate.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

@@ -36,6 +36,7 @@ from .services.package5_proof import (
     submit_vuo_candidate,
 )
 from .services.economic_kernel import EconomicKernelError, create_preflight, get_operation
+from .services.ambassador import AmbassadorError, issue_peer_referral
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
 
@@ -54,7 +55,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -738,6 +739,25 @@ def my_package5_participation(request: Request, agent=Depends(require_participat
     return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
 
 
+@app.post("/agents/me/referral-packets")
+def create_referral_packet(
+    payload: schemas.ReferralPacketRequest,
+    request: Request,
+    agent=Depends(require_agent),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return issue_peer_referral(
+            db,
+            referrer_agent_id=agent.id,
+            idempotency_key=idempotency_key,
+            public_base_url=str(request.base_url).rstrip("/"),
+        )
+    except AmbassadorError as exc:
+        raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+
+
 @app.get("/agents/me", response_model=schemas.AgentOut)
 def get_me(agent=Depends(require_agent)):
     return agent
@@ -1032,8 +1052,10 @@ MCP_TOOLS = [
                 "protocol": {"type": "string"},
                 "acquisition_source": {"type": ["string", "null"]},
                 "referrer": {"type": ["string", "null"]},
+                "distribution_token": {"type": ["string", "null"], "minLength": 40, "maxLength": 160},
                 "capabilities": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "description": {"type": "string"}}}},
             },
+            "additionalProperties": False,
         },
     },
     {
@@ -1148,6 +1170,20 @@ MCP_TOOLS = [
         "name": "get_my_package5_participation",
         "description": "Authenticated self-only Package 5 participation readiness; no lifecycle touch or evidence writes. Check before actions for Package 5 qualification; if not countable, preserve state and wait for review. Bearer key only in HTTP Authorization, never A2A text.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "create_peer_referral_packet",
+        "description": "Authenticated explicit creation of one bounded manually forwarded peer-referral packet. AION never sends it automatically; referral joins remain review-required and non-countable by default.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["idempotency_key", "maximum_uses", "acknowledge_manual_forwarding"],
+            "properties": {
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"},
+                "maximum_uses": {"type": "integer", "const": 5},
+                "acknowledge_manual_forwarding": {"type": "boolean", "const": True},
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "get_package5_proof",
@@ -1432,6 +1468,18 @@ async def mcp_gateway(
                 "isError": False,
             }), headers={"Cache-Control": "private, no-store"})
 
+        elif name == "create_peer_referral_packet":
+            mcp_agent = authenticate_agent(authorization, db)
+            referral_args = dict(args)
+            key = referral_args.pop("idempotency_key", None)
+            schemas.ReferralPacketRequest.model_validate(referral_args)
+            data = issue_peer_referral(
+                db,
+                referrer_agent_id=mcp_agent.id,
+                idempotency_key=key,
+                public_base_url=str(request.base_url).rstrip("/"),
+            )
+
         elif name == "economic_preflight":
             mcp_agent = authenticate_participation_reader(authorization, db)
             economic_args = dict(args)
@@ -1528,6 +1576,12 @@ async def mcp_gateway(
             "isError": True,
         })
     except EconomicKernelError as exc:
+        return _mcp_result(rpc_id, {
+            "content": [{"type": "text", "text": exc.message}],
+            "structuredContent": {"code": exc.code, "status": exc.status_code},
+            "isError": True,
+        })
+    except AmbassadorError as exc:
         return _mcp_result(rpc_id, {
             "content": [{"type": "text", "text": exc.message}],
             "structuredContent": {"code": exc.code, "status": exc.status_code},

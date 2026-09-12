@@ -71,6 +71,7 @@ def _agent_payload(command: dict) -> schemas.AgentCreate:
             # growth attribution.
             "acquisition_source": "a2a_direct",
             "referrer": profile.get("referrer"),
+            "distribution_token": profile.get("distribution_token"),
             "owner_required": False,
             "capabilities": caps,
         }

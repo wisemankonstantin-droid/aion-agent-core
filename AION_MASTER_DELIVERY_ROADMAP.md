@@ -221,6 +221,22 @@ seeking a qualifying VUO. Once countable, follow the existing action/evidence/
 usefulness sequence. This is not a gate on public utility or joining, a review
 request queue, a classification write path, or commercial proof.
 
+Package 5D is a bounded active-distribution/Ambassador pilot foundation, not
+Package 7 acquisition scaling. It runs beside the organic control lane without
+mixing evidence:
+
+`bounded scout -> deterministic qualification -> prepare utility-first invitation -> Human Gate -> send once -> attributed response/join/use/VUO/return evidence`
+
+The repository candidate reuses hardened public A2A discovery, caps a campaign
+at 30 targets, globally deduplicates interaction endpoints, permits at most one
+initial contact and no automatic follow-up, and keeps real outbound disabled
+behind two explicit operator gates. Server-verifiable invite tokens force
+Ambassador joins into coordinated/non-countable Package 5 status. Peer-referral
+tokens are bounded to five uses and remain review-required; AION never forwards
+them automatically. This work performs no outreach and creates no independent
+adoption, VUO, return, payment or revenue evidence. Actual pilot contact remains
+a separate Human Gate.
+
 ### Package 6 — Economic Execution + Real Settlement
 
 Package 6A is merged engineering but is not production-live. It implements trusted

@@ -11,6 +11,12 @@ from .. import models, schemas
 from ..security import issue_agent_key
 from .capabilities import normalize_capability
 from .rate_limit import allow_join, configured_join_limit
+from .ambassador import (
+    AmbassadorError,
+    attribute_join,
+    lock_distribution_token,
+    trusted_join_attribution,
+)
 
 
 # SQLite is used only by local/CI tests. PostgreSQL uses transaction-scoped
@@ -67,25 +73,38 @@ def join_agent(payload: schemas.AgentCreate, db: Session):
     with local_guard:
         try:
             _serialize_logical_identity(payload, db)
+            try:
+                distribution_token = lock_distribution_token(db, payload.distribution_token)
+            except AmbassadorError as exc:
+                raise HTTPException(
+                    status_code=exc.status_code,
+                    detail={"code": exc.code, "message": exc.message},
+                ) from exc
             duplicate = find_logical_duplicate(payload, db)
             if duplicate:
                 raise _duplicate_error(duplicate)
 
             # This key remains local until the one complete transaction commits.
             raw_key, key_hash = issue_agent_key()
+            source, referrer = trusted_join_attribution(
+                distribution_token,
+                (payload.acquisition_source or payload.referrer or "direct"),
+                payload.referrer,
+            )
             agent = models.Agent(
                 external_id=payload.external_id,
                 name=payload.name,
                 description=payload.description,
                 endpoint=payload.endpoint,
                 protocol=payload.protocol,
-                acquisition_source=(payload.acquisition_source or payload.referrer or "direct")[:120],
-                referrer=payload.referrer,
+                acquisition_source=source,
+                referrer=referrer,
                 owner_required=False,
                 api_key_hash=key_hash,
             )
             db.add(agent)
             db.flush()
+            attribute_join(db, agent_id=agent.id, token=distribution_token)
 
             for cap in payload.capabilities:
                 db.add(

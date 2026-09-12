@@ -74,7 +74,7 @@ def verify() -> None:
     schema = inspect(engine)
     assert {"economic_operations", "economic_transitions"} <= set(schema.get_table_names())
     with engine.begin() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0011_economic_kernel_v1"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0012_ambassador_pilot_v1"
         assert connection.scalar(text("SELECT COUNT(*) FROM economic_operations")) == 0
         assert connection.scalar(text("SELECT COUNT(*) FROM economic_transitions")) == 0
         assert connection.execute(text(

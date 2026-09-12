@@ -18,8 +18,10 @@ class AgentCreate(BaseModel):
     protocol: str = Field(default="REST", min_length=1, max_length=40)
     acquisition_source: Optional[str] = Field(default=None, max_length=120)
     referrer: Optional[str] = Field(default=None, max_length=160)
+    distribution_token: Optional[str] = Field(default=None, min_length=40, max_length=160, pattern=r"^aion_dist_[A-Za-z0-9_-]+$")
     owner_required: bool = False
     capabilities: List[CapabilityIn] = Field(default_factory=list, max_length=100)
+    model_config = {"extra": "forbid"}
 
 class AgentOut(BaseModel):
     id: int
@@ -69,6 +71,12 @@ class EconomicPreflightRequest(BaseModel):
     product_sku: Literal["aion.cached.utility.v1", "aion.verified.callability.v1"]
     currency: str = Field(min_length=3, max_length=16, pattern=r"^[A-Z][A-Z0-9]{2,15}$")
     requester_max_price: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    model_config = {"extra": "forbid"}
+
+
+class ReferralPacketRequest(BaseModel):
+    maximum_uses: Literal[5] = 5
+    acknowledge_manual_forwarding: Literal[True]
     model_config = {"extra": "forbid"}
 
 class AgentUpdate(BaseModel):

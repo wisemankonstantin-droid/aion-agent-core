@@ -51,6 +51,17 @@ points, missing capabilities, integration friction and willingness to pay.
 Coordinated tests must remain labelled as such and must not be counted as
 independent commercial adoption.
 
+Package 5D adds a deliberately small active-distribution pilot alongside that
+organic control lane. AION may scout bounded public machine-readable A2A
+candidates, qualify them deterministically and prepare one utility-first
+machine invitation, but real sending remains a separate operator Human Gate.
+Direct Ambassador joins are trusted server-attributed coordinated traffic and
+are never independent Package 5 proof. Peer referrals are bounded,
+recipient-forwarded rather than AION-propagated, and remain non-countable until
+separately justified by trusted review. Campaign conversion, VUO-candidate and
+return evidence must remain labelled as attributed sales-funnel evidence, not
+organic or independent adoption.
+
 ## Revenue rule
 
 Revenue should attach to real agent value rather than artificial friction.

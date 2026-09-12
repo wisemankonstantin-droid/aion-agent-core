@@ -1,4 +1,4 @@
-# Project checkpoint — 2026-09-11
+# Project checkpoint — 2026-09-12
 
 ## Current production state
 
@@ -25,6 +25,9 @@
   `b9d3521f6b5a7fd9ac61c3670ac150d8a16df772`.
 - **Package 5C accepted production application checkpoint and Package 6A
   repository baseline:** `a2a53ff61ede7597651b2f1bac1ca3db809855f9`.
+- **Package 5D repository starting checkpoint:**
+  `1201eb1944457bf6745b4f1a4ad7ae1c7e42be54` (Package 6A parent-funding
+  corrective merged to main; not deployed).
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
@@ -37,7 +40,7 @@
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
 - **HQ-verified Package 5C production deploy:** `dep-dahgei67bikc73fq0g3g`.
-  This Package 6A repository task does not query or mutate production; verify
+  This Package 5D repository task does not query or mutate production; verify
   live state again before any separately authorized production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
@@ -65,9 +68,12 @@
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B and Package 5C are merged and production-live. Package 6A is
-  merged engineering but is not deployed and migration `0011_economic_kernel_v1`
-  has not been applied to production. AutoDeploy remains OFF.
+  Package 5B and Package 5C are merged and production-live. Package 6A,
+  including its parent-funding corrective, is merged engineering but is not
+  deployed and migration `0011_economic_kernel_v1` has not been applied to
+  production. Package 5D is repository-only and adds candidate head
+  `0012_ambassador_pilot_v1`; it has performed no outreach. AutoDeploy remains
+  OFF.
 
 ## Current product and architecture phase
 
@@ -293,11 +299,35 @@ These are isolated engineering fixtures, never commercial proof. No schema,
 classification policy, persistence/concurrency semantics or economic gate was
 changed. Readiness does not establish a review SLA or guarantee later qualification.
 
+## Package 5D active distribution / Ambassador pilot — repository candidate
+
+Package 5D is the bounded active-distribution pilot foundation, not Package 7
+acquisition scale. It keeps two evidence lanes separate: unsolicited organic
+inbound remains the Package 5 control lane, while AION Ambassador invitations
+and peer referrals retain trusted coordinated/referral provenance and do not
+automatically become independent Package 5 proof.
+
+The repository candidate adds additive migration `0012_ambassador_pilot_v1`,
+durable campaigns/targets/contact attempts, server-verifiable hashed
+distribution tokens, join attribution, deterministic qualification, a bounded
+utility-first message, a manually requested peer-referral packet and a
+read-only operator campaign funnel. Campaigns are capped at 30 targets, only
+one initial contact is permitted per globally deduplicated target, no automatic
+follow-up exists, and actual sending requires both
+`AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1` through
+the operator CLI. Both gates remain disabled; no send mode, external outreach,
+production classification, learning cycle, payment or spend occurred.
+
+The implementation and fixtures do not claim adoption, VUO, return or
+commercial proof. Production remains on the Package 5C application/schema
+checkpoint above. The Package 5D candidate is local and awaits HQ review and
+exact-SHA publication authorization; this document intentionally does not
+embed that future SHA.
+
 ## Package 6A Economic Execution Kernel V1 — merged, not deployed
 
-Package 6A is merged to main, based on the accepted Package 5C checkpoint
-above, but remains absent from production. The bounded post-merge parent-funding
-corrective is developed on `codex/package-6a-parent-funding-corrective-v1`.
+Package 6A and its bounded parent-funding corrective are merged to main at the
+Package 5D starting checkpoint above, but remain absent from production.
 Package 6A adds the deterministic economic policy/state-machine kernel and
 additive migration `0011_economic_kernel_v1`. The repository implementation
 provides authenticated requester-scoped REST/MCP

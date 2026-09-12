@@ -783,3 +783,143 @@ class EconomicTransition(Base):
     amount: Mapped[str | None] = mapped_column(String(48), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AmbassadorCampaign(Base):
+    __tablename__ = "ambassador_campaigns"
+    __table_args__ = (
+        CheckConstraint("state IN ('draft', 'ready', 'paused', 'closed')", name="ck_ambassador_campaign_state"),
+        CheckConstraint("maximum_targets > 0 AND maximum_targets <= 30", name="ck_ambassador_campaign_target_limit"),
+        CheckConstraint("maximum_contacts >= 0 AND maximum_contacts <= maximum_targets", name="ck_ambassador_campaign_contact_limit"),
+        UniqueConstraint("campaign_id", name="uq_ambassador_campaign_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(500), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    maximum_targets: Mapped[int] = mapped_column(Integer, nullable=False)
+    maximum_contacts: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AmbassadorTarget(Base):
+    __tablename__ = "ambassador_targets"
+    __table_args__ = (
+        CheckConstraint(
+            "qualification_state IN ('discovered', 'qualified', 'rejected')",
+            name="ck_ambassador_target_qualification_state",
+        ),
+        CheckConstraint(
+            "contact_state IN ('not_ready', 'ready', 'claimed', 'contacted', 'response_received', 'blocked', 'ambiguous')",
+            name="ck_ambassador_target_contact_state",
+        ),
+        UniqueConstraint("target_id", name="uq_ambassador_target_id"),
+        UniqueConstraint("target_fingerprint", name="uq_ambassador_target_fingerprint"),
+        UniqueConstraint("campaign_id", "source_identifier", name="uq_ambassador_target_campaign_source"),
+        Index("ix_ambassador_targets_campaign_state", "campaign_id", "qualification_state", "contact_state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("ambassador_campaigns.id", ondelete="RESTRICT"), nullable=False)
+    discovery_source: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_identifier: Mapped[str] = mapped_column(String(240), nullable=False)
+    agent_card_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    interaction_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    target_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    metadata_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    manifest_reachable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    declared_a2a_v1_jsonrpc: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    interaction_url_validated: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    authentication_requirement: Mapped[str] = mapped_column(String(32), nullable=False)
+    payment_required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    qualification_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    qualification_reasons: Mapped[list] = mapped_column(JSON, nullable=False)
+    contact_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    suppressed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    suppression_reason: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AmbassadorContactAttempt(Base):
+    __tablename__ = "ambassador_contact_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "result_class IN ('claimed', 'dry_run', 'delivered', 'response_received', 'payment_required', 'credentials_required', 'rejected', 'ambiguous', 'transport_error')",
+            name="ck_ambassador_contact_result_class",
+        ),
+        UniqueConstraint("contact_id", name="uq_ambassador_contact_id"),
+        UniqueConstraint("target_id", name="uq_ambassador_contact_target_once"),
+        UniqueConstraint("target_id", "idempotency_key", name="uq_ambassador_contact_target_idempotency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contact_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    target_id: Mapped[int] = mapped_column(ForeignKey("ambassador_targets.id", ondelete="RESTRICT"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    outbound_request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    result_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    response_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DistributionToken(Base):
+    __tablename__ = "distribution_tokens"
+    __table_args__ = (
+        CheckConstraint("kind IN ('ambassador_invite', 'peer_referral')", name="ck_distribution_token_kind"),
+        CheckConstraint("maximum_uses > 0 AND maximum_uses <= 5", name="ck_distribution_token_use_limit"),
+        CheckConstraint("use_count >= 0 AND use_count <= maximum_uses", name="ck_distribution_token_use_count"),
+        CheckConstraint(
+            "(kind = 'ambassador_invite' AND maximum_uses = 1 AND target_id IS NOT NULL AND referrer_agent_id IS NULL) OR "
+            "(kind = 'peer_referral' AND target_id IS NULL AND referrer_agent_id IS NOT NULL)",
+            name="ck_distribution_token_provenance",
+        ),
+        UniqueConstraint("token_id", name="uq_distribution_token_id"),
+        UniqueConstraint("token_digest", name="uq_distribution_token_digest"),
+        UniqueConstraint("target_id", "kind", name="uq_distribution_token_target_kind"),
+        UniqueConstraint("referrer_agent_id", "idempotency_key", name="uq_distribution_token_referrer_idempotency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("ambassador_campaigns.id", ondelete="RESTRICT"), nullable=True)
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("ambassador_targets.id", ondelete="RESTRICT"), nullable=True)
+    referrer_agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    maximum_uses: Mapped[int] = mapped_column(Integer, nullable=False)
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DistributionJoinAttribution(Base):
+    __tablename__ = "distribution_join_attributions"
+    __table_args__ = (
+        CheckConstraint("kind IN ('ambassador_invite', 'peer_referral')", name="ck_distribution_join_kind"),
+        CheckConstraint(
+            "trusted_acquisition_source IN ('aion_ambassador_outbound', 'trusted_peer_referral')",
+            name="ck_distribution_join_source",
+        ),
+        UniqueConstraint("agent_id", name="uq_distribution_join_agent"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False)
+    token_id: Mapped[int] = mapped_column(ForeignKey("distribution_tokens.id", ondelete="RESTRICT"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("ambassador_campaigns.id", ondelete="RESTRICT"), nullable=True)
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("ambassador_targets.id", ondelete="RESTRICT"), nullable=True)
+    referrer_agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), nullable=True)
+    trusted_acquisition_source: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(96), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

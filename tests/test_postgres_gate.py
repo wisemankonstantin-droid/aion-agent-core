@@ -1,5 +1,7 @@
 """Real PostgreSQL lock observation; opt-in only for disposable CI service."""
 import os
+import hashlib
+import secrets
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -12,7 +14,7 @@ from app import models, schemas
 from app.db import engine, SessionLocal
 from app.services import joining
 from app.services import live_utility_store
-from app.services import action_engine, economic_kernel, external_registry, learning_engine, package5_proof
+from app.services import action_engine, ambassador, economic_kernel, external_registry, learning_engine, package5_proof
 from app.services.agent_utility import select_current_utility
 from app.services.live_utility import RefreshPolicy, RefreshStrategy, SourceDefinition, SourceObservation, SourceTier
 from app.services.live_utility_engine import LiveUtilityEngine, RefreshStatus
@@ -35,6 +37,42 @@ def _postgres_economic_agent(token: str) -> int:
         db.commit()
         db.refresh(row)
         return row.id
+
+
+def _pg_ambassador_campaign(token: str, *, contacts: int = 30):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        row = models.AmbassadorCampaign(
+            campaign_id=str(uuid.uuid4()), name="PG Ambassador " + token,
+            purpose="Disposable concurrency proof", state="ready",
+            maximum_targets=30, maximum_contacts=contacts,
+            created_at=now, updated_at=now,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row.id, row.campaign_id
+
+
+def _pg_ambassador_target(campaign_db_id: int, token: str, *, state="ready"):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        row = models.AmbassadorTarget(
+            target_id=str(uuid.uuid4()), campaign_id=campaign_db_id,
+            discovery_source="postgres_gate", source_identifier="pg-target-" + token,
+            agent_card_url=f"https://cards.example/{token}", interaction_url=f"https://agents.example/{token}/a2a",
+            target_fingerprint="sha256:" + hashlib.sha256(token.encode()).hexdigest(),
+            metadata_digest="sha256:" + hashlib.sha256(("metadata-" + token).encode()).hexdigest(),
+            manifest_reachable=True, declared_a2a_v1_jsonrpc=True,
+            interaction_url_validated=True, authentication_requirement="none", payment_required=False,
+            qualification_state="qualified", qualification_reasons=["qualified_public_a2a_v1_no_credentials_no_payment"],
+            contact_state=state, suppressed=False, suppression_reason=None,
+            created_at=now, updated_at=now,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row.id, row.target_id
 
 
 def test_postgres_concurrent_economic_preflight_idempotency_is_single(monkeypatch):
@@ -825,6 +863,172 @@ def test_postgres_concurrent_learning_source_claim_fetches_once():
         first_result["source_results"][0]["status"],
         second_result["source_results"][0]["status"],
     } == {"refreshed_changed", "source_busy"}
+
+
+def test_postgres_concurrent_ambassador_target_insert_dedupes(monkeypatch):
+    token = uuid.uuid4().hex
+    campaign_db_id, _ = _pg_ambassador_campaign(token)
+    monkeypatch.setattr(ambassador, "_canonical_public_url", lambda value: str(value).rstrip("/"))
+    candidate = {
+        "source": "global_a2a_registry", "identifier": "pg-dedupe-" + token,
+        "url": f"https://cards.example/{token}", "interaction_url": f"https://agents.example/{token}/a2a",
+        "manifest_reachable": True, "declared_a2a_v1_jsonrpc": True,
+        "interaction_url_validated": True, "authentication_requirement": "none", "payment_required": False,
+    }
+    barrier = threading.Barrier(2)
+
+    def worker():
+        with SessionLocal() as db:
+            campaign = db.get(models.AmbassadorCampaign, campaign_db_id)
+            barrier.wait(timeout=10)
+            row, outcome = ambassador._insert_candidate(db, campaign, candidate)
+            db.commit()
+            return row.target_id if row is not None else None, outcome
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: worker(), range(2)))
+    assert sorted(outcome for _, outcome in results) == ["created", "duplicate_target_fingerprint"]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.campaign_id == campaign_db_id
+        )) == 1
+
+
+def test_postgres_concurrent_ambassador_contact_respects_campaign_limit(monkeypatch):
+    token = uuid.uuid4().hex
+    campaign_db_id, _ = _pg_ambassador_campaign(token, contacts=1)
+    targets = [_pg_ambassador_target(campaign_db_id, token + suffix)[1] for suffix in ("a", "b")]
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    monkeypatch.setattr(
+        ambassador.safe_http, "fetch_json",
+        lambda *a, **k: (FetchResult(200, b"{}", None, 1), {"jsonrpc": "2.0", "result": {}}),
+    )
+    barrier = threading.Barrier(2)
+    message = ambassador.build_ambassador_message(
+        public_base_url="https://aion.example", distribution_token="aion_dist_" + "x" * 43
+    )
+
+    def worker(target_id):
+        with SessionLocal() as db:
+            barrier.wait(timeout=10)
+            try:
+                return ambassador.send_contact(db, target_id=target_id, message=message, idempotency_key="pg-contact-" + target_id, send=True)["result_class"]
+            except ambassador.AmbassadorError as exc:
+                return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(worker, targets))
+    assert sorted(results) == ["campaign_contact_limit_reached", "response_received"]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorContactAttempt).join(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.campaign_id == campaign_db_id
+        )) == 1
+
+
+def test_postgres_concurrent_single_use_ambassador_invite_is_atomic():
+    token = uuid.uuid4().hex
+    campaign_db_id, _ = _pg_ambassador_campaign(token)
+    target_db_id, _ = _pg_ambassador_target(campaign_db_id, token)
+    raw = "aion_dist_" + secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        db.add(models.DistributionToken(
+            token_id=str(uuid.uuid4()), token_digest=hashlib.sha256(raw.encode()).hexdigest(),
+            kind="ambassador_invite", campaign_id=campaign_db_id, target_id=target_db_id,
+            referrer_agent_id=None, idempotency_key=None, expires_at=now + timedelta(days=1),
+            maximum_uses=1, use_count=0, created_at=now, last_used_at=None,
+        ))
+        db.commit()
+    barrier = threading.Barrier(2)
+
+    def worker(index):
+        with SessionLocal() as db:
+            barrier.wait(timeout=10)
+            try:
+                agent, _ = joining.join_agent(schemas.AgentCreate(
+                    external_id=f"pg-ambassador-join-{token}-{index}", name=f"PG invite {index}", distribution_token=raw
+                ), db)
+                return agent.id
+            except HTTPException as exc:
+                return exc.detail["code"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(worker, range(2)))
+    assert sum(isinstance(item, int) for item in results) == 1
+    assert "distribution_token_exhausted" in results
+
+
+def test_postgres_concurrent_peer_referral_never_exceeds_five_uses():
+    token = uuid.uuid4().hex
+    referrer_id = _postgres_economic_agent("referrer-" + token)
+    with SessionLocal() as db:
+        issued = ambassador.issue_peer_referral(
+            db, referrer_agent_id=referrer_id, idempotency_key="pg-referral-" + token,
+            public_base_url="https://aion.example",
+        )
+        raw = issued["packet"]["distribution_token"]
+    barrier = threading.Barrier(6)
+
+    def worker(index):
+        with SessionLocal() as db:
+            barrier.wait(timeout=10)
+            try:
+                joining.join_agent(schemas.AgentCreate(
+                    external_id=f"pg-peer-join-{token}-{index}", name=f"PG peer {index}", distribution_token=raw
+                ), db)
+                return "joined"
+            except HTTPException as exc:
+                return exc.detail["code"]
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(worker, range(6)))
+    assert results.count("joined") == 5
+    assert results.count("distribution_token_exhausted") == 1
+    with SessionLocal() as db:
+        row = db.scalar(select(models.DistributionToken).where(models.DistributionToken.token_digest == hashlib.sha256(raw.encode()).hexdigest()))
+        assert row.use_count == row.maximum_uses == 5
+
+
+def test_postgres_suppression_wins_race_before_send(monkeypatch):
+    token = uuid.uuid4().hex
+    campaign_db_id, _ = _pg_ambassador_campaign(token)
+    target_db_id, target_id = _pg_ambassador_target(campaign_db_id, token)
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    monkeypatch.setattr(ambassador.safe_http, "fetch_json", lambda *a, **k: pytest.fail("suppressed target contacted"))
+    locked = threading.Event()
+    release = threading.Event()
+    message = ambassador.build_ambassador_message(
+        public_base_url="https://aion.example", distribution_token="aion_dist_" + "x" * 43
+    )
+
+    def suppressor():
+        with SessionLocal() as db:
+            row = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.id == target_db_id).with_for_update())
+            locked.set()
+            assert release.wait(10)
+            row.suppressed = True
+            row.suppression_reason = "concurrent_opt_out"
+            row.contact_state = "blocked"
+            db.commit()
+
+    def sender():
+        with SessionLocal() as db:
+            try:
+                ambassador.send_contact(db, target_id=target_id, message=message, idempotency_key="pg-race-" + token, send=True)
+                return "sent"
+            except ambassador.AmbassadorError as exc:
+                return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(suppressor)
+        assert locked.wait(10)
+        second = pool.submit(sender)
+        release.set()
+        first.result(timeout=10)
+        result = second.result(timeout=10)
+    assert result == "target_not_contact_ready"
 
 
 def test_postgres_concurrent_package5_vuo_idempotency_is_single(monkeypatch):
