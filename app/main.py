@@ -752,7 +752,6 @@ def create_referral_packet(
             db,
             referrer_agent_id=agent.id,
             idempotency_key=idempotency_key,
-            public_base_url=str(request.base_url).rstrip("/"),
         )
     except AmbassadorError as exc:
         raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
@@ -1477,7 +1476,6 @@ async def mcp_gateway(
                 db,
                 referrer_agent_id=mcp_agent.id,
                 idempotency_key=key,
-                public_base_url=str(request.base_url).rstrip("/"),
             )
 
         elif name == "economic_preflight":

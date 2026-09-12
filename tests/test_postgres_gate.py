@@ -897,7 +897,17 @@ def test_postgres_concurrent_ambassador_target_insert_dedupes(monkeypatch):
 def test_postgres_concurrent_ambassador_contact_respects_campaign_limit(monkeypatch):
     token = uuid.uuid4().hex
     campaign_db_id, _ = _pg_ambassador_campaign(token, contacts=1)
-    targets = [_pg_ambassador_target(campaign_db_id, token + suffix)[1] for suffix in ("a", "b")]
+    target_ids = [_pg_ambassador_target(campaign_db_id, token + suffix)[1] for suffix in ("a", "b")]
+    with SessionLocal() as db:
+        targets = [
+            (
+                target_id,
+                ambassador.prepare_target(
+                    db, target_id=target_id, public_base_url="https://aion.example"
+                )["message"],
+            )
+            for target_id in target_ids
+        ]
     monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
     monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
     monkeypatch.setattr(
@@ -905,11 +915,8 @@ def test_postgres_concurrent_ambassador_contact_respects_campaign_limit(monkeypa
         lambda *a, **k: (FetchResult(200, b"{}", None, 1), {"jsonrpc": "2.0", "result": {}}),
     )
     barrier = threading.Barrier(2)
-    message = ambassador.build_ambassador_message(
-        public_base_url="https://aion.example", distribution_token="aion_dist_" + "x" * 43
-    )
-
-    def worker(target_id):
+    def worker(target):
+        target_id, message = target
         with SessionLocal() as db:
             barrier.wait(timeout=10)
             try:
@@ -923,6 +930,47 @@ def test_postgres_concurrent_ambassador_contact_respects_campaign_limit(monkeypa
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(models.AmbassadorContactAttempt).join(models.AmbassadorTarget).where(
             models.AmbassadorTarget.campaign_id == campaign_db_id
+        )) == 1
+
+
+def test_postgres_concurrent_ambassador_idempotent_replay_posts_once(monkeypatch):
+    token = uuid.uuid4().hex
+    campaign_db_id, _ = _pg_ambassador_campaign(token, contacts=1)
+    _, target_id = _pg_ambassador_target(campaign_db_id, token)
+    with SessionLocal() as db:
+        message = ambassador.prepare_target(
+            db, target_id=target_id, public_base_url="https://aion.example"
+        )["message"]
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    calls = []
+    calls_lock = threading.Lock()
+
+    def respond(*args, **kwargs):
+        with calls_lock:
+            calls.append(1)
+        return FetchResult(200, b"{}", None, 1), {"jsonrpc": "2.0", "result": {}}
+
+    monkeypatch.setattr(ambassador.safe_http, "fetch_json", respond)
+    barrier = threading.Barrier(2)
+
+    def worker():
+        with SessionLocal() as db:
+            barrier.wait(timeout=10)
+            return ambassador.send_contact(
+                db, target_id=target_id, message=message,
+                idempotency_key="pg-replay-" + token, send=True,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: worker(), range(2)))
+    assert len(calls) == 1
+    assert sorted(result["idempotent_replay"] for result in results) == [False, True]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorContactAttempt).where(
+            models.AmbassadorContactAttempt.target_id == db.scalar(
+                select(models.AmbassadorTarget.id).where(models.AmbassadorTarget.target_id == target_id)
+            )
         )) == 1
 
 
@@ -965,7 +1013,6 @@ def test_postgres_concurrent_peer_referral_never_exceeds_five_uses():
     with SessionLocal() as db:
         issued = ambassador.issue_peer_referral(
             db, referrer_agent_id=referrer_id, idempotency_key="pg-referral-" + token,
-            public_base_url="https://aion.example",
         )
         raw = issued["packet"]["distribution_token"]
     barrier = threading.Barrier(6)
@@ -999,9 +1046,10 @@ def test_postgres_suppression_wins_race_before_send(monkeypatch):
     monkeypatch.setattr(ambassador.safe_http, "fetch_json", lambda *a, **k: pytest.fail("suppressed target contacted"))
     locked = threading.Event()
     release = threading.Event()
-    message = ambassador.build_ambassador_message(
-        public_base_url="https://aion.example", distribution_token="aion_dist_" + "x" * 43
-    )
+    with SessionLocal() as db:
+        message = ambassador.prepare_target(
+            db, target_id=target_id, public_base_url="https://aion.example"
+        )["message"]
 
     def suppressor():
         with SessionLocal() as db:

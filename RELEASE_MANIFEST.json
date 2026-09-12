@@ -31,7 +31,7 @@
     "legacy_payment_intent_is_funding_evidence": false
   },
   "required_corrective_gates": [
-    "Package 5D qualification, token, attribution, anti-spam, idempotency and full regression suites",
+    "Package 5D exact prepared-message/token binding, canonical-host referral, qualification, attribution, anti-spam, idempotency and full regression suites",
     "Alembic fresh, 0011-to-0012, repeated-upgrade, check and PostgreSQL 18 concurrency gates",
     "AION CI on the exact final reviewed SHA",
     "source integrity, readiness, secret, compile, dependency and diff checks",

@@ -20,6 +20,7 @@ else:
 os.environ["AION_DISABLE_EXTERNAL_DISCOVERY"] = "1"
 os.environ["AION_RETURN_THRESHOLD_MINUTES"] = "1"
 os.environ["AION_JOIN_RATE_PER_MINUTE"] = "500"
+os.environ["AION_PUBLIC_URL"] = "https://aion.example"
 
 from app.db import Base, engine  # noqa: E402
 from app import models  # noqa: E402,F401

@@ -1,6 +1,7 @@
 """Package 5D controlled fixtures. They never perform real outreach."""
 
 from datetime import datetime, timedelta, timezone
+import copy
 import hashlib
 import json
 import uuid
@@ -97,6 +98,63 @@ def _agent():
         return row.id, key
 
 
+def _verified_action(agent_id: int, *, created_at: datetime) -> str:
+    action_id = str(uuid.uuid4())
+    with SessionLocal() as db:
+        run = models.ActionRun(
+            action_id=action_id, requester_agent_id=agent_id,
+            idempotency_key="package5d-action-" + uuid.uuid4().hex,
+            request_digest="sha256:" + "5" * 64,
+            requested_query="bounded campaign return fixture",
+            requested_candidate_identifier=None, authorize_external_contact=True,
+            selected_provider_identifier="external:package5d-return",
+            source_id="package5d-test", agent_card_url="https://card.example/agent-card.json",
+            interaction_url="https://agent.example/a2a", discovery_evidence={"manifest_reachable": True},
+            protocol_binding="JSONRPC", protocol_version="1.0", state="completed",
+            failure_class=None, created_at=created_at, started_at=created_at,
+            completed_at=created_at, duration_ms=1, discovery_attempt_count=1,
+            action_attempt_count=1, request_bytes=1, response_bytes=1,
+            cost_amount="0", cost_currency="USD",
+        )
+        db.add(run)
+        db.flush()
+        outcome = models.ActionOutcome(
+            action_run_id=run.id, outcome_type="callability_challenge",
+            protocol_response_received=True, callability_verified=True,
+            capability_verified=False, verified_outcome=True,
+            normalized_result_kind="a2a_message", failure_class=None,
+            response_digest="sha256:" + "6" * 64, protocol_task_id=None,
+            protocol_message_id="package5d-return", proof_present=True,
+            completed_at=created_at,
+        )
+        db.add(outcome)
+        db.flush()
+        db.add(models.ActionVerification(
+            action_run_id=run.id, action_outcome_id=outcome.id,
+            verification_method="a2a_nonce_echo", state="verified",
+            challenge_digest="sha256:" + "7" * 64,
+            proof_digest="sha256:" + "8" * 64,
+            verified_at=created_at, details=None,
+        ))
+        db.commit()
+    return action_id
+
+
+def _submit_vuo(key: str, action_id: str):
+    return client.post(
+        "/proof/package-5/vuos",
+        headers={"Authorization": "Bearer " + key, "Idempotency-Key": uuid.uuid4().hex},
+        json={
+            "action_id": action_id,
+            "goal_kind": "verify_external_agent_callability",
+            "product_goal": "find_verify_invoke_external_a2a_agent",
+            "delivered_outcome": "verified_external_agent_callability",
+            "usefulness_confirmed": True,
+            "usefulness_evidence": "requester_confirms_goal_was_useful",
+        },
+    )
+
+
 def test_campaign_limits_are_hard_bounded_to_thirty():
     with SessionLocal() as db:
         result = ambassador.create_campaign(db, name="Pilot", purpose="Bounded", maximum_targets=30, maximum_contacts=30)
@@ -142,6 +200,33 @@ def test_real_url_validator_rejects_loopback_and_private(monkeypatch):
         assert exc.value.code == "unsafe_public_destination"
 
 
+def test_url_canonicalization_preserves_safe_ports_and_endpoint_identity(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        ambassador.safe_http._socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: [(2, 1, 6, "", ("93.184.216.34", port))],
+    )
+    assert ambassador._canonical_public_url("https://EXAMPLE.com:8443/a2a/") == "https://example.com:8443/a2a"
+    assert ambassador._canonical_public_url("https://EXAMPLE.com/a2a/") == "https://example.com/a2a"
+    assert ambassador._canonical_public_url("https://example.com:443/a2a") == "https://example.com/a2a"
+    assert ambassador._canonical_public_url("https://[2606:2800:220:1:248:1893:25c8:1946]:8443/a2a") == "https://[2606:2800:220:1:248:1893:25c8:1946]:8443/a2a"
+    assert ambassador._target_fingerprint("https://example.com:8443/a2a") != ambassador._target_fingerprint("https://example.com/a2a")
+    with SessionLocal() as db:
+        campaign_id = _campaign(db, maximum_targets=2, maximum_contacts=0)
+        campaign = db.scalar(select(models.AmbassadorCampaign).where(models.AmbassadorCampaign.campaign_id == campaign_id))
+        _, standard = ambassador._insert_candidate(
+            db, campaign, _candidate(identifier="standard-port", interaction_url="https://example.com/a2a")
+        )
+        _, explicit = ambassador._insert_candidate(
+            db, campaign, _candidate(identifier="explicit-port", interaction_url="https://example.com:8443/a2a")
+        )
+        db.commit()
+        assert (standard, explicit) == ("created", "created")
+    with pytest.raises(ambassador.AmbassadorError):
+        ambassador._canonical_public_url("https://example.com:99999/a2a")
+
+
 def test_message_is_deterministic_bounded_and_ignores_remote_prompt_injection():
     token = "aion_dist_" + "x" * 43
     first = ambassador.build_ambassador_message(public_base_url="https://aion.example", distribution_token=token)
@@ -168,6 +253,8 @@ def test_prepare_stores_only_token_hash_and_returns_raw_once():
         raw = result["distribution_token"]
         stored = db.scalar(select(models.DistributionToken))
         assert stored.token_digest == hashlib.sha256(raw.encode()).hexdigest()
+        target = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id))
+        assert target.prepared_message_digest == ambassador._digest_json(result["message"])
         assert raw not in repr(stored.__dict__)
         with pytest.raises(ambassador.AmbassadorError) as exc:
             ambassador.prepare_target(db, target_id=target_id, public_base_url="https://aion.example")
@@ -211,8 +298,76 @@ def test_send_requires_both_gates_and_one_transport_attempt(monkeypatch):
         assert result["result_class"] == "response_received"
         assert result["automatic_retry"] is False
         assert policies[0].max_attempts == 1
+        replay = ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="one", send=True)
+        assert replay["idempotent_replay"] is True
+        assert replay["send_performed"] is False
+        assert replay["contact_id"] == result["contact_id"]
+        assert len(policies) == 1
         with pytest.raises(ambassador.AmbassadorError):
             ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="two", send=True)
+
+
+def test_send_rejects_any_tampered_or_cross_target_prepared_message(monkeypatch):
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    monkeypatch.setattr(ambassador.safe_http, "fetch_json", lambda *a, **k: pytest.fail("invalid message reached network"))
+    with SessionLocal() as db:
+        _, target_a, prepared_a = _target(db, ready=True)
+        _, target_b, prepared_b = _target(db, ready=True)
+
+        tampered = copy.deepcopy(prepared_a["message"])
+        tampered["utility"] = "altered while sender and purpose remain valid"
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_a, message=tampered, idempotency_key="tampered-utility", send=True)
+        assert exc.value.code == "prepared_message_mismatch"
+
+        fake_token = copy.deepcopy(prepared_a["message"])
+        fake_token["join"]["distribution_token"] = "aion_dist_" + "z" * 43
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_a, message=fake_token, idempotency_key="fake-token", send=True)
+        assert exc.value.code == "prepared_message_mismatch"
+
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_b, message=prepared_a["message"], idempotency_key="cross-target", send=True)
+        assert exc.value.code == "prepared_message_mismatch"
+
+        unprepared_campaign, unprepared_target, _ = _target(db)
+        ambassador.set_campaign_state(db, unprepared_campaign, "ready")
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=unprepared_target, message=prepared_b["message"], idempotency_key="unprepared", send=True)
+        assert exc.value.code == "target_not_prepared"
+
+
+def test_send_verifies_bound_token_digest_and_active_state_before_network(monkeypatch):
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    monkeypatch.setattr(ambassador.safe_http, "fetch_json", lambda *a, **k: pytest.fail("inactive token reached network"))
+    with SessionLocal() as db:
+        _, target_id, prepared = _target(db, ready=True)
+        target = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id))
+        token = db.scalar(select(models.DistributionToken).where(models.DistributionToken.target_id == target.id))
+
+        fake = copy.deepcopy(prepared["message"])
+        fake["join"]["distribution_token"] = "aion_dist_" + "q" * 43
+        target.prepared_message_digest = ambassador._digest_json(fake)
+        db.commit()
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_id, message=fake, idempotency_key="digest-mismatch", send=True)
+        assert exc.value.code == "prepared_token_mismatch"
+
+        target.prepared_message_digest = ambassador._digest_json(prepared["message"])
+        token.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="expired-send", send=True)
+        assert exc.value.code == "distribution_token_expired"
+
+        token.expires_at = datetime.now(timezone.utc) + timedelta(days=1)
+        token.use_count = token.maximum_uses
+        db.commit()
+        with pytest.raises(ambassador.AmbassadorError) as exc:
+            ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="exhausted-send", send=True)
+        assert exc.value.code == "distribution_token_exhausted"
 
 
 def test_payment_credentials_and_ambiguous_results_are_never_retried(monkeypatch):
@@ -398,7 +553,7 @@ def test_single_use_ambassador_token_cannot_join_twice():
 def test_peer_referral_is_bounded_manual_secret_safe_and_non_countable():
     referrer_id, _ = _agent()
     with SessionLocal() as db:
-        issued = ambassador.issue_peer_referral(db, referrer_agent_id=referrer_id, idempotency_key="peer-one", public_base_url="https://aion.example")
+        issued = ambassador.issue_peer_referral(db, referrer_agent_id=referrer_id, idempotency_key="peer-one")
         packet = issued["packet"]
         assert packet["maximum_uses"] == 5
         assert packet["automatic_forwarding"] is False
@@ -439,6 +594,82 @@ def test_referral_rest_and_mcp_are_authenticated_and_explicit():
     assert mcp.json()["result"]["structuredContent"]["packet"]["maximum_uses"] == 5
 
 
+def test_referral_packet_uses_configured_canonical_host_not_request_host():
+    _, key = _agent()
+    response = client.post(
+        "/agents/me/referral-packets",
+        headers={
+            "Authorization": "Bearer " + key,
+            "Idempotency-Key": "host-header-referral",
+            "Host": "attacker.invalid",
+        },
+        json={"maximum_uses": 5, "acknowledge_manual_forwarding": True},
+    )
+    assert response.status_code == 200
+    packet = response.json()["packet"]
+    assert packet["agent_card"] == "https://aion.example/.well-known/agent-card.json"
+    assert packet["first_step"] == "https://aion.example/onboarding"
+    assert "attacker.invalid" not in json.dumps(packet)
+
+
+def test_tokenless_join_cannot_spoof_reserved_trusted_attribution_across_surfaces():
+    from app.a2a_official import _join_via_a2a
+
+    before_sources = client.get("/stats").json()["acquisition_source_field_raw_rows"]
+    before = {
+        source: before_sources.get(source, 0)
+        for source in ("aion_ambassador_outbound", "trusted_peer_referral")
+    }
+    rest_id = "reserved-rest-" + uuid.uuid4().hex
+    rest = client.post("/agents", json={
+        "external_id": rest_id,
+        "name": "Reserved REST",
+        "acquisition_source": "aion_ambassador_outbound",
+    })
+    assert rest.status_code == 422
+    assert rest.json()["detail"]["code"] == "reserved_trusted_attribution"
+
+    mcp_id = "reserved-mcp-" + uuid.uuid4().hex
+    params = {
+        "name": "join_aion",
+        "arguments": {
+            "external_id": mcp_id,
+            "name": "Reserved MCP",
+            "acquisition_source": "trusted_peer_referral",
+        },
+        "_meta": {"io.modelcontextprotocol/protocolVersion": MCP_VERSION, "io.modelcontextprotocol/clientCapabilities": {}},
+    }
+    mcp = client.post("/mcp", headers={
+        "MCP-Protocol-Version": MCP_VERSION,
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "join_aion",
+        "Accept": "application/json, text/event-stream",
+    }, json={"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params})
+    assert mcp.status_code == 200
+    assert mcp.json()["result"]["isError"] is True
+    assert mcp.json()["result"]["structuredContent"]["status"] == 422
+
+    a2a_id = "reserved-a2a-" + uuid.uuid4().hex
+    a2a = _join_via_a2a({
+        "action": "join_aion",
+        "external_id": a2a_id,
+        "name": "Reserved A2A",
+        "referrer": "trusted_ambassador_invite",
+    }, "https://aion.example")
+    assert a2a["ok"] is False
+    assert a2a["status_code"] == 422
+    assert a2a["error"]["code"] == "reserved_trusted_attribution"
+
+    rows = client.get("/agents").json()
+    assert not {rest_id, mcp_id, a2a_id}.intersection(row["external_id"] for row in rows)
+    after_sources = client.get("/stats").json()["acquisition_source_field_raw_rows"]
+    after = {
+        source: after_sources.get(source, 0)
+        for source in ("aion_ambassador_outbound", "trusted_peer_referral")
+    }
+    assert after == before
+
+
 def test_new_write_surface_retains_64k_stream_limit():
     response = client.post(
         "/agents/me/referral-packets",
@@ -460,6 +691,61 @@ def test_campaign_funnel_is_bounded_and_never_labels_independent_adoption():
         assert status["read_only"] is True
         assert "independent_adoption" not in status["funnel"]
         assert agent.acquisition_source == "aion_ambassador_outbound"
+
+
+def test_campaign_return_requires_same_canonical_identity_and_package5_rule(monkeypatch):
+    monkeypatch.setenv("AION_PACKAGE5_RETURN_THRESHOLD_SECONDS", "900")
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        campaign_id, _, prepared = _target(db, ready=True)
+        referrer, _ = join_agent(schemas.AgentCreate(
+            external_id="campaign-referrer-" + uuid.uuid4().hex,
+            name="Campaign referrer",
+            distribution_token=prepared["distribution_token"],
+        ), db)
+        packet_a = ambassador.issue_peer_referral(
+            db, referrer_agent_id=referrer.id, idempotency_key="return-peer-a-" + uuid.uuid4().hex
+        )["packet"]
+        packet_b = ambassador.issue_peer_referral(
+            db, referrer_agent_id=referrer.id, idempotency_key="return-peer-b-" + uuid.uuid4().hex
+        )["packet"]
+        agent_a, key_a = join_agent(schemas.AgentCreate(
+            external_id="campaign-agent-a-" + uuid.uuid4().hex,
+            name="Campaign agent A", distribution_token=packet_a["distribution_token"],
+        ), db)
+        agent_b, _ = join_agent(schemas.AgentCreate(
+            external_id="campaign-agent-b-" + uuid.uuid4().hex,
+            name="Campaign agent B", distribution_token=packet_b["distribution_token"],
+        ), db)
+        for agent in (agent_a, agent_b):
+            package5_proof.record_participation_assessment(
+                db, agent_id=agent.id, classification="independent_external_countable",
+                evidence_reference="operator-reviewed-" + uuid.uuid4().hex,
+                evidence_summary="Trusted independent evidence after peer referral review",
+                idempotency_key="assessment-" + uuid.uuid4().hex,
+            )
+        agent_a_id, agent_b_id = agent_a.id, agent_b.id
+
+    action_a = _verified_action(agent_a_id, created_at=now)
+    submitted = _submit_vuo(key_a, action_a)
+    assert submitted.status_code == 200
+    assert submitted.json()["qualifies_as_package5_vuo"] is True
+    with SessionLocal() as db:
+        proof_created_at = db.scalar(
+            select(models.Package5VuoProof.created_at).where(
+                models.Package5VuoProof.requester_agent_id == agent_a_id
+            )
+        )
+    later_at = proof_created_at.replace(tzinfo=timezone.utc) if proof_created_at.tzinfo is None else proof_created_at
+    later_at += timedelta(seconds=901)
+
+    _verified_action(agent_b_id, created_at=later_at)
+    with SessionLocal() as db:
+        assert ambassador.campaign_status(db, campaign_id)["funnel"]["returns_attributable"] == 0
+
+    _verified_action(agent_a_id, created_at=later_at)
+    with SessionLocal() as db:
+        assert ambassador.campaign_status(db, campaign_id)["funnel"]["returns_attributable"] == 1
 
 
 def test_legacy_payment_and_package6a_economics_are_unchanged():

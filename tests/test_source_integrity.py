@@ -299,6 +299,9 @@ def test_package5d_is_one_bounded_operator_gated_distribution_boundary():
     assert 'os.getenv("AION_AMBASSADOR_OPERATOR") != "1"' in source
     assert "max_attempts=1" in source
     assert "discover_external_agents_with_status" in source
+    assert "prepared_message_digest" in source
+    assert "canonical_aion_public_base_url" in source
+    assert "qualifying_return_identity_ids" in source
     assert "--send" in cli and "json.load(sys.stdin)" in cli
     assert 'revision = "0012_ambassador_pilot_v1"' in migration
     assert 'down_revision = "0011_economic_kernel_v1"' in migration

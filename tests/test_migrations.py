@@ -488,6 +488,9 @@ def test_existing_0011_upgrades_additively_to_ambassador_pilot(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-5d-sentinel'"
         ).fetchone()
         target_indexes = connection.execute("PRAGMA index_list('ambassador_targets')").fetchall()
+        target_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info('ambassador_targets')").fetchall()
+        }
         target_unique_columns = {
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in target_indexes if index[2] == 1
@@ -496,4 +499,5 @@ def test_existing_0011_upgrades_additively_to_ambassador_pilot(tmp_path):
     assert set(counts) <= tables
     assert all(value == 0 for value in counts.values())
     assert sentinel == ("package-5d-sentinel",)
+    assert "prepared_message_digest" in target_columns
     assert ("target_fingerprint",) in target_unique_columns

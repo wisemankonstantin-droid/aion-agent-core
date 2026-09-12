@@ -66,12 +66,20 @@ default. Token absence preserves the existing join contract.
 Authenticated `POST /agents/me/referral-packets` creates one explicitly
 requested, manually forwardable peer-referral packet under an idempotency key.
 It is covered by the 64 KiB stream limiter, never forwards itself, and exposes
-no agent credential. Campaign scout/qualification/contact/status operations
+no agent credential. Packet URLs derive from the configured canonical AION
+HTTPS origin; an inbound Host header cannot rewrite them. Tokenless joins that
+self-assert reserved Ambassador/peer trusted-attribution values fail closed.
+Campaign scout/qualification/contact/status operations
 are operator CLI only; there is no public Ambassador send endpoint. Dry-run is
 the default, while real contact requires both
 `AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1`, one
 transport attempt, a ready campaign and a non-suppressed globally deduplicated
-target. Neither gate is enabled by repository configuration.
+target. A real send must exactly match the durable prepared-message digest and
+the unexpired, unconsumed Ambassador token bound to that target and campaign.
+An exact idempotent replay returns stored attempt evidence without another POST;
+changed or ambiguous requests are never resent. Valid explicit HTTPS ports are
+preserved in endpoint identity and transport. Neither gate is enabled by
+repository configuration.
 
 A child economic operation is a delegated spend slice under its parent's
 verified reserve. It cannot independently authorize payment, establish a

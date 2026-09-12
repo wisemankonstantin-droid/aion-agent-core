@@ -505,43 +505,16 @@ def _serialize_vuo(db: Session, row: models.Package5VuoProof, groups: list[dict]
     }
 
 
-def package5_proof_snapshot(db: Session) -> dict:
-    raw_agents = db.scalar(select(func.count()).select_from(models.Agent)) or 0
-    vuo_candidates = db.scalar(select(func.count()).select_from(models.Package5VuoProof)) or 0
-    limits = {
-        "maximum_raw_agent_rows": MAX_PROOF_RAW_AGENT_ROWS,
-        "maximum_logical_identities": MAX_PROOF_LOGICAL_IDENTITIES,
-        "maximum_vuo_candidates": MAX_PROOF_VUO_CANDIDATES,
-    }
-    if raw_agents > MAX_PROOF_RAW_AGENT_ROWS or vuo_candidates > MAX_PROOF_VUO_CANDIDATES:
-        return {
-            "package": 5,
-            "status": "proof_unavailable_resource_limit",
-            "commercial_proof_established": False,
-            "limits": limits,
-            "reason_code": "proof_dataset_exceeds_single_instance_v1_bound",
-        }
+def _qualifying_vuo_return_state(
+    db: Session,
+    *,
+    groups: list[dict],
+    classifications: dict[int, dict],
+    proofs: list[models.Package5VuoProof],
+) -> dict:
+    """Derive Package 5 qualifying VUO and same-identity return truth once."""
 
-    groups = logical_groups(db)
-    if len(groups) > MAX_PROOF_LOGICAL_IDENTITIES:
-        return {
-            "package": 5,
-            "status": "proof_unavailable_resource_limit",
-            "commercial_proof_established": False,
-            "limits": limits,
-            "reason_code": "proof_dataset_exceeds_single_instance_v1_bound",
-        }
-    agents_by_id = {agent.id: agent for agent in db.scalars(select(models.Agent)).all()}
-    group_by_raw = {
-        row_id: group for group in groups for row_id in group["row_ids"]
-    }
-    classifications = {
-        group["canonical_agent_id"]: _classification_for_group(db, group, agents_by_id)
-        for group in groups
-    }
-    class_breakdown = Counter(item["classification"] for item in classifications.values())
-    reason_breakdown = Counter(item["reason_code"] for item in classifications.values())
-    proofs = list(db.scalars(select(models.Package5VuoProof).order_by(models.Package5VuoProof.id)).all())
+    group_by_raw = {row_id: group for group in groups for row_id in group["row_ids"]}
     qualifying = []
     vuo_reasons = Counter()
     for proof in proofs:
@@ -586,6 +559,79 @@ def package5_proof_snapshot(db: Session) -> dict:
             return_reasons["later_authenticated_action_after_threshold_no_known_exclusion"] += 1
         else:
             return_reasons["no_later_meaningful_use_after_threshold"] += 1
+    return {
+        "qualifying": qualifying,
+        "vuo_reasons": vuo_reasons,
+        "qualifying_by_identity": qualifying_by_identity,
+        "action_runs": action_runs,
+        "returning": returning,
+        "return_reasons": return_reasons,
+        "threshold": threshold,
+    }
+
+
+def qualifying_return_identity_ids(db: Session) -> set[int]:
+    """Return canonical identities satisfying the canonical Package 5 rule."""
+
+    proofs_count = db.scalar(select(func.count()).select_from(models.Package5VuoProof)) or 0
+    if proofs_count > MAX_PROOF_VUO_CANDIDATES:
+        raise Package5ProofError(503, "proof_resource_limit", "Package 5 VUO input exceeds the single-instance V1 bound")
+    groups = _bounded_logical_groups(db)
+    agents_by_id = {agent.id: agent for agent in db.scalars(select(models.Agent)).all()}
+    classifications = {
+        group["canonical_agent_id"]: _classification_for_group(db, group, agents_by_id)
+        for group in groups
+    }
+    proofs = list(db.scalars(select(models.Package5VuoProof).order_by(models.Package5VuoProof.id)).all())
+    return _qualifying_vuo_return_state(
+        db, groups=groups, classifications=classifications, proofs=proofs
+    )["returning"]
+
+
+def package5_proof_snapshot(db: Session) -> dict:
+    raw_agents = db.scalar(select(func.count()).select_from(models.Agent)) or 0
+    vuo_candidates = db.scalar(select(func.count()).select_from(models.Package5VuoProof)) or 0
+    limits = {
+        "maximum_raw_agent_rows": MAX_PROOF_RAW_AGENT_ROWS,
+        "maximum_logical_identities": MAX_PROOF_LOGICAL_IDENTITIES,
+        "maximum_vuo_candidates": MAX_PROOF_VUO_CANDIDATES,
+    }
+    if raw_agents > MAX_PROOF_RAW_AGENT_ROWS or vuo_candidates > MAX_PROOF_VUO_CANDIDATES:
+        return {
+            "package": 5,
+            "status": "proof_unavailable_resource_limit",
+            "commercial_proof_established": False,
+            "limits": limits,
+            "reason_code": "proof_dataset_exceeds_single_instance_v1_bound",
+        }
+
+    groups = logical_groups(db)
+    if len(groups) > MAX_PROOF_LOGICAL_IDENTITIES:
+        return {
+            "package": 5,
+            "status": "proof_unavailable_resource_limit",
+            "commercial_proof_established": False,
+            "limits": limits,
+            "reason_code": "proof_dataset_exceeds_single_instance_v1_bound",
+        }
+    agents_by_id = {agent.id: agent for agent in db.scalars(select(models.Agent)).all()}
+    classifications = {
+        group["canonical_agent_id"]: _classification_for_group(db, group, agents_by_id)
+        for group in groups
+    }
+    class_breakdown = Counter(item["classification"] for item in classifications.values())
+    reason_breakdown = Counter(item["reason_code"] for item in classifications.values())
+    proofs = list(db.scalars(select(models.Package5VuoProof).order_by(models.Package5VuoProof.id)).all())
+    evidence = _qualifying_vuo_return_state(
+        db, groups=groups, classifications=classifications, proofs=proofs
+    )
+    qualifying = evidence["qualifying"]
+    vuo_reasons = evidence["vuo_reasons"]
+    qualifying_by_identity = evidence["qualifying_by_identity"]
+    action_runs = evidence["action_runs"]
+    returning = evidence["returning"]
+    return_reasons = evidence["return_reasons"]
+    threshold = evidence["threshold"]
 
     total_vuos = len(qualifying)
     cost_breakdown = Counter(proof.cost_state for proof, _ in qualifying)

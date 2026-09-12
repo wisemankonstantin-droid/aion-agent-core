@@ -318,6 +318,15 @@ follow-up exists, and actual sending requires both
 the operator CLI. Both gates remain disabled; no send mode, external outreach,
 production classification, learning cycle, payment or spend occurred.
 
+The HQ corrective binds each send cryptographically to the exact prepared
+message and target/campaign Ambassador token, makes identical idempotent replay
+read existing bounded attempt evidence without another POST, preserves safe
+explicit HTTPS ports, and derives campaign returns from the canonical Package
+5 same-identity rule. Tokenless joins cannot claim reserved trusted attribution,
+and referral packets use only the configured canonical AION public origin rather
+than the request Host header. Package 5D remains a review candidate and is not
+accepted, merged, deployed or active for outreach.
+
 The implementation and fixtures do not claim adoption, VUO, return or
 commercial proof. Production remains on the Package 5C application/schema
 checkpoint above. The Package 5D candidate is local and awaits HQ review and

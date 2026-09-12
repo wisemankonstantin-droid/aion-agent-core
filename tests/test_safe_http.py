@@ -77,6 +77,27 @@ def test_fetch_resolves_once_pins_peer_and_preserves_host(monkeypatch):
     assert headers["Accept-Encoding"] == "identity"
 
 
+def test_fetch_preserves_valid_explicit_https_port(monkeypatch):
+    _patch(monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        safe_http._socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: calls.append((host, port)) or [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", port))
+        ],
+    )
+
+    result = safe_http.fetch_bytes(
+        "GET", "https://official.example:8443/a2a", connection_factory=Connection
+    )
+
+    assert result.error is None
+    assert calls == [("official.example", 8443)]
+    assert Connection.instances[0].candidate[3] == ("93.184.216.34", 8443)
+    assert Connection.instances[0].requests[0][2]["Host"] == "official.example:8443"
+
+
 def test_retry_count_is_bounded_without_dns_reresolution(monkeypatch):
     _patch(monkeypatch)
     calls = []

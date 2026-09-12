@@ -831,6 +831,7 @@ class AmbassadorTarget(Base):
     interaction_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     target_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
     metadata_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    prepared_message_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
     manifest_reachable: Mapped[bool] = mapped_column(Boolean, nullable=False)
     declared_a2a_v1_jsonrpc: Mapped[bool] = mapped_column(Boolean, nullable=False)
     interaction_url_validated: Mapped[bool] = mapped_column(Boolean, nullable=False)

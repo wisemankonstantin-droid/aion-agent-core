@@ -60,11 +60,17 @@ def resolve_public_https(url: str, *, max_addresses: int = 8):
             or parsed.password
         ):
             return None, (), "url_must_be_public_https"
-        if parsed.port not in (None, 443):
-            return None, (), "nonstandard_port_rejected"
+        # urlparse.port validates the numeric range and raises for malformed
+        # values. Public HTTPS services may legitimately use an explicit
+        # non-default port; the socket remains DNS-pinned and TLS still
+        # authenticates the original hostname.
+        explicit_port = parsed.port
+        if explicit_port is not None and not 1 <= explicit_port <= 65535:
+            return None, (), "invalid_port"
+        port = explicit_port or 443
         infos = _socket.getaddrinfo(
             parsed.hostname,
-            parsed.port or 443,
+            port,
             type=_socket.SOCK_STREAM,
         )
         if not infos:
@@ -138,7 +144,10 @@ def fetch_bytes(
     # Callers may add protocol headers but cannot redirect TLS/HTTP identity or
     # opt into transparent decompression that could bypass the byte budget.
     request_headers["Accept-Encoding"] = "identity"
-    request_headers["Host"] = _host_header(parsed.hostname)
+    port = parsed.port or 443
+    request_headers["Host"] = _host_header(parsed.hostname) + (
+        f":{port}" if port != 443 else ""
+    )
     target = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
     last_error = None
 

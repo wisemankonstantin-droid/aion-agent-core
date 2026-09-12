@@ -26,6 +26,7 @@ from .. import models
 from . import safe_http
 from .external_registry import discover_external_agents_with_status
 from .identity_resolution import logical_groups
+from .package5_proof import qualifying_return_identity_ids
 
 
 MAX_CAMPAIGN_TARGETS = 30
@@ -36,6 +37,12 @@ MAX_ACTIVE_REFERRAL_TOKENS_PER_AGENT = 10
 MIN_CONTACT_INTERVAL_SECONDS = 5
 _IDEMPOTENCY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SQLITE_LOCK = RLock()
+_RESERVED_TRUSTED_ATTRIBUTION = {
+    "aion_ambassador_outbound",
+    "trusted_peer_referral",
+    "trusted_ambassador_invite",
+    "trusted_peer_referral_review_required",
+}
 
 
 class AmbassadorError(Exception):
@@ -77,8 +84,43 @@ def _canonical_public_url(value: str) -> str:
     parsed, addresses, reason = safe_http.resolve_public_https(value, max_addresses=4)
     if reason or not addresses or parsed is None:
         raise AmbassadorError(422, "unsafe_public_destination", reason or "destination_not_public")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise AmbassadorError(422, "unsafe_public_destination", "invalid_port") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise AmbassadorError(422, "unsafe_public_destination", "invalid_port")
+    hostname = parsed.hostname.lower()
+    display_host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = display_host if port in (None, 443) else f"{display_host}:{port}"
     path = (parsed.path or "/").rstrip("/") or "/"
-    return urlunsplit(("https", parsed.hostname.lower(), path, parsed.query, ""))
+    return urlunsplit(("https", netloc, path, parsed.query, ""))
+
+
+def canonical_aion_public_base_url() -> str:
+    """Return only the operator-controlled canonical public AION origin."""
+
+    raw = (os.getenv("AION_PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError as exc:
+        raise AmbassadorError(503, "trusted_public_url_unavailable", "Configured AION public URL is invalid") from exc
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in ("", "/")
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise AmbassadorError(503, "trusted_public_url_unavailable", "A trusted canonical AION HTTPS origin is required")
+    hostname = parsed.hostname.lower()
+    display_host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = display_host if port in (None, 443) else f"{display_host}:{port}"
+    return urlunsplit(("https", netloc, "", "", ""))
 
 
 def _target_fingerprint(interaction_url: str) -> str:
@@ -191,6 +233,7 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
             "declared_a2a_v1_jsonrpc": bool(candidate.get("declared_a2a_v1_jsonrpc")),
             "authentication_requirement": candidate.get("authentication_requirement"),
         }),
+        prepared_message_digest=None,
         manifest_reachable=bool(candidate.get("manifest_reachable")),
         declared_a2a_v1_jsonrpc=bool(candidate.get("declared_a2a_v1_jsonrpc")),
         interaction_url_validated=bool(candidate.get("interaction_url_validated")),
@@ -302,6 +345,7 @@ def prepare_target(db: Session, *, target_id: str, public_base_url: str) -> dict
             raise AmbassadorError(409, "invite_already_issued", "Invite already issued; raw token is not recoverable")
         token, raw = _issue_token(db, kind="ambassador_invite", campaign_id=campaign.id, target_id=target.id)
         message = build_ambassador_message(public_base_url=public_base_url, distribution_token=raw)
+        target.prepared_message_digest = _digest_json(message)
         target.contact_state = "ready"
         target.updated_at = _now()
         db.commit()
@@ -314,8 +358,9 @@ def prepare_target(db: Session, *, target_id: str, public_base_url: str) -> dict
         }
 
 
-def issue_peer_referral(db: Session, *, referrer_agent_id: int, idempotency_key: str, public_base_url: str) -> dict:
+def issue_peer_referral(db: Session, *, referrer_agent_id: int, idempotency_key: str) -> dict:
     key = _key(idempotency_key)
+    public_base_url = canonical_aion_public_base_url()
     with _guard(db):
         referrer = db.scalar(_for_update(select(models.Agent).where(models.Agent.id == referrer_agent_id), db))
         if referrer is None:
@@ -386,6 +431,16 @@ def attribute_join(db: Session, *, agent_id: int, token: models.DistributionToke
 
 def trusted_join_attribution(token: models.DistributionToken | None, fallback_source: str, fallback_referrer: str | None) -> tuple[str, str | None]:
     if token is None:
+        asserted = {
+            str(fallback_source or "").strip().lower(),
+            str(fallback_referrer or "").strip().lower(),
+        }
+        if asserted.intersection(_RESERVED_TRUSTED_ATTRIBUTION):
+            raise AmbassadorError(
+                422,
+                "reserved_trusted_attribution",
+                "Trusted distribution attribution requires a valid server-verifiable token",
+            )
         return fallback_source[:120], fallback_referrer
     if token.kind == "ambassador_invite":
         return "aion_ambassador_outbound", "trusted_ambassador_invite"
@@ -407,10 +462,68 @@ def suppress_target(db: Session, *, target_id: str, reason: str) -> dict:
     return _target_view(target)
 
 
-def _contact_payload(message: dict) -> dict:
+def _contact_payload(message: dict, *, target_id: str, idempotency_key: str) -> dict:
+    namespace = f"{target_id}:{idempotency_key}:{_digest_json(message)}"
     return {
-        "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "message/send",
-        "params": {"message": {"messageId": str(uuid.uuid4()), "role": "ROLE_USER", "parts": [{"text": json.dumps(message, sort_keys=True, separators=(",", ":"))}]}},
+        "jsonrpc": "2.0",
+        "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "rpc:" + namespace)),
+        "method": "message/send",
+        "params": {
+            "message": {
+                "messageId": str(uuid.uuid5(uuid.NAMESPACE_URL, "message:" + namespace)),
+                "role": "ROLE_USER",
+                "parts": [{"text": json.dumps(message, sort_keys=True, separators=(",", ":"))}],
+            }
+        },
+    }
+
+
+def _prepared_token_for_message(
+    db: Session,
+    *,
+    target: models.AmbassadorTarget,
+    campaign: models.AmbassadorCampaign,
+    message: dict,
+    require_active: bool,
+) -> models.DistributionToken:
+    if target.prepared_message_digest is None:
+        raise AmbassadorError(409, "target_not_prepared", "Target has no durable prepared-message evidence")
+    if _digest_json(message) != target.prepared_message_digest:
+        raise AmbassadorError(422, "prepared_message_mismatch", "Message does not match the exact prepared target invitation")
+    join = message.get("join")
+    raw_token = join.get("distribution_token") if isinstance(join, dict) else None
+    if not isinstance(raw_token, str):
+        raise AmbassadorError(422, "prepared_token_mismatch", "Prepared invitation token is missing")
+    token = db.scalar(_for_update(select(models.DistributionToken).where(
+        models.DistributionToken.target_id == target.id,
+        models.DistributionToken.kind == "ambassador_invite",
+    ), db))
+    if (
+        token is None
+        or token.campaign_id != campaign.id
+        or token.token_digest != _token_digest(raw_token)
+        or token.maximum_uses != 1
+    ):
+        raise AmbassadorError(422, "prepared_token_mismatch", "Invitation token is not bound to this target and campaign")
+    if require_active:
+        if _aware(token.expires_at) <= _now():
+            raise AmbassadorError(409, "distribution_token_expired", "Prepared invitation token expired before contact")
+        if token.use_count >= token.maximum_uses:
+            raise AmbassadorError(409, "distribution_token_exhausted", "Prepared invitation token was already consumed")
+    return token
+
+
+def _contact_replay(target: models.AmbassadorTarget, contact: models.AmbassadorContactAttempt) -> dict:
+    return {
+        "contact_id": contact.contact_id,
+        "target_id": target.target_id,
+        "result_class": contact.result_class,
+        "http_status": contact.http_status,
+        "response_received": contact.response_received,
+        "transport_attempts": 0,
+        "automatic_retry": False,
+        "send_performed": False,
+        "idempotent_replay": True,
     }
 
 
@@ -436,14 +549,26 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     if os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1" or os.getenv("AION_AMBASSADOR_OPERATOR") != "1":
         raise AmbassadorError(403, "outbound_disabled", "Both Ambassador outbound and operator gates are required")
     key = _key(idempotency_key)
-    payload = _contact_payload(message)
+    payload = _contact_payload(message, target_id=target_id, idempotency_key=key)
     request_digest = _digest_json(payload)
     with _guard(db):
-        campaign = None
         target = db.scalar(_for_update(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id), db))
         if target is None:
             raise AmbassadorError(404, "target_not_found", "Target not found")
         campaign = db.scalar(_for_update(select(models.AmbassadorCampaign).where(models.AmbassadorCampaign.id == target.campaign_id), db))
+        token = _prepared_token_for_message(
+            db, target=target, campaign=campaign, message=message, require_active=False
+        )
+        existing = db.scalar(select(models.AmbassadorContactAttempt).where(
+            models.AmbassadorContactAttempt.target_id == target.id
+        ))
+        if existing is not None:
+            if existing.idempotency_key == key and existing.outbound_request_digest == request_digest:
+                return _contact_replay(target, existing)
+            raise AmbassadorError(409, "target_already_contacted", "Target already has its single contact attempt")
+        _prepared_token_for_message(
+            db, target=target, campaign=campaign, message=message, require_active=True
+        )
         if campaign.state != "ready":
             raise AmbassadorError(409, "campaign_not_ready", "Campaign must be ready for contact")
         if target.suppressed or target.contact_state != "ready":
@@ -485,6 +610,16 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         target.contact_state = "blocked"
         db.commit()
         raise AmbassadorError(409, "send_cancelled_by_control_state", "Suppression or campaign state blocked contact")
+    try:
+        _prepared_token_for_message(
+            db, target=target, campaign=campaign, message=message, require_active=True
+        )
+    except AmbassadorError:
+        contact.result_class = "rejected"
+        contact.completed_at = _now()
+        target.contact_state = "blocked"
+        db.commit()
+        raise
     policy = safe_http.FetchPolicy(timeout_seconds=4.0, max_response_bytes=64_000, max_attempts=1, max_resolved_addresses=4, user_agent="AION-Ambassador-Pilot/0.7.1")
     try:
         result, response = safe_http.fetch_json("POST", target.interaction_url, payload=payload, headers={"A2A-Version": "1.0"}, policy=policy)
@@ -521,7 +656,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         "contact_id": contact.contact_id, "target_id": target.target_id,
         "result_class": contact.result_class, "http_status": contact.http_status,
         "response_received": contact.response_received, "transport_attempts": result.attempts,
-        "automatic_retry": False,
+        "automatic_retry": False, "send_performed": True, "idempotent_replay": False,
     }
 
 
@@ -544,19 +679,16 @@ def campaign_status(db: Session, campaign_id: str) -> dict:
     contacts = list(db.scalars(select(models.AmbassadorContactAttempt).where(models.AmbassadorContactAttempt.target_id.in_(target_ids)))) if target_ids else []
     attrs = list(db.scalars(select(models.DistributionJoinAttribution).where(models.DistributionJoinAttribution.campaign_id == campaign.id)))
     joined_agent_ids = {row.agent_id for row in attrs}
-    groups = logical_groups(db)
-    canonical_ids = {group["canonical_agent_id"] for group in groups if joined_agent_ids.intersection(group["row_ids"])}
-    authenticated = sum(1 for group in groups if group["canonical_agent_id"] in canonical_ids and group["credential_confirmed"])
-    proofs = list(db.scalars(select(models.Package5VuoProof).where(models.Package5VuoProof.canonical_requester_agent_id.in_(canonical_ids)))) if canonical_ids else []
-    actions = list(db.scalars(select(models.ActionRun).where(models.ActionRun.requester_agent_id.in_(joined_agent_ids)))) if joined_agent_ids else []
-    returning = set()
-    threshold = timedelta(seconds=86_400)
-    for proof in proofs:
-        if any(action.id != proof.action_run_id and _aware(action.created_at) >= _aware(proof.created_at) + threshold for action in actions):
-            returning.add(proof.canonical_requester_agent_id)
     referral_tokens = list(db.scalars(select(models.DistributionToken).where(models.DistributionToken.kind == "peer_referral", models.DistributionToken.referrer_agent_id.in_(joined_agent_ids)))) if joined_agent_ids else []
     referral_token_ids = [token.id for token in referral_tokens]
-    referral_joins = db.scalar(select(func.count()).select_from(models.DistributionJoinAttribution).where(models.DistributionJoinAttribution.token_id.in_(referral_token_ids))) if referral_token_ids else 0
+    referral_attrs = list(db.scalars(select(models.DistributionJoinAttribution).where(models.DistributionJoinAttribution.token_id.in_(referral_token_ids)))) if referral_token_ids else []
+    attributable_agent_ids = joined_agent_ids.union(row.agent_id for row in referral_attrs)
+    groups = logical_groups(db)
+    canonical_ids = {group["canonical_agent_id"] for group in groups if attributable_agent_ids.intersection(group["row_ids"])}
+    authenticated = sum(1 for group in groups if group["canonical_agent_id"] in canonical_ids and group["credential_confirmed"])
+    proofs = list(db.scalars(select(models.Package5VuoProof).where(models.Package5VuoProof.canonical_requester_agent_id.in_(canonical_ids)))) if canonical_ids else []
+    returning = qualifying_return_identity_ids(db).intersection(canonical_ids)
+    referral_joins = len(referral_attrs)
     qualification = Counter(row.qualification_state for row in targets)
     contact_states = Counter(row.contact_state for row in targets)
     result_classes = Counter(row.result_class for row in contacts)

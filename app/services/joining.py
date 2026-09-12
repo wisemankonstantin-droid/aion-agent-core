@@ -86,11 +86,17 @@ def join_agent(payload: schemas.AgentCreate, db: Session):
 
             # This key remains local until the one complete transaction commits.
             raw_key, key_hash = issue_agent_key()
-            source, referrer = trusted_join_attribution(
-                distribution_token,
-                (payload.acquisition_source or payload.referrer or "direct"),
-                payload.referrer,
-            )
+            try:
+                source, referrer = trusted_join_attribution(
+                    distribution_token,
+                    (payload.acquisition_source or payload.referrer or "direct"),
+                    payload.referrer,
+                )
+            except AmbassadorError as exc:
+                raise HTTPException(
+                    status_code=exc.status_code,
+                    detail={"code": exc.code, "message": exc.message},
+                ) from exc
             agent = models.Agent(
                 external_id=payload.external_id,
                 name=payload.name,

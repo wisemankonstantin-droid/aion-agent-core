@@ -42,6 +42,7 @@ def upgrade():
         sa.Column("interaction_url", sa.String(1000), nullable=True),
         sa.Column("target_fingerprint", sa.String(71), nullable=False),
         sa.Column("metadata_digest", sa.String(71), nullable=False),
+        sa.Column("prepared_message_digest", sa.String(71), nullable=True),
         sa.Column("manifest_reachable", sa.Boolean(), nullable=False),
         sa.Column("declared_a2a_v1_jsonrpc", sa.Boolean(), nullable=False),
         sa.Column("interaction_url_validated", sa.Boolean(), nullable=False),
