@@ -1,4 +1,4 @@
-"""Seed and verify the disposable PostgreSQL 0010 -> Package 6A head path."""
+"""Seed and verify the disposable PostgreSQL 0010 -> current-head path."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from app.release_identity import EXPECTED_SCHEMA_REVISION
+
 
 DATABASE_NAME = "aion_package6a_0010"
 
@@ -74,7 +77,7 @@ def verify() -> None:
     schema = inspect(engine)
     assert {"economic_operations", "economic_transitions"} <= set(schema.get_table_names())
     with engine.begin() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0013_ambassador_control_v1"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == EXPECTED_SCHEMA_REVISION
         assert connection.scalar(text("SELECT COUNT(*) FROM economic_operations")) == 0
         assert connection.scalar(text("SELECT COUNT(*) FROM economic_transitions")) == 0
         assert connection.execute(text(
