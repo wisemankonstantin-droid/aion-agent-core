@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timezone
+from ipaddress import ip_address
 import re
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -43,6 +44,10 @@ _REMOTE_SECRET = re.compile(
     r"(?i)\b(?:Bearer\s+[^\s,;]+|(?:api[_-]?key|password|passwd|secret|token|credential)\s*[:=]\s*[^\s,;]+)"
 )
 _LONG_REMOTE_TOKEN = re.compile(r"\b(?=[A-Za-z0-9_+/=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+/=-]+\b")
+_URL_SECRET_PATH = re.compile(
+    r"(?i)(?:^|/)(?:bearer|api[_-]?key|password|passwd|secret|token|credential)(?:$|[/=:._-])"
+)
+_CANONICAL_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def _bounded_identifier(value: object) -> str | None:
@@ -67,29 +72,54 @@ def _safe_remote_text(value: object, maximum: int) -> str | None:
     return text or None
 
 
-def _safe_remote_url(value: object) -> str | None:
+def _url_parts(value: object):
     text = str(value or "")
-    if not text:
+    if not text or len(text) > 1_000 or any(ord(character) <= 32 or ord(character) == 127 for character in text):
         return None
     try:
         parsed = urlsplit(text)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             return None
-        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))[:1000]
+        _ = parsed.port
+        try:
+            if not ip_address(parsed.hostname).is_global:
+                return None
+        except ValueError:
+            pass
+        decoded_path = unquote(parsed.path)
+        if _URL_SECRET_PATH.search(decoded_path) or _LONG_REMOTE_TOKEN.search(decoded_path):
+            return None
+        return text, parsed
     except (TypeError, ValueError):
         return None
 
 
+def _safe_display_url(value: object) -> str | None:
+    result = _url_parts(value)
+    if result is None:
+        return None
+    _, parsed = result
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+
+def _safe_interaction_url(value: object) -> str | None:
+    result = _url_parts(value)
+    if result is None:
+        return None
+    text, parsed = result
+    if parsed.query or parsed.fragment:
+        return None
+    return text
+
+
 def _provider_key(candidate: dict) -> tuple[str, str, str, str] | None:
     identifier = _bounded_identifier(candidate.get("identifier"))
-    interaction_url = str(candidate.get("interaction_url") or "")
+    interaction_url = _safe_interaction_url(candidate.get("interaction_url"))
     binding = str(candidate.get("protocol_binding") or "").upper()
     version = str(candidate.get("protocol_version") or "")
     if (
         identifier is None
-        or not interaction_url
-        or len(interaction_url) > 1_000
-        or _safe_remote_url(interaction_url) is None
+        or interaction_url is None
         or binding != "JSONRPC"
         or version != "1.0"
     ):
@@ -150,7 +180,7 @@ def _eligible(candidate: dict) -> bool:
         and candidate.get("declared_a2a_v1_jsonrpc")
         and candidate.get("interaction_url_validated")
         and candidate.get("authentication_requirement") == "none"
-        and _safe_remote_url(candidate.get("interaction_url"))
+        and _safe_interaction_url(candidate.get("interaction_url"))
     )
 
 
@@ -175,7 +205,8 @@ def _provider_history(db: Session, provider_keys: list[tuple[str, str, str, str]
         .join(models.ActionOutcome, models.ActionOutcome.action_run_id == models.ActionRun.id)
         .outerjoin(
             models.ActionVerification,
-            models.ActionVerification.action_run_id == models.ActionRun.id,
+            (models.ActionVerification.action_run_id == models.ActionRun.id)
+            & (models.ActionVerification.action_outcome_id == models.ActionOutcome.id),
         )
         .where(models.ActionRun.selected_provider_identifier.in_(identifiers))
     ).all()
@@ -197,7 +228,12 @@ def _provider_history(db: Session, provider_keys: list[tuple[str, str, str, str]
             and outcome.verified_outcome
             and outcome.proof_present
             and verification is not None
+            and verification.action_run_id == run.id
+            and verification.action_outcome_id == outcome.id
+            and verification.verification_method == "a2a_nonce_roundtrip_v1"
             and verification.state == "verified"
+            and bool(_CANONICAL_SHA256.fullmatch(str(verification.challenge_digest or "")))
+            and bool(_CANONICAL_SHA256.fullmatch(str(verification.proof_digest or "")))
         ):
             item["verified_callability_outcomes"] += 1
             completed_at = _aware(verification.verified_at)
@@ -223,8 +259,8 @@ def _bounded_candidate(candidate: dict, history: dict) -> dict:
         "identifier": identifier,
         "name": _safe_remote_text(candidate.get("name"), 240),
         "description": _safe_remote_text(candidate.get("description"), 500) or "",
-        "agent_card_url": _safe_remote_url(candidate.get("url")),
-        "interaction_url": _safe_remote_url(candidate.get("interaction_url")),
+        "agent_card_url": _safe_display_url(candidate.get("url")),
+        "interaction_url": _safe_interaction_url(candidate.get("interaction_url")),
         "protocol_binding": _safe_remote_text(candidate.get("protocol_binding"), 40),
         "protocol_version": _safe_remote_text(candidate.get("protocol_version"), 40),
         "manifest_reachable": bool(candidate.get("manifest_reachable")),

@@ -84,7 +84,10 @@ def _record_action(
     verified: bool,
     failure_class: str | None = None,
     verification: bool = True,
-):
+    verification_method: str = "a2a_nonce_roundtrip_v1",
+    challenge_digest: str | None = "sha256:" + "c" * 64,
+    proof_digest: str | None = "sha256:" + "d" * 64,
+) -> tuple[int, int]:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
         run = models.ActionRun(
@@ -135,14 +138,15 @@ def _record_action(
         if verification:
             db.add(models.ActionVerification(
                 action_run_id=run.id, action_outcome_id=outcome.id,
-                verification_method="a2a_nonce_roundtrip_v1",
+                verification_method=verification_method,
                 state="verified" if verified else "failed",
-                challenge_digest="sha256:" + "c" * 64,
-                proof_digest="sha256:" + "d" * 64 if verified else None,
+                challenge_digest=challenge_digest,
+                proof_digest=proof_digest if verified else None,
                 verified_at=now,
                 details={"proof_present": verified},
             ))
         db.commit()
+        return run.id, outcome.id
 
 
 def test_route_plan_requires_authentication(monkeypatch):
@@ -262,6 +266,71 @@ def test_unverified_outcome_flags_cannot_manufacture_verified_history(monkeypatc
     assert selected["verified_work_history"]["verified_callability_outcomes"] == 0
 
 
+@pytest.mark.parametrize(
+    ("verification_method", "challenge_digest", "proof_digest"),
+    [
+        ("self_reported", "sha256:" + "c" * 64, "sha256:" + "d" * 64),
+        ("a2a_nonce_roundtrip_v1", None, "sha256:" + "d" * 64),
+        ("a2a_nonce_roundtrip_v1", "sha256:" + "c" * 64, None),
+        ("a2a_nonce_roundtrip_v1", "sha256:" + "C" * 64, "sha256:" + "d" * 64),
+        ("a2a_nonce_roundtrip_v1", "sha256:not-a-digest", "sha256:" + "d" * 64),
+    ],
+)
+def test_historical_verification_metadata_must_be_canonical(
+    monkeypatch, verification_method, challenge_digest, proof_digest
+):
+    agent_id, key = _agent()
+    identifier = "metadata-" + uuid.uuid4().hex
+    _record_action(
+        agent_id,
+        identifier,
+        verified=True,
+        verification_method=verification_method,
+        challenge_digest=challenge_digest,
+        proof_digest=proof_digest,
+    )
+    monkeypatch.setattr(commercial_router, "_DISCOVER", lambda *_: _discovery(_candidate(identifier)))
+    selected = _plan(key).json()["selected_provider"]
+    assert selected["provider_verification_state"] == "declaration_qualified_only"
+    assert selected["verified_work_history"]["verified_callability_outcomes"] == 0
+
+
+def test_historical_verification_must_correlate_run_and_outcome(monkeypatch):
+    agent_id, key = _agent()
+    identifier_a = "correlation-a-" + uuid.uuid4().hex
+    identifier_b = "correlation-b-" + uuid.uuid4().hex
+    run_a_id, outcome_a_id = _record_action(agent_id, identifier_a, verified=True, verification=False)
+    _, outcome_b_id = _record_action(agent_id, identifier_b, verified=True, verification=False)
+    with SessionLocal() as db:
+        db.add(models.ActionVerification(
+            action_run_id=run_a_id,
+            action_outcome_id=outcome_b_id,
+            verification_method="a2a_nonce_roundtrip_v1",
+            state="verified",
+            challenge_digest="sha256:" + "c" * 64,
+            proof_digest="sha256:" + "d" * 64,
+            verified_at=datetime.now(timezone.utc),
+            details={"proof_present": True},
+        ))
+        db.commit()
+    assert outcome_a_id != outcome_b_id
+    monkeypatch.setattr(commercial_router, "_DISCOVER", lambda *_: _discovery(_candidate(identifier_a)))
+    selected = _plan(key).json()["selected_provider"]
+    assert selected["verified_work_history"]["recorded_outcomes"] == 1
+    assert selected["verified_work_history"]["verified_callability_outcomes"] == 0
+    assert selected["provider_verification_state"] == "declaration_qualified_only"
+
+
+def test_fully_correlated_canonical_verification_remains_countable(monkeypatch):
+    agent_id, key = _agent()
+    identifier = "correlated-" + uuid.uuid4().hex
+    _record_action(agent_id, identifier, verified=True)
+    monkeypatch.setattr(commercial_router, "_DISCOVER", lambda *_: _discovery(_candidate(identifier)))
+    selected = _plan(key).json()["selected_provider"]
+    assert selected["verified_work_history"]["verified_callability_outcomes"] == 1
+    assert selected["provider_verification_state"] == "historical_callability_verified"
+
+
 def test_ranking_penalizes_failures_and_has_stable_tie_break(monkeypatch):
     agent_id, key = _agent()
     prefix = uuid.uuid4().hex
@@ -337,6 +406,38 @@ def test_remote_candidate_output_redacts_secrets_and_unsafe_url_cannot_qualify(m
     assert data["selected_provider"] is None
     assert data["candidates"][0]["qualification_state"] == "ineligible"
     assert "?" not in data["candidates"][0]["agent_card_url"]
+
+
+def test_interaction_query_or_fragment_is_ineligible_and_never_rewritten(monkeypatch):
+    agent_id, key = _agent()
+    identifier = "endpoint-identity-" + uuid.uuid4().hex
+    _record_action(agent_id, identifier, verified=True)
+    for suffix in ("?tenant=123", "#tenant-123"):
+        candidate = _candidate(identifier)
+        candidate["interaction_url"] += suffix
+        candidate["interaction_url_validated"] = True
+        monkeypatch.setattr(commercial_router, "_DISCOVER", lambda *_, item=candidate: _discovery(item))
+        data = _plan(key).json()
+        assert data["selected_provider"] is None
+        assert data["candidates"][0]["qualification_state"] == "ineligible"
+        assert data["candidates"][0]["interaction_url"] is None
+        assert data["candidates"][0]["verified_work_history"]["verified_callability_outcomes"] == 0
+
+
+def test_secret_like_interaction_path_is_omitted_and_ineligible(monkeypatch):
+    _, key = _agent()
+    secret = "opaque-credential-material-123456789012345678901234567890"
+    candidate = _candidate("secret-path")
+    candidate["interaction_url"] = "https://provider.example/token/" + secret
+    candidate["interaction_url_validated"] = True
+    candidate["url"] = "https://provider.example/credential/" + secret
+    monkeypatch.setattr(commercial_router, "_DISCOVER", lambda *_: _discovery(candidate))
+    data = _plan(key).json()
+    assert secret not in str(data)
+    assert data["selected_provider"] is None
+    assert data["candidates"][0]["interaction_url"] is None
+    assert data["candidates"][0]["agent_card_url"] is None
+    assert data["candidates"][0]["qualification_state"] == "ineligible"
 
 
 def test_requested_candidate_filters_without_falling_back(monkeypatch):
