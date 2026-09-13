@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 
 
+LATEST_REVISION = "0014_conversation_intel_v1"
+
+
 def _alembic(root, database_url, *args):
     env = dict(os.environ, DATABASE_URL=database_url)
     subprocess.run(
@@ -17,6 +20,14 @@ def _alembic(root, database_url, *args):
     )
 
 
+def _revision(connection):
+    return connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+
+
+def _tables(connection):
+    return {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
 def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "upgrade-path.db"
@@ -24,26 +35,13 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
 
     _alembic(root, url, "upgrade", "0005_live_utility_persistence")
     with sqlite3.connect(database) as connection:
-        connection.execute(
-            "INSERT INTO machine_entries (source, created_at) VALUES (?, ?)",
-            ("migration-sentinel", "2026-09-08 12:00:00"),
-        )
+        connection.execute("INSERT INTO machine_entries (source, created_at) VALUES (?, ?)", ("migration-sentinel", "2026-09-08 12:00:00"))
         connection.execute(
             """INSERT INTO live_utility_sources
             (source_id, display_name, tier, source_kind, canonical_locator,
              refresh_strategies, stale_after_seconds, expires_after_seconds, enabled)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "migration-source",
-                "Migration source",
-                "tier_1",
-                "fixture",
-                "fixture:migration",
-                '["ttl"]',
-                60,
-                120,
-                1,
-            ),
+            ("migration-source", "Migration source", "tier_1", "fixture", "fixture:migration", '["ttl"]', 60, 120, 1),
         )
         connection.execute(
             """INSERT INTO live_utility_observations
@@ -52,18 +50,9 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
              stale_after, expires_at, verification_method, content_digest)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                "migration-observation",
-                "migration-source",
-                "protocol.release",
-                "v1",
-                None,
-                "2026-09-08 12:00:00",
-                "2026-09-08 12:00:00",
-                "2026-09-08 12:00:00",
-                "2026-09-08 12:01:00",
-                "2026-09-08 12:02:00",
-                "fixture",
-                "sha256:migration",
+                "migration-observation", "migration-source", "protocol.release", "v1", None,
+                "2026-09-08 12:00:00", "2026-09-08 12:00:00", "2026-09-08 12:00:00",
+                "2026-09-08 12:01:00", "2026-09-08 12:02:00", "fixture", "sha256:migration",
             ),
         )
     _alembic(root, url, "upgrade", "head")
@@ -71,154 +60,74 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
     _alembic(root, url, "check")
 
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-        source_indexes = connection.execute(
-            "PRAGMA index_list('live_utility_sources')"
-        ).fetchall()
+        revision = _revision(connection)
+        tables = _tables(connection)
+        source_indexes = connection.execute("PRAGMA index_list('live_utility_sources')").fetchall()
         source_unique_index_columns = {
-            tuple(
-                row[2]
-                for row in connection.execute(
-                    f"PRAGMA index_info('{index[1]}')"
-                ).fetchall()
-            )
-            for index in source_indexes
-            if index[2] == 1
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in source_indexes if index[2] == 1
         }
-        observation_indexes = connection.execute(
-            "PRAGMA index_list('live_utility_observations')"
-        ).fetchall()
+        observation_indexes = connection.execute("PRAGMA index_list('live_utility_observations')").fetchall()
         observation_unique_index_columns = {
-            tuple(
-                row[2]
-                for row in connection.execute(
-                    f"PRAGMA index_info('{index[1]}')"
-                ).fetchall()
-            )
-            for index in observation_indexes
-            if index[2] == 1
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in observation_indexes if index[2] == 1
         }
-        observation_foreign_keys = connection.execute(
-            "PRAGMA foreign_key_list('live_utility_observations')"
-        ).fetchall()
-        source_sql = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='live_utility_sources'"
-        ).fetchone()[0]
-        observation_sql = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='live_utility_observations'"
-        ).fetchone()[0]
-        sentinel = connection.execute(
-            "SELECT source FROM machine_entries WHERE source='migration-sentinel'"
-        ).fetchone()
+        observation_foreign_keys = connection.execute("PRAGMA foreign_key_list('live_utility_observations')").fetchall()
+        source_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='live_utility_sources'").fetchone()[0]
+        observation_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='live_utility_observations'").fetchone()[0]
+        sentinel = connection.execute("SELECT source FROM machine_entries WHERE source='migration-sentinel'").fetchone()
         observation_sentinel = connection.execute(
-            "SELECT content_digest, normalized_data FROM live_utility_observations "
-            "WHERE observation_id='migration-observation'"
+            "SELECT content_digest, normalized_data FROM live_utility_observations WHERE observation_id='migration-observation'"
         ).fetchone()
         verification_sql = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' "
-            "AND name='live_utility_verifications'"
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='live_utility_verifications'"
         ).fetchone()[0]
-        verification_indexes = connection.execute(
-            "PRAGMA index_list('live_utility_verifications')"
-        ).fetchall()
-        verification_foreign_keys = connection.execute(
-            "PRAGMA foreign_key_list('live_utility_verifications')"
-        ).fetchall()
+        verification_indexes = connection.execute("PRAGMA index_list('live_utility_verifications')").fetchall()
+        verification_foreign_keys = connection.execute("PRAGMA foreign_key_list('live_utility_verifications')").fetchall()
         verification_unique_index_columns = {
-            tuple(
-                row[2]
-                for row in connection.execute(
-                    f"PRAGMA index_info('{index[1]}')"
-                ).fetchall()
-            )
-            for index in verification_indexes
-            if index[2] == 1
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in verification_indexes if index[2] == 1
         }
 
-    assert revision == "0013_ambassador_control_v1"
+    assert revision == LATEST_REVISION
     assert {
-        "agents",
-        "machine_entries",
-        "live_utility_sources",
-        "live_utility_observations",
-        "live_utility_verifications",
-        "agent_utility_checkpoints",
-        "action_runs",
-        "action_attempts",
-        "action_outcomes",
-        "action_verifications",
-        "learning_runs",
-        "learning_source_watch_states",
-        "agent_evidence_claims",
-        "learning_opportunity_candidates",
-        "package5_participation_assessments",
-        "package5_vuo_proofs",
+        "agents", "machine_entries", "live_utility_sources", "live_utility_observations",
+        "live_utility_verifications", "agent_utility_checkpoints", "action_runs", "action_attempts",
+        "action_outcomes", "action_verifications", "learning_runs", "learning_source_watch_states",
+        "agent_evidence_claims", "learning_opportunity_candidates", "package5_participation_assessments",
+        "package5_vuo_proofs", "conversation_evidence", "conversation_intelligence",
     } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
-    assert {
-        "ix_live_utility_observations_source_id",
-        "ix_live_utility_observations_source_subject_observed",
-    } <= {row[1] for row in observation_indexes}
-    assert {row[2] for row in observation_foreign_keys} == {
-        "live_utility_sources",
-        "live_utility_observations",
-    }
+    assert {"ix_live_utility_observations_source_id", "ix_live_utility_observations_source_subject_observed"} <= {row[1] for row in observation_indexes}
+    assert {row[2] for row in observation_foreign_keys} == {"live_utility_sources", "live_utility_observations"}
     assert "ck_live_utility_sources_window_order" in source_sql
     assert "ck_live_utility_observations_verified_order" in observation_sql
     assert sentinel == ("migration-sentinel",)
     assert observation_sentinel == ("sha256:migration", None)
     assert "ck_live_utility_verifications_stale_expires_order" in verification_sql
     assert ("verification_id",) in verification_unique_index_columns
-    assert "ix_live_utility_verifications_source_subject_verified" in {
-        row[1] for row in verification_indexes
-    }
-    assert {row[2] for row in verification_foreign_keys} == {
-        "live_utility_sources",
-        "live_utility_observations",
-    }
+    assert "ix_live_utility_verifications_source_subject_verified" in {row[1] for row in verification_indexes}
+    assert {row[2] for row in verification_foreign_keys} == {"live_utility_sources", "live_utility_observations"}
 
 
 def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "fresh-path.db"
     url = "sqlite:///" + database.as_posix()
-
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
-
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-
-    assert revision == "0013_ambassador_control_v1"
+        revision = _revision(connection)
+        tables = _tables(connection)
+    assert revision == LATEST_REVISION
     assert {
-        "live_utility_sources",
-        "live_utility_observations",
-        "live_utility_verifications",
-        "agent_utility_checkpoints",
-        "action_runs",
-        "action_attempts",
-        "action_outcomes",
-        "action_verifications",
-        "learning_runs",
-        "learning_source_watch_states",
-        "agent_evidence_claims",
-        "learning_opportunity_candidates",
-        "package5_participation_assessments",
-        "package5_vuo_proofs",
+        "live_utility_sources", "live_utility_observations", "live_utility_verifications",
+        "agent_utility_checkpoints", "action_runs", "action_attempts", "action_outcomes",
+        "action_verifications", "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
+        "learning_opportunity_candidates", "package5_participation_assessments", "package5_vuo_proofs",
+        "conversation_evidence", "conversation_intelligence",
     } <= tables
 
 
@@ -226,45 +135,25 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "package-2-upgrade-path.db"
     url = "sqlite:///" + database.as_posix()
-
     _alembic(root, url, "upgrade", "0006_live_utility_data")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("migration-agent", "Migration Agent", "", "A2A", 0, "migration-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
-
     with sqlite3.connect(database) as connection:
-        revision = connection.execute(
-            "SELECT version_num FROM alembic_version"
-        ).fetchone()[0]
-        checkpoint_sql = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' "
-            "AND name='agent_utility_checkpoints'"
-        ).fetchone()[0]
-        unique_indexes = connection.execute(
-            "PRAGMA index_list('agent_utility_checkpoints')"
-        ).fetchall()
+        revision = _revision(connection)
+        checkpoint_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_utility_checkpoints'").fetchone()[0]
+        unique_indexes = connection.execute("PRAGMA index_list('agent_utility_checkpoints')").fetchall()
         unique_columns = {
-            tuple(
-                row[2]
-                for row in connection.execute(
-                    f"PRAGMA index_info('{index[1]}')"
-                ).fetchall()
-            )
-            for index in unique_indexes
-            if index[2] == 1
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in unique_indexes if index[2] == 1
         }
-        agent = connection.execute(
-            "SELECT external_id FROM agents WHERE external_id='migration-agent'"
-        ).fetchone()
-
-    assert revision == "0013_ambassador_control_v1"
+        agent = connection.execute("SELECT external_id FROM agents WHERE external_id='migration-agent'").fetchone()
+    assert revision == LATEST_REVISION
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
@@ -274,48 +163,25 @@ def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "package-3-upgrade-path.db"
     url = "sqlite:///" + database.as_posix()
-
     _alembic(root, url, "upgrade", "0007_agent_utility_checkpoints")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("package-3-sentinel", "Package 3 Sentinel", "", "A2A", 0,
-             "package-3-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-3-sentinel", "Package 3 Sentinel", "", "A2A", 0, "package-3-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
-
     with sqlite3.connect(database) as connection:
-        revision = connection.execute(
-            "SELECT version_num FROM alembic_version"
-        ).fetchone()[0]
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-        action_indexes = connection.execute(
-            "PRAGMA index_list('action_runs')"
-        ).fetchall()
+        revision = _revision(connection)
+        tables = _tables(connection)
+        action_indexes = connection.execute("PRAGMA index_list('action_runs')").fetchall()
         unique_columns = {
-            tuple(
-                row[2]
-                for row in connection.execute(
-                    f"PRAGMA index_info('{index[1]}')"
-                ).fetchall()
-            )
-            for index in action_indexes
-            if index[2] == 1
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in action_indexes if index[2] == 1
         }
-        sentinel = connection.execute(
-            "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
-        ).fetchone()
-
-    assert revision == "0013_ambassador_control_v1"
+        sentinel = connection.execute("SELECT external_id FROM agents WHERE external_id='package-3-sentinel'").fetchone()
+    assert revision == LATEST_REVISION
     assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
     assert ("requester_agent_id", "idempotency_key") in unique_columns
     assert ("action_id",) in unique_columns
@@ -326,37 +192,28 @@ def test_existing_0008_database_upgrades_to_continuous_learning_v1(tmp_path):
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "package-3b-upgrade-path.db"
     url = "sqlite:///" + database.as_posix()
-
     _alembic(root, url, "upgrade", "0008_action_outcome_evidence")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("package-3b-sentinel", "Package 3B Sentinel", "", "A2A", 0,
-             "package-3b-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-3b-sentinel", "Package 3B Sentinel", "", "A2A", 0, "package-3b-hash", 0, "declared", 0, "2026-09-09 12:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
-
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        revision = _revision(connection)
+        tables = _tables(connection)
         evidence_indexes = connection.execute("PRAGMA index_list('agent_evidence_claims')").fetchall()
         evidence_unique_columns = {
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in evidence_indexes if index[2] == 1
         }
-        sentinel = connection.execute(
-            "SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'"
-        ).fetchone()
-
-    assert revision == "0013_ambassador_control_v1"
+        sentinel = connection.execute("SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'").fetchone()
+    assert revision == LATEST_REVISION
     assert {
         "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
-        "learning_opportunity_candidates",
-        "package5_participation_assessments", "package5_vuo_proofs",
+        "learning_opportunity_candidates", "package5_participation_assessments", "package5_vuo_proofs",
     } <= tables
     assert ("requester_agent_id", "idempotency_key") in evidence_unique_columns
     assert ("requester_agent_id", "evidence_digest") in evidence_unique_columns
@@ -367,41 +224,29 @@ def test_existing_0009_database_upgrades_additively_without_fake_package5_proof(
     root = Path(__file__).resolve().parents[1]
     database = tmp_path / "package-5-upgrade-path.db"
     url = "sqlite:///" + database.as_posix()
-
     _alembic(root, url, "upgrade", "0009_continuous_learning_v1")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("package-5-sentinel", "Package 5 Sentinel", "", "A2A", 0,
-             "package-5-hash", 0, "declared", 0, "2026-09-10 12:00:00"),
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-5-sentinel", "Package 5 Sentinel", "", "A2A", 0, "package-5-hash", 0, "declared", 0, "2026-09-10 12:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
-
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        revision = _revision(connection)
+        tables = _tables(connection)
         assessments = connection.execute("SELECT COUNT(*) FROM package5_participation_assessments").fetchone()[0]
         vuos = connection.execute("SELECT COUNT(*) FROM package5_vuo_proofs").fetchone()[0]
-        sentinel = connection.execute(
-            "SELECT external_id FROM agents WHERE external_id='package-5-sentinel'"
-        ).fetchone()
+        sentinel = connection.execute("SELECT external_id FROM agents WHERE external_id='package-5-sentinel'").fetchone()
         vuo_indexes = connection.execute("PRAGMA index_list('package5_vuo_proofs')").fetchall()
-        assessment_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info('package5_participation_assessments')")
-        }
-        vuo_foreign_keys = {
-            (row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('package5_vuo_proofs')")
-        }
+        assessment_columns = {row[1] for row in connection.execute("PRAGMA table_info('package5_participation_assessments')")}
+        vuo_foreign_keys = {(row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('package5_vuo_proofs')")}
         vuo_unique_columns = {
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in vuo_indexes if index[2] == 1
         }
-
-    assert revision == "0013_ambassador_control_v1"
+    assert revision == LATEST_REVISION
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= tables
     assert assessments == vuos == 0
     assert sentinel == ("package-5-sentinel",)
@@ -419,11 +264,8 @@ def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_p
     _alembic(root, url, "upgrade", "0010_package5_proof_v1")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("package-6a-sentinel", "Package 6A Sentinel", "", "REST", 0,
-             "package-6a-hash", 0, "declared", 0, "2026-09-11 12:00:00"),
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-6a-sentinel", "Package 6A Sentinel", "", "REST", 0, "package-6a-hash", 0, "declared", 0, "2026-09-11 12:00:00"),
         )
         agent_id = connection.execute("SELECT id FROM agents WHERE external_id='package-6a-sentinel'").fetchone()[0]
         connection.execute(
@@ -434,8 +276,8 @@ def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_p
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        revision = _revision(connection)
+        tables = _tables(connection)
         legacy = connection.execute("SELECT amount, status FROM payment_intents WHERE purpose='legacy-only'").fetchone()
         operations = connection.execute("SELECT COUNT(*) FROM economic_operations").fetchone()[0]
         transitions = connection.execute("SELECT COUNT(*) FROM economic_transitions").fetchone()[0]
@@ -444,10 +286,8 @@ def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_p
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in indexes if index[2] == 1
         }
-        operation_foreign_keys = {
-            (row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('economic_operations')")
-        }
-    assert revision == "0013_ambassador_control_v1"
+        operation_foreign_keys = {(row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('economic_operations')")}
+    assert revision == LATEST_REVISION
     assert {"economic_operations", "economic_transitions"} <= tables
     assert legacy == ("untrusted-string", "created")
     assert operations == transitions == 0
@@ -465,37 +305,27 @@ def test_existing_0011_upgrades_additively_to_ambassador_pilot(tmp_path):
     _alembic(root, url, "upgrade", "0011_economic_kernel_v1")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO agents (external_id, name, description, protocol, owner_required, "
-            "api_key_hash, reputation, trust_level, authenticated_calls, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("package-5d-sentinel", "Package 5D Sentinel", "", "REST", 0,
-             "package-5d-hash", 0, "declared", 0, "2026-09-12 12:00:00"),
+            "INSERT INTO agents (external_id, name, description, protocol, owner_required, api_key_hash, reputation, trust_level, authenticated_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-5d-sentinel", "Package 5D Sentinel", "", "REST", 0, "package-5d-hash", 0, "declared", 0, "2026-09-12 12:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        revision = _revision(connection)
+        tables = _tables(connection)
         counts = {
             table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            for table in (
-                "ambassador_campaigns", "ambassador_targets", "ambassador_contact_attempts",
-                "distribution_tokens", "distribution_join_attributions",
-            )
+            for table in ("ambassador_campaigns", "ambassador_targets", "ambassador_contact_attempts", "distribution_tokens", "distribution_join_attributions")
         }
-        sentinel = connection.execute(
-            "SELECT external_id FROM agents WHERE external_id='package-5d-sentinel'"
-        ).fetchone()
+        sentinel = connection.execute("SELECT external_id FROM agents WHERE external_id='package-5d-sentinel'").fetchone()
         target_indexes = connection.execute("PRAGMA index_list('ambassador_targets')").fetchall()
-        target_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info('ambassador_targets')").fetchall()
-        }
+        target_columns = {row[1] for row in connection.execute("PRAGMA table_info('ambassador_targets')").fetchall()}
         target_unique_columns = {
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in target_indexes if index[2] == 1
         }
-    assert revision == "0013_ambassador_control_v1"
+    assert revision == LATEST_REVISION
     assert set(counts) <= tables
     assert all(value == 0 for value in counts.values())
     assert sentinel == ("package-5d-sentinel",)
@@ -510,38 +340,60 @@ def test_existing_0012_upgrades_additively_to_ambassador_operator_control(tmp_pa
     _alembic(root, url, "upgrade", "0012_ambassador_pilot_v1")
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO ambassador_campaigns "
-            "(campaign_id, name, purpose, state, maximum_targets, maximum_contacts, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                "package-5e-sentinel",
-                "Package 5E Sentinel",
-                "preserve Package 5D data",
-                "draft",
-                1,
-                0,
-                "2026-09-13 00:00:00",
-                "2026-09-13 00:00:00",
-            ),
+            "INSERT INTO ambassador_campaigns (campaign_id, name, purpose, state, maximum_targets, maximum_contacts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-5e-sentinel", "Package 5E Sentinel", "preserve Package 5D data", "draft", 1, 0, "2026-09-13 00:00:00", "2026-09-13 00:00:00"),
         )
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "upgrade", "head")
     _alembic(root, url, "check")
     with sqlite3.connect(database) as connection:
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        sentinel = connection.execute(
-            "SELECT campaign_id FROM ambassador_campaigns WHERE campaign_id='package-5e-sentinel'"
-        ).fetchone()
+        revision = _revision(connection)
+        tables = _tables(connection)
+        sentinel = connection.execute("SELECT campaign_id FROM ambassador_campaigns WHERE campaign_id='package-5e-sentinel'").fetchone()
         audits = connection.execute("SELECT COUNT(*) FROM ambassador_operator_actions").fetchone()[0]
         indexes = connection.execute("PRAGMA index_list('ambassador_operator_actions')").fetchall()
         unique_columns = {
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in indexes if index[2] == 1
         }
-    assert revision == "0013_ambassador_control_v1"
+    assert revision == LATEST_REVISION
     assert "ambassador_operator_actions" in tables
+    assert {"conversation_evidence", "conversation_intelligence"} <= tables
     assert sentinel == ("package-5e-sentinel",)
     assert audits == 0
     assert ("action_id",) in unique_columns
     assert ("operation_kind", "idempotency_key") in unique_columns
+
+
+def test_existing_0013_upgrades_additively_to_conversation_intelligence(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-5f-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+    _alembic(root, url, "upgrade", "0013_ambassador_control_v1")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO ambassador_campaigns (campaign_id, name, purpose, state, maximum_targets, maximum_contacts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("package-5f-sentinel", "Package 5F Sentinel", "preserve Package 5E state", "draft", 1, 0, "2026-09-13 12:00:00", "2026-09-13 12:00:00"),
+        )
+        connection.execute(
+            "INSERT INTO ambassador_operator_actions (action_id, operation_kind, campaign_id, target_id, idempotency_key, request_digest, result_class, created_at, completed_at) SELECT ?, ?, id, NULL, ?, ?, ?, ?, ? FROM ambassador_campaigns WHERE campaign_id=?",
+            (str(uuid.uuid4()) if False else "11111111-1111-4111-8111-111111111111", "set_campaign_state", "package5f-sentinel", "sha256:sentinel", "succeeded", "2026-09-13 12:01:00", "2026-09-13 12:01:01", "package-5f-sentinel"),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+    with sqlite3.connect(database) as connection:
+        revision = _revision(connection)
+        tables = _tables(connection)
+        sentinel = connection.execute("SELECT campaign_id FROM ambassador_campaigns WHERE campaign_id='package-5f-sentinel'").fetchone()
+        audits = connection.execute("SELECT COUNT(*) FROM ambassador_operator_actions").fetchone()[0]
+        conversation_count = connection.execute("SELECT COUNT(*) FROM conversation_evidence").fetchone()[0]
+        intelligence_count = connection.execute("SELECT COUNT(*) FROM conversation_intelligence").fetchone()[0]
+        evidence_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='conversation_evidence'").fetchone()[0]
+    assert revision == LATEST_REVISION
+    assert {"conversation_evidence", "conversation_intelligence"} <= tables
+    assert sentinel == ("package-5f-sentinel",)
+    assert audits == 1
+    assert conversation_count == intelligence_count == 0
+    assert "ck_conversation_evidence_no_text_bytes" in evidence_sql
+    assert "digest_only" in evidence_sql
