@@ -38,7 +38,6 @@ from .services.package5_proof import (
 from .services.economic_kernel import EconomicKernelError, create_preflight, get_operation
 from .services.ambassador import (
     AmbassadorError,
-    campaign_status,
     create_campaign,
     issue_peer_referral,
     prepare_and_send_operator_contact,
@@ -47,7 +46,11 @@ from .services.ambassador import (
     set_campaign_state,
     suppress_target,
 )
-from .services.ambassador_operator import authorize_operator, execute_operator_action
+from .services.ambassador_operator import (
+    authorize_operator,
+    execute_operator_action,
+    operator_campaign_status as ambassador_operator_campaign_status,
+)
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
 
@@ -854,7 +857,7 @@ def operator_campaign_status(
     db: Session = Depends(get_db),
 ):
     try:
-        return _operator_response(campaign_status(db, campaign_id))
+        return _operator_response(ambassador_operator_campaign_status(db, campaign_id))
     except AmbassadorError as exc:
         _raise_ambassador(exc)
 

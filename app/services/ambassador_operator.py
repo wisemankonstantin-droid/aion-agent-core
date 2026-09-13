@@ -127,7 +127,9 @@ def _replay_result(db: Session, action: models.AmbassadorOperatorAction) -> dict
         target = db.get(models.AmbassadorTarget, action.target_id)
         contact = db.scalar(
             select(models.AmbassadorContactAttempt).where(
-                models.AmbassadorContactAttempt.target_id == action.target_id
+                models.AmbassadorContactAttempt.target_id == action.target_id,
+                models.AmbassadorContactAttempt.idempotency_key
+                == action.idempotency_key,
             )
         )
         if target is not None and contact is not None:
@@ -144,11 +146,53 @@ def _replay_result(db: Session, action: models.AmbassadorOperatorAction) -> dict
                 "raw_distribution_token_returned": False,
                 "raw_prepared_message_returned": False,
             }
+        return None
     if action.operation_kind in {"create_campaign", "scout_campaign", "set_campaign_state"} and campaign_id:
         return ambassador.campaign_status(db, campaign_id)
     if target_id:
         return ambassador.target_status(db, target_id)
     return None
+
+
+def operator_campaign_status(db: Session, campaign_id: str) -> dict:
+    """Return a bounded persisted shortlist without network or token work."""
+
+    status = ambassador.campaign_status(db, campaign_id)
+    campaign = db.scalar(
+        select(models.AmbassadorCampaign).where(
+            models.AmbassadorCampaign.campaign_id == campaign_id
+        )
+    )
+    targets = list(
+        db.scalars(
+            select(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+            .order_by(models.AmbassadorTarget.id)
+            .limit(ambassador.MAX_CAMPAIGN_TARGETS)
+        )
+    )
+    status["target_shortlist"] = [
+        {
+            "target_id": target.target_id,
+            "discovery_source": target.discovery_source,
+            "source_identifier": target.source_identifier,
+            "agent_card_url": target.agent_card_url,
+            "interaction_url": target.interaction_url,
+            "manifest_reachable": target.manifest_reachable,
+            "declared_a2a_v1_jsonrpc": target.declared_a2a_v1_jsonrpc,
+            "interaction_url_validated": target.interaction_url_validated,
+            "authentication_requirement": target.authentication_requirement,
+            "payment_required": target.payment_required,
+            "qualification_state": target.qualification_state,
+            "qualification_reasons": list(target.qualification_reasons or []),
+            "contact_state": target.contact_state,
+            "suppressed": target.suppressed,
+            "suppression_reason": target.suppression_reason,
+        }
+        for target in targets
+    ]
+    status["target_shortlist_limit"] = ambassador.MAX_CAMPAIGN_TARGETS
+    return status
 
 
 def _find_links(

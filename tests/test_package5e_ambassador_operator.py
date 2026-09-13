@@ -231,6 +231,98 @@ def test_create_scout_and_qualify_never_contact_target(monkeypatch):
         assert db.scalar(select(func.count()).select_from(models.DistributionToken)) == 0
 
 
+def test_operator_can_inspect_bounded_persisted_shortlist_without_contact(monkeypatch):
+    with SessionLocal() as db:
+        campaign_id = ambassador.create_campaign(
+            db,
+            name="Inspectable shortlist",
+            purpose="HQ selects one persisted target",
+            maximum_targets=30,
+            maximum_contacts=1,
+        )["campaign_id"]
+    candidates = [
+        _candidate(
+            identifier="shortlist-alpha",
+            url="https://cards.example/alpha/agent-card.json",
+            interaction_url="https://agents.example/alpha/a2a",
+        ),
+        _candidate(
+            identifier="shortlist-beta",
+            url="https://cards.example/beta/agent-card.json",
+            interaction_url="https://agents.example/beta/a2a",
+            authentication_requirement="bearer",
+        ),
+    ]
+    monkeypatch.setattr(
+        ambassador,
+        "discover_external_agents_with_status",
+        lambda query, limit: DiscoveryResult(
+            candidates[:limit], "success", None, {"candidate_limit": 5}
+        ),
+    )
+    monkeypatch.setattr(
+        safe_http,
+        "fetch_json",
+        lambda *args, **kwargs: pytest.fail("shortlist read attempted contact"),
+    )
+    scout = client.post(
+        f"/ops/ambassador/campaigns/{campaign_id}/scout",
+        headers=_headers("scout-shortlist"),
+        json={"query": "inspectable agents"},
+    )
+    assert scout.status_code == 200
+    assert len(scout.json()["result"]["created_target_ids"]) == 2
+
+    assert client.get(
+        f"/ops/ambassador/campaigns/{campaign_id}"
+    ).status_code == 401
+    assert client.get(
+        f"/ops/ambassador/campaigns/{campaign_id}",
+        headers={"Authorization": "Bearer wrong"},
+    ).status_code == 401
+    status = client.get(
+        f"/ops/ambassador/campaigns/{campaign_id}", headers=_headers()
+    )
+    assert status.status_code == 200
+    body = status.json()
+    assert body["target_shortlist_limit"] == ambassador.MAX_CAMPAIGN_TARGETS == 30
+    assert [target["source_identifier"] for target in body["target_shortlist"]] == [
+        "shortlist-alpha",
+        "shortlist-beta",
+    ]
+    assert body["target_shortlist"][0] == {
+        "target_id": scout.json()["result"]["created_target_ids"][0],
+        "discovery_source": "global_a2a_registry",
+        "source_identifier": "shortlist-alpha",
+        "agent_card_url": "https://cards.example/alpha/agent-card.json",
+        "interaction_url": "https://agents.example/alpha/a2a",
+        "manifest_reachable": True,
+        "declared_a2a_v1_jsonrpc": True,
+        "interaction_url_validated": True,
+        "authentication_requirement": "none",
+        "payment_required": False,
+        "qualification_state": "qualified",
+        "qualification_reasons": ["qualified_public_a2a_v1_no_credentials_no_payment"],
+        "contact_state": "not_ready",
+        "suppressed": False,
+        "suppression_reason": None,
+    }
+    serialized = json.dumps(body)
+    for forbidden in (
+        "prepared_message_digest",
+        "token_digest",
+        "distribution_token",
+        CONTROL_TOKEN,
+        "response_body",
+    ):
+        assert forbidden not in serialized
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorTarget)) == 2
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorContactAttempt)) == 0
+        assert db.scalar(select(func.count()).select_from(models.DistributionToken)) == 0
+        assert db.scalar(select(func.count()).select_from(models.AmbassadorOperatorAction)) == 1
+
+
 @pytest.mark.parametrize(
     "outbound,operator",
     [(None, None), ("1", None), (None, "1")],
@@ -364,6 +456,25 @@ def test_operator_contact_sends_exact_bound_message_without_secret_leak(monkeypa
     )
     assert changed_key.status_code == 409
     assert len(calls) == 1
+    rejected_replay = client.post(
+        f"/ops/ambassador/targets/{target_id}/contact",
+        headers=_headers("contact-two"),
+        json={"confirm": "SEND"},
+    )
+    assert rejected_replay.status_code == 200
+    assert rejected_replay.json()["idempotent_replay"] is True
+    assert rejected_replay.json()["result"] is None
+    assert body["result"]["contact_id"] not in json.dumps(rejected_replay.json())
+    assert len(calls) == 1
+    with SessionLocal() as db:
+        actions = list(
+            db.scalars(
+                select(models.AmbassadorOperatorAction)
+                .where(models.AmbassadorOperatorAction.operation_kind == "contact_target")
+                .order_by(models.AmbassadorOperatorAction.id)
+            )
+        )
+        assert [action.result_class for action in actions] == ["succeeded", "rejected"]
 
 
 @pytest.mark.parametrize(
