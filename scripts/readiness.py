@@ -17,6 +17,7 @@ learning_cli = (root / "scripts/learning_cycle.py").read_text(encoding="utf-8")
 machine_journey = (root / "app/machine_journey.py").read_text(encoding="utf-8")
 economic_kernel = (root / "app/services/economic_kernel.py").read_text(encoding="utf-8")
 ambassador = (root / "app/services/ambassador.py").read_text(encoding="utf-8")
+conversation_intelligence = (root / "app/services/conversation_intelligence.py").read_text(encoding="utf-8")
 
 checks = {
     "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
@@ -31,10 +32,11 @@ checks = {
     "migration_0011_economic_kernel_v1": (root / "alembic/versions/0011_economic_kernel_v1.py").exists(),
     "migration_0012_ambassador_pilot_v1": (root / "alembic/versions/0012_ambassador_pilot_v1.py").exists(),
     "migration_0013_ambassador_control_v1": (root / "alembic/versions/0013_ambassador_control_v1.py").exists(),
+    "migration_0014_conversation_intel_v1": (root / "alembic/versions/0014_conversation_intel_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "repository_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0013_ambassador_control_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0014_conversation_intel_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
@@ -74,6 +76,15 @@ checks = {
         and 'AION_AMBASSADOR_CONTROL_TOKEN' in (root / "app/services/ambassador_operator.py").read_text(encoding="utf-8")
         and '@app.post("/ops/ambassador/targets/{target_id}/contact", include_in_schema=False)' in main
         and "prepare_and_send_operator_contact" in ambassador
+    ),
+    "package_5f_conversation_intelligence": (
+        (root / "app/conversation_models.py").exists()
+        and (root / "app/services/conversation_intelligence.py").exists()
+        and "capture_ambassador_response" in ambassador
+        and "campaign_intelligence_report" in ambassador
+        and '"message_text_persisted": False' in conversation_intelligence
+        and '"raw_response_persisted": False' in conversation_intelligence
+        and '"paid_inference_used": False' in conversation_intelligence
     ),
     "package_5b_conversion_journey": (
         "verified_outcome_journey" in main
@@ -126,6 +137,7 @@ checks = {
 external = [
     "Production operations require the relevant Human Gate and fresh external-state verification.",
     "Ambassador outreach requires separate explicit authorization and verified operator controls.",
+    "Use Package 5F conversation intelligence only as coordinated pilot evidence; it is not independent adoption or a VUO.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",
