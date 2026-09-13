@@ -177,6 +177,12 @@ def _join_via_a2a(command: dict, base: str) -> dict:
 
 
 def install_official_a2a(app):
+    # main.py already has a late app-extension hook here. Install the adjacent
+    # read-only Commercial Router V1 before assembling official A2A routes so
+    # the core gateway does not need a broad rewrite.
+    from .services.commercial_router import install_commercial_router
+    install_commercial_router(app)
+
     from a2a.helpers import get_message_text, new_text_message
     from a2a.server.agent_execution import AgentExecutor, RequestContext
     from a2a.server.events import EventQueue
