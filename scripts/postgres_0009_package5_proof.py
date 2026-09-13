@@ -1,4 +1,4 @@
-"""Seed and verify the disposable PostgreSQL 0009 -> Package 5 head path."""
+"""Seed and verify the disposable PostgreSQL 0009 -> current-head path."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from app.release_identity import EXPECTED_SCHEMA_REVISION
+
 
 DATABASE_NAME = "aion_package5_0009"
 
@@ -91,7 +94,7 @@ def verify() -> None:
     schema = inspect(engine)
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= set(schema.get_table_names())
     with SessionLocal.begin() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "0013_ambassador_control_v1"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == EXPECTED_SCHEMA_REVISION
         assert db.scalar(text("SELECT COUNT(*) FROM economic_operations")) == 0
         assert db.scalar(text("SELECT COUNT(*) FROM economic_transitions")) == 0
         assert db.get(models.Agent, 52001).external_id == "package5-0009-sentinel"
