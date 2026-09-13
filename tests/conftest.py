@@ -1,7 +1,9 @@
 import os
 import sys
 from pathlib import Path
-from sqlalchemy import text
+
+import pytest
+from sqlalchemy import delete, text
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -22,8 +24,9 @@ os.environ["AION_RETURN_THRESHOLD_MINUTES"] = "1"
 os.environ["AION_JOIN_RATE_PER_MINUTE"] = "500"
 os.environ["AION_PUBLIC_URL"] = "https://aion.example"
 
-from app.db import Base, engine  # noqa: E402
+from app.db import Base, SessionLocal, engine  # noqa: E402
 from app import models, conversation_models  # noqa: E402,F401
+from app.conversation_models import ConversationEvidence, ConversationIntelligence  # noqa: E402
 
 if not POSTGRES_GATE:
     Base.metadata.create_all(bind=engine)
@@ -31,6 +34,16 @@ if not POSTGRES_GATE:
         connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL)"))
         connection.execute(text("DELETE FROM alembic_version"))
         connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0014_conversation_intel_v1')"))
+
+
+@pytest.fixture(autouse=True)
+def package5f_conversation_isolation():
+    """Prevent pre-5F parent-row fixtures from leaving semantic-evidence orphans."""
+    yield
+    with SessionLocal() as db:
+        db.execute(delete(ConversationIntelligence))
+        db.execute(delete(ConversationEvidence))
+        db.commit()
 
 
 def pytest_sessionfinish(session, exitstatus):
