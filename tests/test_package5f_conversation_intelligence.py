@@ -170,15 +170,26 @@ def test_campaign_report_aggregates_distinct_targets_without_promoting_proof():
         with SessionLocal() as db:
             report = conversation_intelligence.campaign_intelligence_report(db, campaign_id)
             assert report["aggregate"]["inferred_signal_distinct_target_counts"]["integration_request"] == 2
-            assert report["aggregate"]["recurring_signals"] == [{
-                "signal": "integration_request",
-                "distinct_targets": 2,
-                "classification": "repeated_coordinated_pilot_signal",
-            }]
+            assert report["aggregate"]["inferred_signal_distinct_target_counts"]["need"] == 2
+            assert report["aggregate"]["recurring_signals"] == [
+                {
+                    "signal": "integration_request",
+                    "distinct_targets": 2,
+                    "classification": "repeated_coordinated_pilot_signal",
+                },
+                {
+                    "signal": "need",
+                    "distinct_targets": 2,
+                    "classification": "repeated_coordinated_pilot_signal",
+                },
+            ]
             assert report["truth_boundaries"]["coordinated_feedback_is_not_independent_adoption"] is True
             assert report["truth_boundaries"]["coordinated_feedback_is_not_package5_vuo"] is True
             assert report["truth_boundaries"]["response_is_not_payment_or_revenue"] is True
             assert report["truth_boundaries"]["message_text_persisted"] is False
+            assert report["retention"]["evidence_expiry_marker_days"] == 30
+            assert report["retention"]["expired_rows_physically_deleted_automatically"] is False
+            assert report["retention"]["campaign_close_automatically_marks_evidence_purged"] is False
             assert report["read_only"] is True
     finally:
         _cleanup_campaign(campaign_id)
