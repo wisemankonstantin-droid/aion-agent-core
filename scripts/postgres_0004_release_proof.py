@@ -1,4 +1,4 @@
-"""Seed and verify the disposable Package 4 PostgreSQL 0004 -> 0009 path."""
+"""Seed and verify the disposable Package 4 PostgreSQL 0004 -> current-head path."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from app.release_identity import EXPECTED_SCHEMA_REVISION
 
 
 LEGACY_AGENT_IDS = (41001, 41002)
@@ -128,7 +130,7 @@ def verify_0009_and_rollback_compatibility() -> None:
 
     with SessionLocal.begin() as db:
         revision = db.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0013_ambassador_control_v1", revision
+        assert revision == EXPECTED_SCHEMA_REVISION, revision
         requester = db.get(models.Agent, LEGACY_AGENT_IDS[0])
         provider = db.get(models.Agent, LEGACY_AGENT_IDS[1])
         assert requester.external_id == "package4-legacy-requester"
@@ -142,7 +144,7 @@ def verify_0009_and_rollback_compatibility() -> None:
         assert db.get(models.PaymentIntent, 41601).status == "created"
         assert db.get(models.MachineEntry, 41701).source == "package4-legacy-gate"
 
-        # These statements use only the 0004-era columns.  Success after the
+        # These statements use only the 0004-era columns. Success after the
         # upgrade is the rollback-compatibility proof for the old application.
         db.execute(text("""
             INSERT INTO agents
@@ -152,7 +154,7 @@ def verify_0009_and_rollback_compatibility() -> None:
                first_useful_action_at, authenticated_calls)
             VALUES
               (41003, 'package4-rollback-compatible', 'Rollback Compatible',
-               '0004-era write after 0009', NULL, 'REST', 'legacy-import',
+               '0004-era write after current-head upgrade', NULL, 'REST', 'legacy-import',
                'package4-gate', false,
                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
                0.0, 'declared', CURRENT_TIMESTAMP, NULL, NULL, 0)
