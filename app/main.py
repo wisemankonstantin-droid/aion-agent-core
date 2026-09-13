@@ -36,7 +36,18 @@ from .services.package5_proof import (
     submit_vuo_candidate,
 )
 from .services.economic_kernel import EconomicKernelError, create_preflight, get_operation
-from .services.ambassador import AmbassadorError, issue_peer_referral
+from .services.ambassador import (
+    AmbassadorError,
+    campaign_status,
+    create_campaign,
+    issue_peer_referral,
+    prepare_and_send_operator_contact,
+    qualify_target,
+    scout_campaign,
+    set_campaign_state,
+    suppress_target,
+)
+from .services.ambassador_operator import authorize_operator, execute_operator_action
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
 
@@ -61,10 +72,11 @@ class _BoundMachineRequestBody:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        path = scope.get("path", "").rstrip("/")
         if (
             scope.get("type") != "http"
             or scope.get("method") != "POST"
-            or scope.get("path", "").rstrip("/") not in self._PATHS
+            or (path not in self._PATHS and not path.startswith("/ops/ambassador/"))
         ):
             return await self.app(scope, receive, send)
 
@@ -755,6 +767,161 @@ def create_referral_packet(
         )
     except AmbassadorError as exc:
         raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+
+
+def _raise_ambassador(exc: AmbassadorError):
+    raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+
+
+def _require_ambassador_operator(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    try:
+        authorize_operator(authorization)
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+def _operator_response(data: dict) -> JSONResponse:
+    return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+
+
+@app.post("/ops/ambassador/campaigns", include_in_schema=False)
+def operator_create_campaign(
+    payload: schemas.AmbassadorCampaignCreateRequest,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    request_evidence = payload.model_dump()
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="create_campaign",
+            idempotency_key=idempotency_key,
+            request_evidence=request_evidence,
+            callback=lambda: create_campaign(db, **request_evidence),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.post("/ops/ambassador/campaigns/{campaign_id}/scout", include_in_schema=False)
+def operator_scout_campaign(
+    campaign_id: str,
+    payload: schemas.AmbassadorCampaignScoutRequest,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="scout_campaign",
+            idempotency_key=idempotency_key,
+            request_evidence={"campaign_id": campaign_id, "query": payload.query},
+            campaign_id=campaign_id,
+            callback=lambda: scout_campaign(db, campaign_id=campaign_id, query=payload.query),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.post("/ops/ambassador/targets/{target_id}/qualify", include_in_schema=False)
+def operator_qualify_target(
+    target_id: str,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="qualify_target",
+            idempotency_key=idempotency_key,
+            request_evidence={"target_id": target_id},
+            target_id=target_id,
+            callback=lambda: qualify_target(db, target_id),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.get("/ops/ambassador/campaigns/{campaign_id}", include_in_schema=False)
+def operator_campaign_status(
+    campaign_id: str,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+):
+    try:
+        return _operator_response(campaign_status(db, campaign_id))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.post("/ops/ambassador/campaigns/{campaign_id}/state", include_in_schema=False)
+def operator_set_campaign_state(
+    campaign_id: str,
+    payload: schemas.AmbassadorCampaignStateRequest,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="set_campaign_state",
+            idempotency_key=idempotency_key,
+            request_evidence={"campaign_id": campaign_id, "state": payload.state},
+            campaign_id=campaign_id,
+            callback=lambda: set_campaign_state(db, campaign_id, payload.state),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.post("/ops/ambassador/targets/{target_id}/suppress", include_in_schema=False)
+def operator_suppress_target(
+    target_id: str,
+    payload: schemas.AmbassadorSuppressTargetRequest,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="suppress_target",
+            idempotency_key=idempotency_key,
+            request_evidence={"target_id": target_id, "reason": payload.reason},
+            target_id=target_id,
+            callback=lambda: suppress_target(db, target_id=target_id, reason=payload.reason),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
+
+
+@app.post("/ops/ambassador/targets/{target_id}/contact", include_in_schema=False)
+def operator_contact_target(
+    target_id: str,
+    payload: schemas.AmbassadorContactRequest,
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    try:
+        return _operator_response(execute_operator_action(
+            db,
+            operation_kind="contact_target",
+            idempotency_key=idempotency_key,
+            request_evidence={"target_id": target_id, "confirm": payload.confirm},
+            target_id=target_id,
+            callback=lambda: prepare_and_send_operator_contact(
+                db, target_id=target_id, idempotency_key=idempotency_key
+            ),
+        ))
+    except AmbassadorError as exc:
+        _raise_ambassador(exc)
 
 
 @app.get("/agents/me", response_model=schemas.AgentOut)

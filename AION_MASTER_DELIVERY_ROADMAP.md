@@ -234,19 +234,30 @@ behind two explicit operator gates. Server-verifiable invite tokens force
 Ambassador joins into coordinated/non-countable Package 5 status. Peer-referral
 tokens are bounded to five uses and remain review-required; AION never forwards
 them automatically. This work performs no outreach and creates no independent
-adoption, VUO, return, payment or revenue evidence. Actual pilot contact remains
-a separate Human Gate.
+adoption, VUO, return, payment or revenue evidence. It is production-live with
+both outbound flags disabled and no campaign/contact evidence. Actual pilot
+contact remains a separate Human Gate.
+
+Package 5E — Ambassador Operator Control V1 — is the bounded remote operating
+adapter for that pilot, not a generic admin API or Package 7. It exposes only
+hidden, dedicated-token routes for campaign creation/scouting, deterministic
+target qualification, campaign status/state, target suppression and one
+explicit target contact. Contact requires the control token, both existing
+outbound flags and exact `SEND` confirmation; token/message preparation stays
+server-side and the response contains only durable bounded contact evidence.
+Migration `0013_ambassador_control_v1` adds the minimal operator-action audit.
+No automatic fan-out, follow-up, payment, outreach or learning is introduced.
 
 ### Package 6 — Economic Execution + Real Settlement
 
-Package 6A is merged engineering but is not production-live. It implements trusted
+Package 6A is merged and present in the Package 5D production baseline. It implements trusted
 immutable quote inputs, exact-decimal policy decisions, the 40% hard margin
 floor, known maximum and recursive child-spend bounds, requester-scoped
 idempotency, an auditable state/transition model and authenticated REST/MCP
 preflight/status. Its real-money adapter is fixed disabled: no authorization,
 reserve, spend, settlement or paid-provider call is performed or claimed.
-Migration `0011_economic_kernel_v1` is additive and has not been applied to
-production. Parent-funded children consume bounded verified parent reserve and
+Migration `0011_economic_kernel_v1` is additive and precedes the live Package
+5D schema. Parent-funded children consume bounded verified parent reserve and
 cannot create a second customer authorization, reserve, settlement or revenue.
 Package 6B/real-rail activation has not started and
 requires separate acceptance and production Human Gates.

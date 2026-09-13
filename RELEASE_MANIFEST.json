@@ -1,19 +1,19 @@
 {
   "product": "AION Agent Core",
-  "package": "Package 5D - Active Distribution / Ambassador Pilot V1",
-  "status": "package_5d_repository_candidate_not_deployed_no_outreach",
-  "task_start_sha": "1201eb1944457bf6745b4f1a4ad7ae1c7e42be54",
+  "package": "Package 5E - Ambassador Operator Control V1",
+  "status": "package_5e_repository_candidate_not_deployed_control_disabled_no_outreach",
+  "task_start_sha": "373da335367c2ec686ccc0bb8e24c167fad0f672",
   "application_version": "0.7.1",
-  "repository_database_migration_head": "0012_ambassador_pilot_v1",
+  "repository_database_migration_head": "0013_ambassador_control_v1",
   "production_baseline": {
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": "dep-dahgei67bikc73fq0g3g",
-    "deploy_id_status": "hq_verified_package_5d_task_baseline",
-    "deployed_git_sha": "a2a53ff61ede7597651b2f1bac1ca3db809855f9",
+    "deploy_id": "dep-daiqdk0ae00c73fi8ml0",
+    "deploy_id_status": "hq_verified_package_5e_task_baseline",
+    "deployed_git_sha": "373da335367c2ec686ccc0bb8e24c167fad0f672",
     "persistence": "prepared Neon PostgreSQL Free",
-    "actual_live_database_revision": "0010_package5_proof_v1",
+    "actual_live_database_revision": "0012_ambassador_pilot_v1",
     "autodeploy": "off",
     "infrastructure_spend_usd": 0
   },
@@ -31,11 +31,11 @@
     "legacy_payment_intent_is_funding_evidence": false
   },
   "required_corrective_gates": [
-    "Package 5D exact prepared-message/token binding, canonical-host referral, qualification, attribution, anti-spam, idempotency and full regression suites",
-    "Alembic fresh, 0011-to-0012, repeated-upgrade, check and PostgreSQL 18 concurrency gates",
+    "Package 5E dedicated-token authentication, hidden narrow routes, triple send gate, no-token response and audit tests",
+    "Alembic fresh, 0012-to-0013, repeated-upgrade, check and PostgreSQL 18 concurrency gates",
     "AION CI on the exact final reviewed SHA",
     "source integrity, readiness, secret, compile, dependency and diff checks",
-    "HQ independent review of the final corrective SHA"
+    "HQ independent review of the final candidate SHA"
   ],
   "package_5_semantics_changed_by_candidate": false,
   "package_5d_distribution_state": {
@@ -48,6 +48,17 @@
     "real_outreach_performed": false,
     "spend_usd": 0
   },
+  "package_5e_operator_control_state": {
+    "control_token_absent_by_default": true,
+    "routes_hidden_from_public_openapi": true,
+    "contact_requires_control_token_and_both_outbound_gates": true,
+    "contact_requires_explicit_send_confirmation": true,
+    "targets_per_contact_request": 1,
+    "raw_distribution_token_returned_by_remote_api": false,
+    "raw_prepared_message_returned_by_remote_api": false,
+    "legacy_outreach_runners_supported": false,
+    "real_outreach_performed": false
+  },
   "production_action_authorized_by_candidate": false,
-  "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. Production remains Package 5C; Package 6A is merged engineering but not deployed, and Package 5D is repository-only with no outreach. This manifest intentionally does not claim its own future/current commit SHA."
+  "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. Package 5D is production-live with both outbound gates disabled and no campaigns or contacts. Package 5E remains repository-only and does not authorize outreach. This manifest intentionally does not claim its own future/current commit SHA."
 }

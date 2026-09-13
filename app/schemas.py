@@ -79,6 +79,34 @@ class ReferralPacketRequest(BaseModel):
     acknowledge_manual_forwarding: Literal[True]
     model_config = {"extra": "forbid"}
 
+
+class AmbassadorCampaignCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160, pattern=r"^[^\x00-\x1f\x7f]+$")
+    purpose: str = Field(min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$")
+    maximum_targets: int = Field(ge=1, le=30)
+    maximum_contacts: int = Field(ge=0, le=30)
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class AmbassadorCampaignScoutRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=128, pattern=r"^[^\x00-\x1f\x7f]+$")
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class AmbassadorCampaignStateRequest(BaseModel):
+    state: Literal["draft", "ready", "paused", "closed"]
+    model_config = {"extra": "forbid"}
+
+
+class AmbassadorSuppressTargetRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=160, pattern=r"^[^\x00-\x1f\x7f]+$")
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class AmbassadorContactRequest(BaseModel):
+    confirm: Literal["SEND"]
+    model_config = {"extra": "forbid"}
+
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=160)
     description: Optional[str] = Field(default=None, max_length=5000)

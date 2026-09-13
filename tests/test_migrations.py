@@ -141,7 +141,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
             if index[2] == 1
         }
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {
         "agents",
         "machine_entries",
@@ -203,7 +203,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {
         "live_utility_sources",
         "live_utility_observations",
@@ -264,7 +264,7 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='migration-agent'"
         ).fetchone()
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
@@ -315,7 +315,7 @@ def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
         ).fetchone()
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
     assert ("requester_agent_id", "idempotency_key") in unique_columns
     assert ("action_id",) in unique_columns
@@ -352,7 +352,7 @@ def test_existing_0008_database_upgrades_to_continuous_learning_v1(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'"
         ).fetchone()
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {
         "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
         "learning_opportunity_candidates",
@@ -401,7 +401,7 @@ def test_existing_0009_database_upgrades_additively_without_fake_package5_proof(
             for index in vuo_indexes if index[2] == 1
         }
 
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= tables
     assert assessments == vuos == 0
     assert sentinel == ("package-5-sentinel",)
@@ -447,7 +447,7 @@ def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_p
         operation_foreign_keys = {
             (row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('economic_operations')")
         }
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert {"economic_operations", "economic_transitions"} <= tables
     assert legacy == ("untrusted-string", "created")
     assert operations == transitions == 0
@@ -495,9 +495,53 @@ def test_existing_0011_upgrades_additively_to_ambassador_pilot(tmp_path):
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in target_indexes if index[2] == 1
         }
-    assert revision == "0012_ambassador_pilot_v1"
+    assert revision == "0013_ambassador_control_v1"
     assert set(counts) <= tables
     assert all(value == 0 for value in counts.values())
     assert sentinel == ("package-5d-sentinel",)
     assert "prepared_message_digest" in target_columns
     assert ("target_fingerprint",) in target_unique_columns
+
+
+def test_existing_0012_upgrades_additively_to_ambassador_operator_control(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-5e-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+    _alembic(root, url, "upgrade", "0012_ambassador_pilot_v1")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO ambassador_campaigns "
+            "(campaign_id, name, purpose, state, maximum_targets, maximum_contacts, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "package-5e-sentinel",
+                "Package 5E Sentinel",
+                "preserve Package 5D data",
+                "draft",
+                1,
+                0,
+                "2026-09-13 00:00:00",
+                "2026-09-13 00:00:00",
+            ),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+    with sqlite3.connect(database) as connection:
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        sentinel = connection.execute(
+            "SELECT campaign_id FROM ambassador_campaigns WHERE campaign_id='package-5e-sentinel'"
+        ).fetchone()
+        audits = connection.execute("SELECT COUNT(*) FROM ambassador_operator_actions").fetchone()[0]
+        indexes = connection.execute("PRAGMA index_list('ambassador_operator_actions')").fetchall()
+        unique_columns = {
+            tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
+            for index in indexes if index[2] == 1
+        }
+    assert revision == "0013_ambassador_control_v1"
+    assert "ambassador_operator_actions" in tables
+    assert sentinel == ("package-5e-sentinel",)
+    assert audits == 0
+    assert ("action_id",) in unique_columns
+    assert ("operation_kind", "idempotency_key") in unique_columns

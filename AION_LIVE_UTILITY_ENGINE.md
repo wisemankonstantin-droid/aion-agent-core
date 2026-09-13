@@ -34,6 +34,15 @@ development follows the reinforcing loop in `GROWTH_AND_REVENUE.md`.
 Registration alone is not utility. Traffic alone is not adoption. Synthetic or
 AION-operated agents are not evidence of independent external adoption.
 
+Package 5D's bounded Ambassador pilot is production-live with outbound disabled
+and no campaign/contact evidence. Package 5E — Ambassador Operator Control V1 —
+is a repository-only control adapter: dedicated operator authentication, hidden
+narrow campaign/target routes, a three-gate one-target send, server-side token
+and message preparation, and digest-only operator audit evidence. It does not
+change Package 5 truth, create outreach, expose a generic admin API, or begin
+acquisition scaling. Legacy Render outreach/static runners are not a valid
+Package 5D/5E evidence path.
+
 ## AION Data & Learning Plane
 
 The **AION Data & Learning Plane** is the planned persistent intelligence and

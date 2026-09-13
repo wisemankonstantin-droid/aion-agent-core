@@ -6,7 +6,7 @@ import os
 import re
 
 
-EXPECTED_SCHEMA_REVISION = "0012_ambassador_pilot_v1"
+EXPECTED_SCHEMA_REVISION = "0013_ambassador_control_v1"
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
 

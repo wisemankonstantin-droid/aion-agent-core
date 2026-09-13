@@ -49,7 +49,7 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   environment values are never returned.
 - `/health` performs no database, migration, learning or external-network work.
   `/readiness` reads database connectivity and `alembic_version`, verifies the
-  expected `0010_package5_proof_v1` schema, mounted A2A runtime and fixed Package 3B policy, and
+  expected repository schema, mounted A2A runtime and fixed Package 3B policy, and
   never migrates, refreshes sources, runs learning or exposes credentials.
 - The Package 4 Live Gate is manually dispatched with a public URL and exact
   expected SHA. Its protected action/evidence checks are unauthenticated
@@ -74,6 +74,17 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
 - Package 5B adds shared public guidance only. It does not accept credentials in
   A2A content, expose an A2A protected-action/VUO-write adapter, weaken REST/MCP
   Bearer authentication or make public reads mutate Package 5 evidence.
+- Package 5D contact remains target-bound, single-attempt and globally
+  deduplicated. Package 5E remote control uses a separate absent-by-default
+  high-entropy token, a bounded Authorization header and constant-time digest
+  comparison; agent keys cannot authorize it. Its narrow routes are hidden
+  from OpenAPI and accept no caller URL, message, token or arbitrary payload.
+  Contact requires both existing outbound flags plus exact `SEND`
+  confirmation. The raw invitation token/message exists only server-side and
+  is never returned or persisted in the operator audit. Ambiguous dispatch is
+  never retried. Production remains on schema `0012_ambassador_pilot_v1` with
+  both outbound flags disabled; repository candidate head is
+  `0013_ambassador_control_v1`.
 
 ## Before higher-scale production
 - Package 5C REST/MCP self-status validates Bearer credentials without lifecycle

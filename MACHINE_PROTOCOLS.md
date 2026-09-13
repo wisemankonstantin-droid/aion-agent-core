@@ -6,14 +6,15 @@
 also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
-`GET /readiness` is read-only and non-mutating. The merged Package 6A repository implementation checks
-database connectivity, the exact repository Alembic head `0012_ambassador_pilot_v1`, A2A runtime
+`GET /readiness` is read-only and non-mutating. The repository implementation checks
+database connectivity, the exact repository Alembic head `0013_ambassador_control_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
 learning cycle and returns HTTP 503 when any required check fails.
-Production remains on Package 5C and schema `0010_package5_proof_v1`; the
-repository head has not been deployed or applied there.
+Production remains on the accepted Package 5D SHA and schema
+`0012_ambassador_pilot_v1`; the Package 5E repository head has not been
+deployed or applied there.
 
 ## REST
 Complete interface for identity, capabilities, marketplace writes, matching, interactions, telemetry and payment intents.
@@ -69,17 +70,26 @@ It is covered by the 64 KiB stream limiter, never forwards itself, and exposes
 no agent credential. Packet URLs derive from the configured canonical AION
 HTTPS origin; an inbound Host header cannot rewrite them. Tokenless joins that
 self-assert reserved Ambassador/peer trusted-attribution values fail closed.
-Campaign scout/qualification/contact/status operations
-are operator CLI only; there is no public Ambassador send endpoint. Dry-run is
-the default, while real contact requires both
+Package 5D retains its local operator CLI. Package 5E adds hidden, narrowly
+scoped `/ops/ambassador/...` routes for campaign create/scout/status/state,
+specific-target qualification/suppression and one explicit specific-target
+contact. These are not public agent or MCP tools and are absent from OpenAPI.
+They require a dedicated absent-by-default control token; an agent key does not
+grant access. Creating, scouting and qualifying never contact a target.
+
+Remote contact additionally requires both
 `AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1`, one
-transport attempt, a ready campaign and a non-suppressed globally deduplicated
-target. A real send must exactly match the durable prepared-message digest and
+exact `confirm="SEND"`, one transport attempt, a ready campaign and a
+non-suppressed globally deduplicated target. The server issues the token and
+constructs the exact message in memory, then invokes the existing Package 5D
+sender. Neither the raw token nor raw message is returned. A real send must
+exactly match the durable prepared-message digest and
 the unexpired, unconsumed Ambassador token bound to that target and campaign.
 An exact idempotent replay returns stored attempt evidence without another POST;
 changed or ambiguous requests are never resent. Valid explicit HTTPS ports are
 preserved in endpoint identity and transport. Neither gate is enabled by
-repository configuration.
+repository configuration. The 64 KiB stream limiter covers every operator POST.
+Legacy Render outreach/static runners are not a supported Package 5D/5E path.
 
 A child economic operation is a delegated spend slice under its parent's
 verified reserve. It cannot independently authorize payment, establish a

@@ -660,6 +660,126 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     }
 
 
+def prepare_and_send_operator_contact(
+    db: Session,
+    *,
+    target_id: str,
+    idempotency_key: str,
+) -> dict:
+    """Prepare and send one target-bound invitation without exposing its token.
+
+    All environment gates and durable control state are checked before the
+    single-use token is issued. The existing Package 5D sender remains the sole
+    outbound implementation and retains its one-attempt/ambiguous-result rules.
+    """
+
+    if (
+        os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"
+        or os.getenv("AION_AMBASSADOR_OPERATOR") != "1"
+    ):
+        raise AmbassadorError(
+            403,
+            "outbound_disabled",
+            "Both Ambassador outbound and operator gates are required",
+        )
+    key = _key(idempotency_key)
+    with _guard(db):
+        target = db.scalar(
+            _for_update(
+                select(models.AmbassadorTarget).where(
+                    models.AmbassadorTarget.target_id == target_id
+                ),
+                db,
+            )
+        )
+        if target is None:
+            raise AmbassadorError(404, "target_not_found", "Target not found")
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.id == target.campaign_id
+                ),
+                db,
+            )
+        )
+        if campaign.state != "ready":
+            raise AmbassadorError(409, "campaign_not_ready", "Campaign must be ready for contact")
+        if (
+            target.suppressed
+            or target.qualification_state != "qualified"
+            or target.contact_state != "not_ready"
+        ):
+            raise AmbassadorError(
+                409,
+                "target_not_contact_ready",
+                "Target must be qualified, unsuppressed, unprepared and uncontacted",
+            )
+        existing_attempt = db.scalar(
+            select(models.AmbassadorContactAttempt).where(
+                models.AmbassadorContactAttempt.target_id == target.id
+            )
+        )
+        if existing_attempt is not None:
+            raise AmbassadorError(409, "target_already_contacted", "Target already has its single contact attempt")
+        existing_token = db.scalar(
+            select(models.DistributionToken).where(
+                models.DistributionToken.target_id == target.id,
+                models.DistributionToken.kind == "ambassador_invite",
+            )
+        )
+        if existing_token is not None:
+            raise AmbassadorError(
+                409,
+                "invite_already_issued",
+                "Invite already issued; its raw token is not recoverable for remote control",
+            )
+        used = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorContactAttempt)
+            .join(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        if used >= campaign.maximum_contacts:
+            raise AmbassadorError(
+                409,
+                "campaign_contact_limit_reached",
+                "Campaign contact limit reached",
+            )
+        latest_contact = db.scalar(
+            select(models.AmbassadorContactAttempt.created_at)
+            .join(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+            .order_by(models.AmbassadorContactAttempt.created_at.desc())
+            .limit(1)
+        )
+        if latest_contact is not None and _aware(latest_contact) > _now() - timedelta(
+            seconds=MIN_CONTACT_INTERVAL_SECONDS
+        ):
+            raise AmbassadorError(
+                429,
+                "campaign_contact_rate_limited",
+                "Campaign contact interval has not elapsed",
+            )
+
+        prepared = prepare_target(
+            db,
+            target_id=target_id,
+            public_base_url=canonical_aion_public_base_url(),
+        )
+        result = send_contact(
+            db,
+            target_id=target_id,
+            message=prepared["message"],
+            idempotency_key=key,
+            send=True,
+        )
+        return {
+            **result,
+            "raw_distribution_token_returned": False,
+            "raw_prepared_message_returned": False,
+        }
+
+
 def _target_view(target: models.AmbassadorTarget) -> dict:
     return {
         "target_id": target.target_id, "discovery_source": target.discovery_source,
@@ -668,6 +788,17 @@ def _target_view(target: models.AmbassadorTarget) -> dict:
         "contact_state": target.contact_state, "suppressed": target.suppressed,
         "suppression_reason": target.suppression_reason,
     }
+
+
+def target_status(db: Session, target_id: str) -> dict:
+    target = db.scalar(
+        select(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.target_id == target_id
+        )
+    )
+    if target is None:
+        raise AmbassadorError(404, "target_not_found", "Target not found")
+    return _target_view(target)
 
 
 def campaign_status(db: Session, campaign_id: str) -> dict:

@@ -871,6 +871,42 @@ class AmbassadorContactAttempt(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AmbassadorOperatorAction(Base):
+    __tablename__ = "ambassador_operator_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "operation_kind IN ('create_campaign', 'scout_campaign', 'qualify_target', "
+            "'set_campaign_state', 'suppress_target', 'contact_target')",
+            name="ck_ambassador_operator_action_kind",
+        ),
+        CheckConstraint(
+            "result_class IN ('claimed', 'succeeded', 'rejected', 'ambiguous', 'failed')",
+            name="ck_ambassador_operator_action_result",
+        ),
+        UniqueConstraint("action_id", name="uq_ambassador_operator_action_id"),
+        UniqueConstraint(
+            "operation_kind", "idempotency_key",
+            name="uq_ambassador_operator_action_idempotency",
+        ),
+        Index("ix_ambassador_operator_actions_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    operation_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ambassador_campaigns.id", ondelete="RESTRICT"), nullable=True
+    )
+    target_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ambassador_targets.id", ondelete="RESTRICT"), nullable=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    result_class: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class DistributionToken(Base):
     __tablename__ = "distribution_tokens"
     __table_args__ = (

@@ -6,8 +6,8 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- HQ-verified Package 5C production SHA: `a2a53ff61ede7597651b2f1bac1ca3db809855f9`
-- HQ-verified deploy: `dep-dahgei67bikc73fq0g3g`; verify live state again before
+- HQ-verified Package 5D production SHA: `373da335367c2ec686ccc0bb8e24c167fad0f672`
+- HQ-verified deploy: `dep-daiqdk0ae00c73fi8ml0`; verify live state again before
   any separately authorized production operation.
 - Status: live
 - Branch: `main`
@@ -19,12 +19,12 @@ The controlled direct-source cutover is complete and production is live.
   persistence checkpoint was the prepared Neon PostgreSQL Free database at schema
   `0009_continuous_learning_v1`; its manual recovery snapshot was restored and
   integrity-checked during Package 4 closeout.
-- Package 5 engineering is merged and live at schema
-  `0010_package5_proof_v1`; its commercial proof counters remain legitimately
-  zero. Package 5B and Package 5C are merged and live. Package 6A is merged,
-  adds migration `0011_economic_kernel_v1`, and has not been deployed or
-  applied to production. Its parent-funding corrective is merged. Package 5D
-  is a repository-only candidate adding `0012_ambassador_pilot_v1`; it has not
+- Package 5 engineering, Package 5B/5C, Package 6A and Package 5D are merged
+  and live at SHA `373da335367c2ec686ccc0bb8e24c167fad0f672`, deploy
+  `dep-daiqdk0ae00c73fi8ml0`, schema `0012_ambassador_pilot_v1`. Package 5
+  commercial proof counters remain legitimately zero. Ambassador outbound and
+  operator flags remain `0`; no campaigns or contacts exist. Package 5E is a
+  repository-only candidate adding `0013_ambassador_control_v1`; it has not
   been deployed, migrated or used for outreach and does not authorize any of
   those actions.
 

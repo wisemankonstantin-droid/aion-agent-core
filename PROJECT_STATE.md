@@ -28,19 +28,22 @@
 - **Package 5D repository starting checkpoint:**
   `1201eb1944457bf6745b4f1a4ad7ae1c7e42be54` (Package 6A parent-funding
   corrective merged to main; not deployed).
+- **Package 5E repository starting checkpoint:**
+  `373da335367c2ec686ccc0bb8e24c167fad0f672` (Package 5D accepted, merged,
+  deployed and live verified; Ambassador outbound remains disabled).
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `a2a53ff61ede7597651b2f1bac1ca3db809855f9` (HQ-verified Package 5C baseline).
+  `373da335367c2ec686ccc0bb8e24c167fad0f672` (HQ-verified Package 5D baseline).
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **HQ-verified Package 5C production deploy:** `dep-dahgei67bikc73fq0g3g`.
-  This Package 5D repository task does not query or mutate production; verify
+- **HQ-verified Package 5D production deploy:** `dep-daiqdk0ae00c73fi8ml0`.
+  This Package 5E repository task does not query or mutate production; verify
   live state again before any separately authorized production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
@@ -60,20 +63,19 @@
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0010_package5_proof_v1` at the Package 5B
-  task checkpoint. Package 4's separately verified historical revision was
-  `0009_continuous_learning_v1`.
+- **Production database revision:** `0012_ambassador_pilot_v1`. Package 4's
+  separately verified historical revision was `0009_continuous_learning_v1`.
 - **Production recovery:** the Package 4 Neon manual recovery snapshot was
   restored on a separate rehearsal branch and integrity-checked. Canonical
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B and Package 5C are merged and production-live. Package 6A,
-  including its parent-funding corrective, is merged engineering but is not
-  deployed and migration `0011_economic_kernel_v1` has not been applied to
-  production. Package 5D is repository-only and adds candidate head
-  `0012_ambassador_pilot_v1`; it has performed no outreach. AutoDeploy remains
-  OFF.
+  Package 5B, Package 5C, Package 6A and Package 5D are merged and production-
+  live through the verified Package 5D baseline. Package 5D schema
+  `0012_ambassador_pilot_v1` is live, but
+  `AION_AMBASSADOR_OUTBOUND_ENABLED=0` and `AION_AMBASSADOR_OPERATOR=0`; no
+  Ambassador campaign or contact exists. Package 5E is repository-only and
+  adds candidate head `0013_ambassador_control_v1`. AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -299,7 +301,7 @@ These are isolated engineering fixtures, never commercial proof. No schema,
 classification policy, persistence/concurrency semantics or economic gate was
 changed. Readiness does not establish a review SLA or guarantee later qualification.
 
-## Package 5D active distribution / Ambassador pilot — repository candidate
+## Package 5D active distribution / Ambassador pilot — production live
 
 Package 5D is the bounded active-distribution pilot foundation, not Package 7
 acquisition scale. It keeps two evidence lanes separate: unsolicited organic
@@ -307,7 +309,7 @@ inbound remains the Package 5 control lane, while AION Ambassador invitations
 and peer referrals retain trusted coordinated/referral provenance and do not
 automatically become independent Package 5 proof.
 
-The repository candidate adds additive migration `0012_ambassador_pilot_v1`,
+The accepted production implementation adds additive migration `0012_ambassador_pilot_v1`,
 durable campaigns/targets/contact attempts, server-verifiable hashed
 distribution tokens, join attribution, deterministic qualification, a bounded
 utility-first message, a manually requested peer-referral packet and a
@@ -315,7 +317,7 @@ read-only operator campaign funnel. Campaigns are capped at 30 targets, only
 one initial contact is permitted per globally deduplicated target, no automatic
 follow-up exists, and actual sending requires both
 `AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1` through
-the operator CLI. Both gates remain disabled; no send mode, external outreach,
+the operator CLI. Both production gates remain `0`; no campaign, contact, external outreach,
 production classification, learning cycle, payment or spend occurred.
 
 The HQ corrective binds each send cryptographically to the exact prepared
@@ -324,19 +326,58 @@ read existing bounded attempt evidence without another POST, preserves safe
 explicit HTTPS ports, and derives campaign returns from the canonical Package
 5 same-identity rule. Tokenless joins cannot claim reserved trusted attribution,
 and referral packets use only the configured canonical AION public origin rather
-than the request Host header. Package 5D remains a review candidate and is not
-accepted, merged, deployed or active for outreach.
+than the request Host header. Package 5D is accepted, merged and deployed at
+`373da335367c2ec686ccc0bb8e24c167fad0f672`, deploy
+`dep-daiqdk0ae00c73fi8ml0`, but is not active for outreach.
 
 The implementation and fixtures do not claim adoption, VUO, return or
-commercial proof. Production remains on the Package 5C application/schema
-checkpoint above. The Package 5D candidate is local and awaits HQ review and
-exact-SHA publication authorization; this document intentionally does not
-embed that future SHA.
+commercial proof. Production is at schema `0012_ambassador_pilot_v1`; outbound
+and operator flags remain disabled and AutoDeploy remains OFF.
 
-## Package 6A Economic Execution Kernel V1 — merged, not deployed
+## Package 5E Ambassador Operator Control V1 — repository candidate
 
-Package 6A and its bounded parent-funding corrective are merged to main at the
-Package 5D starting checkpoint above, but remain absent from production.
+Package 5E adds the smallest remote control surface needed to operate the
+existing Package 5D pilot through the live web application when separately
+authorized. Hidden `/ops/ambassador/...` routes use a dedicated, absent-by-
+default `AION_AMBASSADOR_CONTROL_TOKEN`; agent keys never grant operator
+access. Mutations are bounded and idempotent, and additive migration
+`0013_ambassador_control_v1` stores only action kind, campaign/target links,
+idempotency key, request digest, result class and server timestamps.
+
+Creating, scouting and qualifying never contact a target. A contact request
+names exactly one persisted target and requires the dedicated control token,
+both existing outbound flags set to `1`, and exact `confirm="SEND"`. The server
+prepares and binds the Package 5D target token/message internally, invokes the
+existing one-attempt sender and returns only bounded contact evidence—never the
+raw distribution token or prepared message. A claimed or ambiguous operation
+is never automatically retried.
+
+Package 5E changes no Package 5 participation, VUO or return semantics. Direct
+Ambassador traffic remains coordinated and permanently non-countable; peer
+referrals remain review-required. Legacy Render outreach/static runners are
+not the Package 5D/5E execution path because they bypass required provenance,
+dedupe, suppression and contact evidence. Package 5E is repository-only,
+performs no outreach, and intentionally does not embed its future candidate
+SHA.
+
+Package 5E local candidate validation at this checkpoint:
+
+- focused Package 5E, migration and source-integrity matrix: 45 passed, with
+  one disposable-PostgreSQL-only concurrency test skipped locally;
+- affected Package 3/3B/5/5D/6A, REST/MCP, request-boundary and security
+  matrix: 337 passed, with the same PostgreSQL-only test skipped locally;
+- full local suite: 475 passed, 22 disposable-PostgreSQL-only tests skipped and
+  103 upstream deprecation warnings;
+- disposable SQLite fresh-to-head and direct `0012 -> 0013` upgrades, repeated
+  upgrade, exact head and Alembic schema check passed;
+- readiness, secret scan, compileall, dependency integrity, workflow/manifest
+  parsing and diff checks passed. PostgreSQL behavior remains pending the
+  exact-SHA PostgreSQL 18 gate after a separately authorized push.
+
+## Package 6A Economic Execution Kernel V1 — production live, real money disabled
+
+Package 6A and its bounded parent-funding corrective are merged and present in
+the verified Package 5D production baseline.
 Package 6A adds the deterministic economic policy/state-machine kernel and
 additive migration `0011_economic_kernel_v1`. The repository implementation
 provides authenticated requester-scoped REST/MCP
@@ -352,7 +393,8 @@ There is no A2A credential-bearing economic mutation surface. No real payment,
 reserve, provider spend, settlement, revenue or paid VUO is claimed. A child
 operation is a delegated maximum-spend slice of verified parent reserve, never
 a second customer authorization, reserve, settlement or revenue event. Package
-6A is not deployed and has not changed the production schema.
+6A is deployed as repository behavior and schema ancestry, while real money
+remains disabled and no payment, provider spend or settlement has occurred.
 
 Package 6A final local validation at this checkpoint:
 
