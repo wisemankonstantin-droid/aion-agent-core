@@ -62,6 +62,13 @@ separately justified by trusted review. Campaign conversion, VUO-candidate and
 return evidence must remain labelled as attributed sales-funnel evidence, not
 organic or independent adoption.
 
+Package 5E is accepted, merged, deployed and live as the bounded operator
+control layer for this pilot. Deployment does not prove outreach or any
+independent agent, VUO, return, payer, settlement or revenue. The application
+policy remains gated and fail-closed; current production values for its
+outbound/operator/control-token environment variables are not inferred from
+deployment state.
+
 ## Revenue rule
 
 Revenue should attach to real agent value rather than artificial friction.
@@ -108,7 +115,8 @@ remain applicable where they actually exist.
 ## Economic execution contract
 
 The permanent economic invariants are in `AION_DIRECTIVE.md`. Package 6A
-implements a repository-only deterministic kernel and disabled adapter seam;
+exists in production ancestry as a deterministic kernel with a disabled
+adapter seam;
 the future real cost-bearing execution gate remains:
 
 `request -> determine required provider -> check cache -> estimate maximum cost -> check license/commercial rights -> select product tier -> calculate customer price -> check margin -> check agent budget -> authorize payment -> reserve maximum spend -> execute -> meter actual cost -> verify outcome -> settle -> record revenue/cost/CM per VUO`

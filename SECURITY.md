@@ -82,9 +82,11 @@ AION v0.6 is an MVP coordination service. Agent API keys are returned once and o
   Contact requires both existing outbound flags plus exact `SEND`
   confirmation. The raw invitation token/message exists only server-side and
   is never returned or persisted in the operator audit. Ambiguous dispatch is
-  never retried. Production remains on schema `0012_ambassador_pilot_v1` with
-  both outbound flags disabled; repository candidate head is
-  `0013_ambassador_control_v1`.
+  never retried. Package 5E is production-live on schema
+  `0013_ambassador_control_v1`; the application remains fail-closed by default.
+  Current production values for the two outbound gates and dedicated control
+  token are not asserted without direct evidence. Deployment does not prove
+  outreach, adoption, VUO, return, payment, settlement or revenue.
 
 ## Before higher-scale production
 - Package 5C REST/MCP self-status validates Bearer credentials without lifecycle

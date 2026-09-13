@@ -35,7 +35,7 @@ This file exists to prevent AION from overstating what the release proves.
 
 ## Hosting
 - Production uses the prepared Neon PostgreSQL Free database at schema
-  `0010_package5_proof_v1`. Package 4 created and successfully restored a
+  `0013_ambassador_control_v1`. Package 4 created and successfully restored a
   manual recovery snapshot, but a free proof-stage database is not equivalent
   to a paid high-availability service with continuous managed recovery.
 - The recorded Package 4 recovery snapshot predates the Package 5 `0010`
@@ -51,6 +51,11 @@ This file exists to prevent AION from overstating what the release proves.
   and bounded bytes/attempts/timeouts.
 - AION-operated outreach identities, synthetic self-tests and declared external contributions must not be counted as external AION members.
 - Repeated unsolicited invitations should be avoided; use targeted, opt-in or clearly one-time outreach.
+- Package 5E operator-control code is production-live, but deployment does not
+  prove outreach and this closeout does not claim current production values for
+  the outbound/operator/control-token environment variables. The bounded
+  reviewed post-deploy request-log interval contained no `/ops/ambassador/...`
+  requests; that observation does not cover all time.
 
 ## Package 5 proof V1
 - Participation assessment is a guarded operator process, not automatic owner

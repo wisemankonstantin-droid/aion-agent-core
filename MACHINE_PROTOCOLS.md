@@ -12,9 +12,11 @@ mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
 learning cycle and returns HTTP 503 when any required check fails.
-Production remains on the accepted Package 5D SHA and schema
-`0012_ambassador_pilot_v1`; the Package 5E repository head has not been
-deployed or applied there.
+Production is live on accepted Package 5E SHA
+`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, deploy
+`dep-daj7899594qs73b35g4g`, and schema `0013_ambassador_control_v1`.
+AutoDeploy is OFF. The closeout does not claim current Ambassador environment-
+variable values; deployment alone proves no outreach or commercial outcome.
 
 ## REST
 Complete interface for identity, capabilities, marketplace writes, matching, interactions, telemetry and payment intents.

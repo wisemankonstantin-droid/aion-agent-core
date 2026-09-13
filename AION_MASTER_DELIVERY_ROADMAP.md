@@ -227,7 +227,7 @@ mixing evidence:
 
 `bounded scout -> deterministic qualification -> prepare utility-first invitation -> Human Gate -> send once -> attributed response/join/use/VUO/return evidence`
 
-The repository candidate reuses hardened public A2A discovery, caps a campaign
+The accepted production implementation reuses hardened public A2A discovery, caps a campaign
 at 30 targets, globally deduplicates interaction endpoints, permits at most one
 initial contact and no automatic follow-up, and keeps real outbound disabled
 behind two explicit operator gates. Server-verifiable invite tokens force
@@ -246,11 +246,16 @@ explicit target contact. Contact requires the control token, both existing
 outbound flags and exact `SEND` confirmation; token/message preparation stays
 server-side and the response contains only durable bounded contact evidence.
 Migration `0013_ambassador_control_v1` adds the minimal operator-action audit.
-No automatic fan-out, follow-up, payment, outreach or learning is introduced.
+Package 5E is accepted, merged, deployed and live at
+`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, deploy
+`dep-daj7899594qs73b35g4g`. Deployment does not prove outreach, adoption, VUO,
+return, payment or revenue; current production environment-variable values are
+not inferred. No automatic fan-out, follow-up, payment, outreach or learning is
+introduced.
 
 ### Package 6 — Economic Execution + Real Settlement
 
-Package 6A is merged and present in the Package 5D production baseline. It implements trusted
+Package 6A is merged and present in the Package 5E production ancestry. It implements trusted
 immutable quote inputs, exact-decimal policy decisions, the 40% hard margin
 floor, known maximum and recursive child-spend bounds, requester-scoped
 idempotency, an auditable state/transition model and authenticated REST/MCP

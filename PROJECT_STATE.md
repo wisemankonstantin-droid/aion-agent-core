@@ -1,4 +1,4 @@
-# Project checkpoint — 2026-09-12
+# Project checkpoint — 2026-09-13
 
 ## Current production state
 
@@ -29,22 +29,21 @@
   `1201eb1944457bf6745b4f1a4ad7ae1c7e42be54` (Package 6A parent-funding
   corrective merged to main; not deployed).
 - **Package 5E repository starting checkpoint:**
-  `373da335367c2ec686ccc0bb8e24c167fad0f672` (Package 5D accepted, merged,
-  deployed and live verified; Ambassador outbound remains disabled).
+  `373da335367c2ec686ccc0bb8e24c167fad0f672` (preserved historical task start).
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `373da335367c2ec686ccc0bb8e24c167fad0f672` (HQ-verified Package 5D baseline).
+  `c6a976d8af7afa8adc7456a0022fb2b657f5af2e` (HQ-verified Package 5E application).
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **HQ-verified Package 5D production deploy:** `dep-daiqdk0ae00c73fi8ml0`.
-  This Package 5E repository task does not query or mutate production; verify
-  live state again before any separately authorized production operation.
+- **HQ-verified Package 5E production deploy:** `dep-daj7899594qs73b35g4g`
+  (`live`). Verify live state again before any separately authorized production
+  operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
   ZIP plus environment-backed runtime-patch architecture is historical and is
@@ -56,26 +55,30 @@
   `python -m pip install --require-hashes -r requirements.txt`.
 - **Start Command:**
   `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Database:** the prepared Neon PostgreSQL Free production database. Package
+- **Database:** the prepared Neon PostgreSQL 18 production database. Package
   4 copied and verified the legacy dataset before cutover and preserved the
   zero-infrastructure-spend boundary.
 - **Runtime status:** health reports version `0.7.1`; readiness reports the
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0012_ambassador_pilot_v1`. Package 4's
+- **Production database revision:** `0013_ambassador_control_v1`. Render startup
+  showed the additive `0012_ambassador_pilot_v1 ->
+  0013_ambassador_control_v1` migration and successful application startup.
+  Package 4's
   separately verified historical revision was `0009_continuous_learning_v1`.
 - **Production recovery:** the Package 4 Neon manual recovery snapshot was
   restored on a separate rehearsal branch and integrity-checked. Canonical
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B, Package 5C, Package 6A and Package 5D are merged and production-
-  live through the verified Package 5D baseline. Package 5D schema
-  `0012_ambassador_pilot_v1` is live, but
-  `AION_AMBASSADOR_OUTBOUND_ENABLED=0` and `AION_AMBASSADOR_OPERATOR=0`; no
-  Ambassador campaign or contact exists. Package 5E is repository-only and
-  adds candidate head `0013_ambassador_control_v1`. AutoDeploy remains OFF.
+  Package 5B, Package 5C, Package 6A, Package 5D and Package 5E are merged and
+  production-live through the verified Package 5E application above. Package
+  6A is present only as disabled economic infrastructure; real-money behavior
+  remains disabled. Deployment does not prove outreach, independent adoption,
+  VUO, return, payment, settlement or revenue. This closeout does not claim
+  current values for Ambassador environment variables or expose secrets.
+  AutoDeploy remains OFF.
 
 ## Current product and architecture phase
 
@@ -317,8 +320,10 @@ read-only operator campaign funnel. Campaigns are capped at 30 targets, only
 one initial contact is permitted per globally deduplicated target, no automatic
 follow-up exists, and actual sending requires both
 `AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1` through
-the operator CLI. Both production gates remain `0`; no campaign, contact, external outreach,
-production classification, learning cycle, payment or spend occurred.
+the operator CLI. At Package 5D closeout both production gates were `0`; that
+historical observation is not a current Package 5E environment-value claim.
+No campaign, contact, external outreach, production classification, learning
+cycle, payment or spend was established by Package 5D deployment.
 
 The HQ corrective binds each send cryptographically to the exact prepared
 message and target/campaign Ambassador token, makes identical idempotent replay
@@ -328,13 +333,14 @@ explicit HTTPS ports, and derives campaign returns from the canonical Package
 and referral packets use only the configured canonical AION public origin rather
 than the request Host header. Package 5D is accepted, merged and deployed at
 `373da335367c2ec686ccc0bb8e24c167fad0f672`, deploy
-`dep-daiqdk0ae00c73fi8ml0`, but is not active for outreach.
+`dep-daiqdk0ae00c73fi8ml0`; no outreach was established by that closeout.
 
 The implementation and fixtures do not claim adoption, VUO, return or
-commercial proof. Production is at schema `0012_ambassador_pilot_v1`; outbound
-and operator flags remain disabled and AutoDeploy remains OFF.
+commercial proof. Package 5D's historical production schema was
+`0012_ambassador_pilot_v1`; current Package 5E production is recorded above.
+AutoDeploy remains OFF.
 
-## Package 5E Ambassador Operator Control V1 — repository candidate
+## Package 5E Ambassador Operator Control V1 — production live
 
 Package 5E adds the smallest remote control surface needed to operate the
 existing Package 5D pilot through the live web application when separately
@@ -356,9 +362,21 @@ Package 5E changes no Package 5 participation, VUO or return semantics. Direct
 Ambassador traffic remains coordinated and permanently non-countable; peer
 referrals remain review-required. Legacy Render outreach/static runners are
 not the Package 5D/5E execution path because they bypass required provenance,
-dedupe, suppression and contact evidence. Package 5E is repository-only,
-performs no outreach, and intentionally does not embed its future candidate
-SHA.
+dedupe, suppression and contact evidence. Package 5E is HQ accepted, merged
+and production-live at application SHA
+`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, Render deploy
+`dep-daj7899594qs73b35g4g` and schema `0013_ambassador_control_v1`.
+AutoDeploy is OFF.
+
+The application policy remains fail-closed: contact needs dedicated operator
+authentication, both outbound gates and exact `SEND`. This closeout does not
+claim the current production values of those environment variables. A bounded
+post-deploy request-log interval contained no `/ops/ambassador/...` requests;
+that observation is limited to the reviewed interval and is not proof that
+outreach could never have occurred. Deployment itself proves no outreach,
+independent adoption, qualifying VUO, voluntary return, payment, settlement or
+revenue. Package 6A real-money behavior remains disabled. Canonical closeout
+evidence is in `PACKAGE_5E_PRODUCTION_CLOSEOUT.md`.
 
 Package 5E local candidate validation at this checkpoint:
 
@@ -372,7 +390,10 @@ Package 5E local candidate validation at this checkpoint:
   upgrade, exact head and Alembic schema check passed;
 - readiness, secret scan, compileall, dependency integrity, workflow/manifest
   parsing and diff checks passed. PostgreSQL behavior remains pending the
-  exact-SHA PostgreSQL 18 gate after a separately authorized push.
+  exact-SHA PostgreSQL 18 gate after a separately authorized push. This is
+  retained historical candidate evidence; the exact candidate later passed
+  AION CI run `34750014620` and PostgreSQL 18 gate `34750014622`, and resulting
+  main passed AION CI run `34750465528`.
 
 ## Package 6A Economic Execution Kernel V1 — production live, real money disabled
 

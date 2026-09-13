@@ -124,10 +124,8 @@ checks = {
 }
 
 external = [
-    "Obtain HQ review and exact-SHA push authorization for the Package 5E repository candidate.",
-    "Run AION CI and the PostgreSQL 18 release gate on the exact pushed Package 5E SHA.",
-    "Do not enable Ambassador outbound or perform outreach without a separate Human Gate.",
-    "Do not deploy or migrate Package 5E without a separate production Human Gate.",
+    "Production operations require the relevant Human Gate and fresh external-state verification.",
+    "Ambassador outreach requires separate explicit authorization and verified operator controls.",
     "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
     "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
     "Configure and verify a real settlement rail before claiming completed machine payments.",

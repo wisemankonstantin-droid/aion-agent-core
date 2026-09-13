@@ -1,7 +1,7 @@
 {
   "product": "AION Agent Core",
   "package": "Package 5E - Ambassador Operator Control V1",
-  "status": "package_5e_repository_candidate_not_deployed_control_disabled_no_outreach",
+  "status": "package_5e_application_production_live_no_commercial_proof",
   "task_start_sha": "373da335367c2ec686ccc0bb8e24c167fad0f672",
   "application_version": "0.7.1",
   "repository_database_migration_head": "0013_ambassador_control_v1",
@@ -9,11 +9,11 @@
     "url": "https://aion-agent-core-live.onrender.com",
     "service": "aion-agent-core-live",
     "service_id": "srv-daei9gpt0dsc73abhs10",
-    "deploy_id": "dep-daiqdk0ae00c73fi8ml0",
-    "deploy_id_status": "hq_verified_package_5e_task_baseline",
-    "deployed_git_sha": "373da335367c2ec686ccc0bb8e24c167fad0f672",
-    "persistence": "prepared Neon PostgreSQL Free",
-    "actual_live_database_revision": "0012_ambassador_pilot_v1",
+    "deploy_id": "dep-daj7899594qs73b35g4g",
+    "deploy_id_status": "hq_verified_package_5e_production_live",
+    "deployed_git_sha": "c6a976d8af7afa8adc7456a0022fb2b657f5af2e",
+    "persistence": "Neon PostgreSQL 18",
+    "actual_live_database_revision": "0013_ambassador_control_v1",
     "autodeploy": "off",
     "infrastructure_spend_usd": 0
   },
@@ -45,7 +45,7 @@
     "automatic_follow_up": false,
     "ambassador_attribution_countable_as_independent": false,
     "peer_referral_countable_without_review": false,
-    "real_outreach_performed": false,
+    "outreach_claimed_by_closeout": false,
     "spend_usd": 0
   },
   "package_5e_operator_control_state": {
@@ -57,8 +57,12 @@
     "raw_distribution_token_returned_by_remote_api": false,
     "raw_prepared_message_returned_by_remote_api": false,
     "legacy_outreach_runners_supported": false,
-    "real_outreach_performed": false
+    "outbound_disabled_by_default_in_application_policy": true,
+    "current_production_environment_values_claimed": false,
+    "outreach_claimed_by_closeout": false,
+    "reviewed_request_log_interval_had_ops_ambassador_requests": false,
+    "request_log_observation_scope": "bounded_hq_reviewed_post_deploy_interval_only"
   },
-  "production_action_authorized_by_candidate": false,
-  "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. Package 5D is production-live with both outbound gates disabled and no campaigns or contacts. Package 5E remains repository-only and does not authorize outreach. This manifest intentionally does not claim its own future/current commit SHA."
+  "production_action_authorized_by_closeout": false,
+  "live_state_authority": "Verify GitHub, Render, Neon and live evidence directly. Package 5E is production-live at the recorded SHA, deploy and schema. Deployment does not prove outreach or commercial success. Current Ambassador environment-variable values are not claimed; a bounded reviewed request-log interval had no /ops/ambassador requests. This manifest intentionally does not claim its own future/current commit SHA."
 }

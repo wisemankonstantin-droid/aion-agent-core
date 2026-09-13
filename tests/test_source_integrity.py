@@ -212,26 +212,36 @@ def test_package4_has_no_automatic_learning_scheduler_or_autodeploy_workflow():
 
 def test_package5e_manifest_has_current_production_baseline_and_no_fake_proof():
     manifest = json.loads((ROOT / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
+    closeout = (ROOT / "PACKAGE_5E_PRODUCTION_CLOSEOUT.md").read_text(encoding="utf-8")
     assert manifest["package"].startswith("Package 5E")
     assert manifest["task_start_sha"] == "373da335367c2ec686ccc0bb8e24c167fad0f672"
     assert manifest["repository_database_migration_head"] == "0013_ambassador_control_v1"
-    assert manifest["status"] == "package_5e_repository_candidate_not_deployed_control_disabled_no_outreach"
-    assert manifest["production_baseline"]["deployed_git_sha"] == "373da335367c2ec686ccc0bb8e24c167fad0f672"
-    assert manifest["production_baseline"]["deploy_id"] == "dep-daiqdk0ae00c73fi8ml0"
-    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_5e_task_baseline"
-    assert manifest["production_baseline"]["actual_live_database_revision"] == "0012_ambassador_pilot_v1"
+    assert manifest["status"] == "package_5e_application_production_live_no_commercial_proof"
+    assert manifest["production_baseline"]["deployed_git_sha"] == "c6a976d8af7afa8adc7456a0022fb2b657f5af2e"
+    assert manifest["production_baseline"]["deploy_id"] == "dep-daj7899594qs73b35g4g"
+    assert manifest["production_baseline"]["deploy_id_status"] == "hq_verified_package_5e_production_live"
+    assert manifest["production_baseline"]["actual_live_database_revision"] == "0013_ambassador_control_v1"
     assert manifest["package_5_proof_state"]["independent_agents_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_vuos_proven"] == 0
     assert manifest["package_5_proof_state"]["qualifying_returns_proven"] == 0
-    assert manifest["production_action_authorized_by_candidate"] is False
+    assert manifest["production_action_authorized_by_closeout"] is False
     assert manifest["package_5_semantics_changed_by_candidate"] is False
     assert not any(manifest["package_6a_money_state"].values())
     assert manifest["package_5d_distribution_state"]["outbound_enabled_by_default"] is False
-    assert manifest["package_5d_distribution_state"]["real_outreach_performed"] is False
+    assert manifest["package_5d_distribution_state"]["outreach_claimed_by_closeout"] is False
     assert manifest["package_5e_operator_control_state"]["control_token_absent_by_default"] is True
     assert manifest["package_5e_operator_control_state"]["raw_distribution_token_returned_by_remote_api"] is False
-    assert manifest["package_5e_operator_control_state"]["real_outreach_performed"] is False
+    assert manifest["package_5e_operator_control_state"]["outbound_disabled_by_default_in_application_policy"] is True
+    assert manifest["package_5e_operator_control_state"]["current_production_environment_values_claimed"] is False
+    assert manifest["package_5e_operator_control_state"]["outreach_claimed_by_closeout"] is False
+    assert manifest["package_5e_operator_control_state"]["reviewed_request_log_interval_had_ops_ambassador_requests"] is False
     assert "final_candidate_sha" not in manifest
+    assert "c6a976d8af7afa8adc7456a0022fb2b657f5af2e" in closeout
+    assert "dep-daj7899594qs73b35g4g" in closeout
+    assert "0012_ambassador_pilot_v1 -> 0013_ambassador_control_v1" in closeout
+    assert "34750014620" in closeout and "34750014622" in closeout
+    assert "34750465528" in closeout
+    assert "does not claim the future SHA of its own documentation commit" in closeout
 
 
 def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():

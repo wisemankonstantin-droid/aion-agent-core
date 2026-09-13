@@ -6,8 +6,8 @@ The controlled direct-source cutover is complete and production is live.
 
 - Repository state: verify the current `main` ref directly from GitHub; it is
   intentionally not embedded as a self-invalidating current-HEAD claim.
-- HQ-verified Package 5D production SHA: `373da335367c2ec686ccc0bb8e24c167fad0f672`
-- HQ-verified deploy: `dep-daiqdk0ae00c73fi8ml0`; verify live state again before
+- HQ-verified Package 5E production SHA: `c6a976d8af7afa8adc7456a0022fb2b657f5af2e`
+- HQ-verified deploy: `dep-daj7899594qs73b35g4g`; verify live state again before
   any separately authorized production operation.
 - Status: live
 - Branch: `main`
@@ -19,14 +19,18 @@ The controlled direct-source cutover is complete and production is live.
   persistence checkpoint was the prepared Neon PostgreSQL Free database at schema
   `0009_continuous_learning_v1`; its manual recovery snapshot was restored and
   integrity-checked during Package 4 closeout.
-- Package 5 engineering, Package 5B/5C, Package 6A and Package 5D are merged
-  and live at SHA `373da335367c2ec686ccc0bb8e24c167fad0f672`, deploy
-  `dep-daiqdk0ae00c73fi8ml0`, schema `0012_ambassador_pilot_v1`. Package 5
-  commercial proof counters remain legitimately zero. Ambassador outbound and
-  operator flags remain `0`; no campaigns or contacts exist. Package 5E is a
-  repository-only candidate adding `0013_ambassador_control_v1`; it has not
-  been deployed, migrated or used for outreach and does not authorize any of
-  those actions.
+- Package 5 engineering, Package 5B/5C, Package 6A and Package 5D/5E are merged
+  and live at SHA `c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, deploy
+  `dep-daj7899594qs73b35g4g`, schema `0013_ambassador_control_v1`. Render startup
+  showed `0012_ambassador_pilot_v1 -> 0013_ambassador_control_v1` and completed
+  successfully. Package 5 commercial proof remains legitimately zero. The
+  application defaults fail closed and contact requires dedicated operator
+  authentication, both outbound gates and exact `SEND`; this closeout does not
+  claim the current production values of those environment variables. A bounded
+  reviewed request-log interval contained no `/ops/ambassador/...` requests,
+  but that is not a claim about all time. Deployment proves no outreach,
+  adoption, VUO, return, payment, settlement or revenue. Package 6A real money
+  remains disabled. See `PACKAGE_5E_PRODUCTION_CLOSEOUT.md`.
 
 Production builds direct tracked source from GitHub main. A push or merge is not
 permission to deploy, and AutoDeploy must not be enabled without a separately

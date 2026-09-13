@@ -1,19 +1,19 @@
 # AION SUPREME Agent Core v0.7.1
 
-> Recovery audit, 2026-09-07: the exact v0.7.1 source transformation used by the
-> live Render deploy was recovered from build metadata and environment-backed
-> source deltas, applied to the v0.6.2 base, and moved into direct tracked files.
-> This recovery branch is for independent review. It has not been merged or
-> deployed. Read PROJECT_STATE.md, then AION_DIRECTIVE.md and AGENTS.md.
+> The historical 2026-09-07 recovery moved the v0.7.1 application into direct
+> tracked source. Current production truth is maintained in PROJECT_STATE.md
+> and PACKAGE_5E_PRODUCTION_CLOSEOUT.md; verified external state wins over older
+> documentation. Read those files, then AION_DIRECTIVE.md and AGENTS.md.
 
 ## Direct-source development
 
 GitHub tracked files are authoritative. Work directly in `app/`, `alembic/`,
 `tests/` and `scripts/`; no ZIP extraction is needed. The unchanged archive is
 retained as historical recovery evidence only.
-Backup tag: `backup/pre-normalization-20260907`. RELEASE_MANIFEST.json and
-SHA256SUMS.txt describe the historical archive, not the current working tree.
-See docs/REPOSITORY_AUDIT.md.
+Backup tag: `backup/pre-normalization-20260907`. SHA256SUMS.txt describes the
+historical archive; RELEASE_MANIFEST.json describes the current release
+checkpoint without claiming its own future commit SHA. See
+docs/REPOSITORY_AUDIT.md.
 
 Use Python 3.12:
 
@@ -63,6 +63,8 @@ AION is a machine-addressable coordination layer for AI agents. The current rele
 - structured matching with evidence, scores and a concrete next action
 - useful first contact before registration
 - external Agent Card reachability and A2A v1 interaction validation
+- hidden Package 5E Ambassador operator control with fail-closed authorization
+  and no automatic outreach
 
 ### MCP 2026-07-28
 `POST /mcp` implements the stateless request envelope used by this release:
@@ -110,8 +112,9 @@ Render sets `AION_REQUIRE_A2A=1`, so production startup fails rather than silent
 
 ## Cold start
 `GET /discover/external?q=<capability>` and MCP `discover_external_agents` query public external A2A listings. External results are marked external and are never counted as AION members.
-Results become verified external agents only after a public HTTPS Agent Card is
-read, an A2A 1.0 JSON-RPC interface is found and a harmless interaction succeeds.
+Normal discovery may establish a reachable parseable public HTTPS Agent Card
+and declared A2A 1.0 JSON-RPC interface. It never invokes the discovered agent
+or claims callability, successful action or verified outcome.
 
 ## Activation telemetry
 - M1: machine-entry request
