@@ -29,7 +29,7 @@ def upgrade():
         sa.Column("protocol_message_digest", sa.String(length=71), nullable=True),
         sa.Column("safe_evidence", sa.JSON(), nullable=True),
         sa.Column("redaction_summary", sa.JSON(), nullable=False),
-        sa.Column("evidence_bytes", sa.Integer(), nullable=False),
+        sa.Column("evidence_bytes", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("evidence_expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("evidence_purged_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("captured_at", sa.DateTime(timezone=True), nullable=False),
@@ -37,10 +37,10 @@ def upgrade():
         sa.UniqueConstraint("conversation_id", name="uq_conversation_evidence_conversation_id"),
         sa.UniqueConstraint("ambassador_contact_id", name="uq_conversation_evidence_contact"),
         sa.CheckConstraint(
-            "capture_class IN ('structured_only', 'text_evidence', 'redacted_all')",
+            "capture_class IN ('structured_only', 'digest_only')",
             name="ck_conversation_evidence_capture_class",
         ),
-        sa.CheckConstraint("evidence_bytes >= 0 AND evidence_bytes <= 2048", name="ck_conversation_evidence_bytes"),
+        sa.CheckConstraint("evidence_bytes = 0", name="ck_conversation_evidence_no_text_bytes"),
         sa.CheckConstraint("evidence_purged_at IS NULL OR evidence_purged_at >= captured_at", name="ck_conversation_evidence_purge_order"),
         sa.CheckConstraint("evidence_expires_at >= captured_at", name="ck_conversation_evidence_expiry_order"),
     )
