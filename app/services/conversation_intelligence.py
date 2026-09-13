@@ -330,8 +330,10 @@ def campaign_intelligence_report(db: Session, campaign_id: str) -> dict:
             "paid_inference_used": False,
         },
         "retention": {
-            "digest_metadata_days": EVIDENCE_RETENTION_DAYS,
-            "campaign_close_marks_evidence_purged": True,
+            "evidence_expiry_marker_days": EVIDENCE_RETENTION_DAYS,
+            "expired_rows_physically_deleted_automatically": False,
+            "campaign_close_automatically_marks_evidence_purged": False,
+            "message_text_persisted": False,
         },
         "read_only": True,
     }
