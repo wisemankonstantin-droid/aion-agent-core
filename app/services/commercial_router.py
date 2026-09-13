@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timezone
+import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -36,6 +38,63 @@ ROUTE_VERSION = "commercial_router_v1"
 MAX_ROUTE_CANDIDATES = 5
 MAX_COMMERCIAL_ROUTE_BODY_BYTES = 16 * 1024
 _DISCOVER = discover_external_agents_with_status
+_IDENTIFIER = re.compile(r"^[A-Za-z0-9._:@/+~-]{1,240}$")
+_REMOTE_SECRET = re.compile(
+    r"(?i)\b(?:Bearer\s+[^\s,;]+|(?:api[_-]?key|password|passwd|secret|token|credential)\s*[:=]\s*[^\s,;]+)"
+)
+_LONG_REMOTE_TOKEN = re.compile(r"\b(?=[A-Za-z0-9_+/=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+/=-]+\b")
+
+
+def _bounded_identifier(value: object) -> str | None:
+    identifier = str(value or "")
+    if (
+        not identifier
+        or not _IDENTIFIER.fullmatch(identifier)
+        or any(ord(character) < 32 or ord(character) == 127 for character in identifier)
+    ):
+        return None
+    return identifier
+
+
+def _safe_remote_text(value: object, maximum: int) -> str | None:
+    text = "".join(
+        character if ord(character) >= 32 and ord(character) != 127 else " "
+        for character in str(value or "")
+    )
+    text = _REMOTE_SECRET.sub("[REDACTED_REMOTE_SECRET]", text)
+    text = _LONG_REMOTE_TOKEN.sub("[REDACTED_REMOTE_SECRET]", text)
+    text = " ".join(text.split())[:maximum]
+    return text or None
+
+
+def _safe_remote_url(value: object) -> str | None:
+    text = str(value or "")
+    if not text:
+        return None
+    try:
+        parsed = urlsplit(text)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))[:1000]
+    except (TypeError, ValueError):
+        return None
+
+
+def _provider_key(candidate: dict) -> tuple[str, str, str, str] | None:
+    identifier = _bounded_identifier(candidate.get("identifier"))
+    interaction_url = str(candidate.get("interaction_url") or "")
+    binding = str(candidate.get("protocol_binding") or "").upper()
+    version = str(candidate.get("protocol_version") or "")
+    if (
+        identifier is None
+        or not interaction_url
+        or len(interaction_url) > 1_000
+        or _safe_remote_url(interaction_url) is None
+        or binding != "JSONRPC"
+        or version != "1.0"
+    ):
+        return None
+    return identifier, interaction_url, binding, version
 
 
 class CommercialRoutePlanRequest(BaseModel):
@@ -65,6 +124,15 @@ class CommercialRoutePlanRequest(BaseModel):
         except EconomicKernelError as exc:
             raise ValueError(exc.message) from exc
 
+    @field_validator("need", "candidate_identifier")
+    @classmethod
+    def _bounded_text(cls, value: str | None) -> str | None:
+        if value is not None and any(
+            ord(character) < 32 or ord(character) == 127 for character in value
+        ):
+            raise ValueError("Control characters are not permitted")
+        return value
+
 
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
@@ -76,75 +144,94 @@ def _aware(value: datetime | None) -> datetime | None:
 
 def _eligible(candidate: dict) -> bool:
     return bool(
-        candidate.get("manifest_reachable")
+        _provider_key(candidate)
+        and candidate.get("manifest_reachable")
         and candidate.get("card_parseable")
         and candidate.get("declared_a2a_v1_jsonrpc")
         and candidate.get("interaction_url_validated")
         and candidate.get("authentication_requirement") == "none"
-        and candidate.get("interaction_url")
+        and _safe_remote_url(candidate.get("interaction_url"))
     )
 
 
-def _provider_history(db: Session, identifiers: list[str]) -> dict[str, dict]:
+def _provider_history(db: Session, provider_keys: list[tuple[str, str, str, str]]) -> dict[tuple[str, str, str, str], dict]:
     history = {
-        identifier: {
+        provider_key: {
             "recorded_outcomes": 0,
             "verified_callability_outcomes": 0,
             "failed_outcomes": 0,
             "failure_classes": {},
             "last_verified_at": None,
         }
-        for identifier in identifiers
+        for provider_key in provider_keys
     }
-    if not identifiers:
+    if not provider_keys:
         return history
 
+    identifiers = sorted({provider_key[0] for provider_key in provider_keys})
+
     rows = db.execute(
-        select(models.ActionRun, models.ActionOutcome)
+        select(models.ActionRun, models.ActionOutcome, models.ActionVerification)
         .join(models.ActionOutcome, models.ActionOutcome.action_run_id == models.ActionRun.id)
+        .outerjoin(
+            models.ActionVerification,
+            models.ActionVerification.action_run_id == models.ActionRun.id,
+        )
         .where(models.ActionRun.selected_provider_identifier.in_(identifiers))
     ).all()
-    counters = {identifier: Counter() for identifier in identifiers}
-    for run, outcome in rows:
-        identifier = str(run.selected_provider_identifier or "")
-        if identifier not in history:
+    counters = {provider_key: Counter() for provider_key in provider_keys}
+    for run, outcome, verification in rows:
+        provider_key = (
+            str(run.selected_provider_identifier or ""),
+            str(run.interaction_url or ""),
+            str(run.protocol_binding or "").upper(),
+            str(run.protocol_version or ""),
+        )
+        if provider_key not in history:
             continue
-        item = history[identifier]
+        item = history[provider_key]
         item["recorded_outcomes"] += 1
-        if outcome.callability_verified and outcome.verified_outcome:
+        if (
+            run.state == "completed"
+            and outcome.callability_verified
+            and outcome.verified_outcome
+            and outcome.proof_present
+            and verification is not None
+            and verification.state == "verified"
+        ):
             item["verified_callability_outcomes"] += 1
-            completed_at = _aware(outcome.completed_at)
+            completed_at = _aware(verification.verified_at)
             current = item["last_verified_at"]
             if completed_at is not None and (current is None or completed_at > current):
                 item["last_verified_at"] = completed_at
         if outcome.failure_class:
             item["failed_outcomes"] += 1
-            counters[identifier][str(outcome.failure_class)[:64]] += 1
+            counters[provider_key][str(outcome.failure_class)[:64]] += 1
 
-    for identifier, item in history.items():
-        item["failure_classes"] = dict(sorted(counters[identifier].items()))
+    for provider_key, item in history.items():
+        item["failure_classes"] = dict(sorted(counters[provider_key].items()))
         if item["last_verified_at"] is not None:
             item["last_verified_at"] = item["last_verified_at"].isoformat()
     return history
 
 
 def _bounded_candidate(candidate: dict, history: dict) -> dict:
-    identifier = str(candidate.get("identifier") or "")[:240]
+    identifier = _bounded_identifier(candidate.get("identifier"))
     verified_count = int(history.get("verified_callability_outcomes") or 0)
     return {
-        "source": str(candidate.get("source") or "")[:80] or None,
-        "identifier": identifier or None,
-        "name": str(candidate.get("name") or "")[:240] or None,
-        "description": str(candidate.get("description") or "")[:500],
-        "agent_card_url": str(candidate.get("url") or "")[:1000] or None,
-        "interaction_url": str(candidate.get("interaction_url") or "")[:1000] or None,
-        "protocol_binding": str(candidate.get("protocol_binding") or "")[:40] or None,
-        "protocol_version": str(candidate.get("protocol_version") or "")[:40] or None,
+        "source": _safe_remote_text(candidate.get("source"), 80),
+        "identifier": identifier,
+        "name": _safe_remote_text(candidate.get("name"), 240),
+        "description": _safe_remote_text(candidate.get("description"), 500) or "",
+        "agent_card_url": _safe_remote_url(candidate.get("url")),
+        "interaction_url": _safe_remote_url(candidate.get("interaction_url")),
+        "protocol_binding": _safe_remote_text(candidate.get("protocol_binding"), 40),
+        "protocol_version": _safe_remote_text(candidate.get("protocol_version"), 40),
         "manifest_reachable": bool(candidate.get("manifest_reachable")),
         "card_parseable": bool(candidate.get("card_parseable")),
         "declared_a2a_v1_jsonrpc": bool(candidate.get("declared_a2a_v1_jsonrpc")),
         "interaction_url_validated": bool(candidate.get("interaction_url_validated")),
-        "authentication_requirement": str(candidate.get("authentication_requirement") or "unknown")[:40],
+        "authentication_requirement": _safe_remote_text(candidate.get("authentication_requirement") or "unknown", 40),
         "qualification_state": "declaration_qualified" if _eligible(candidate) else "ineligible",
         "registry_verified_claim": candidate.get("registry_verified_claim") if isinstance(candidate.get("registry_verified_claim"), bool) else None,
         "registry_verified_claim_semantics": "registry_claim_only_not_aion_verification",
@@ -221,14 +308,14 @@ def plan_commercial_route(
     _ = requester_agent_id
     discovery: DiscoveryResult = _DISCOVER(payload.need, MAX_ROUTE_CANDIDATES)
     raw = list(discovery.results[:MAX_ROUTE_CANDIDATES])
-    identifiers = [
-        str(candidate.get("identifier") or "")[:240]
+    provider_keys = sorted({
+        provider_key
         for candidate in raw
-        if str(candidate.get("identifier") or "")
-    ]
-    history = _provider_history(db, identifiers)
+        if (provider_key := _provider_key(candidate)) is not None
+    })
+    history = _provider_history(db, provider_keys)
     candidates = [
-        _bounded_candidate(candidate, history.get(str(candidate.get("identifier") or "")[:240], {}))
+        _bounded_candidate(candidate, history.get(_provider_key(candidate), {}))
         for candidate in raw
     ]
 
@@ -245,7 +332,7 @@ def plan_commercial_route(
         state = "candidate_ineligible"
     elif selected is not None:
         state = "qualified_unpriced"
-    elif not candidates and discovery.failure_class:
+    elif discovery.failure_class:
         state = "discovery_unavailable"
     else:
         state = "no_eligible_candidate"
@@ -257,9 +344,9 @@ def plan_commercial_route(
         next_actions.append(
             {
                 "action": "verify_external_callability",
-                "required_before_current-job_execution": provider_state != "historical_callability_verified",
+                "required_before_current-job_execution": True,
                 "endpoint": "/actions/verify-callability",
-                "note": "This existing action requires explicit authorization to contact the provider interaction endpoint.",
+                "note": "Historical evidence affects ranking only. Fresh current-job verification still requires explicit authorization to contact this interaction endpoint.",
             }
         )
     else:

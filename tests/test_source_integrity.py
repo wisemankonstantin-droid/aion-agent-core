@@ -372,6 +372,29 @@ def test_package5f_is_digest_only_truth_separated_and_payment_free():
     assert "openai" not in service.lower()
 
 
+def test_commercial_router_is_authenticated_read_only_and_fail_closed():
+    router = (ROOT / "app" / "services" / "commercial_router.py").read_text(encoding="utf-8")
+    a2a = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    migration_names = {path.name for path in (ROOT / "alembic" / "versions").glob("*.py")}
+    assert '"/commercial/routes/plan"' in router
+    assert "require_participation_reader" in router
+    assert "discover_external_agents_with_status" in router
+    assert '"provider_price_state": "unknown"' in router
+    assert '"provider_maximum_cost": None' in router
+    assert '"commercial_rights_state": "unknown"' in router
+    assert '"policy_eligible": False' in router
+    assert '"execution_eligible": False' in router
+    assert "REAL_MONEY_EXECUTION_ENABLED" in router
+    assert "create_preflight(" not in router
+    assert "verify_external_callability(" not in router
+    assert "create_payment_intent(" not in router
+    assert "safe_http" not in router and "httpx" not in router and "requests" not in router
+    assert "install_commercial_router(app)" in a2a
+    assert "codex/commercial-router-v1" in workflow
+    assert "0015" not in " ".join(migration_names)
+
+
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():
     source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     assert main.package5_proof_snapshot is package5_proof.package5_proof_snapshot
