@@ -651,12 +651,21 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     else:
         contact.result_class, target.contact_state = "ambiguous", "ambiguous"
     target.updated_at = _now()
+    contact_id = contact.contact_id
     db.commit()
+    conversation_capture_state = "no_response"
+    if response is not None:
+        from .conversation_intelligence import capture_ambassador_response
+        conversation_capture_state = capture_ambassador_response(
+            contact_id=contact_id,
+            response=response,
+        )
     return {
-        "contact_id": contact.contact_id, "target_id": target.target_id,
+        "contact_id": contact_id, "target_id": target.target_id,
         "result_class": contact.result_class, "http_status": contact.http_status,
         "response_received": contact.response_received, "transport_attempts": result.attempts,
         "automatic_retry": False, "send_performed": True, "idempotent_replay": False,
+        "conversation_capture_state": conversation_capture_state,
     }
 
 
@@ -823,6 +832,8 @@ def campaign_status(db: Session, campaign_id: str) -> dict:
     qualification = Counter(row.qualification_state for row in targets)
     contact_states = Counter(row.contact_state for row in targets)
     result_classes = Counter(row.result_class for row in contacts)
+    from .conversation_intelligence import campaign_intelligence_report
+    conversation_intelligence = campaign_intelligence_report(db, campaign_id)
     return {
         "campaign_id": campaign.campaign_id, "name": campaign.name, "purpose": campaign.purpose,
         "state": campaign.state,
@@ -842,6 +853,7 @@ def campaign_status(db: Session, campaign_id: str) -> dict:
         },
         "qualification_breakdown": dict(sorted(qualification.items())),
         "contact_result_breakdown": dict(sorted(result_classes.items())),
+        "conversation_intelligence": conversation_intelligence,
         "truth_boundary": "Coordinated Ambassador and peer-referral evidence is not independent or organic Package 5 proof.",
         "read_only": True,
     }
