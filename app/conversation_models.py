@@ -14,12 +14,12 @@ class ConversationEvidence(Base):
     __tablename__ = "conversation_evidence"
     __table_args__ = (
         CheckConstraint(
-            "capture_class IN ('structured_only', 'text_evidence', 'redacted_all')",
+            "capture_class IN ('structured_only', 'digest_only')",
             name="ck_conversation_evidence_capture_class",
         ),
-        CheckConstraint("evidence_bytes >= 0 AND evidence_bytes <= 2048", name="ck_conversation_evidence_bytes"),
+        CheckConstraint("evidence_bytes = 0", name="ck_conversation_evidence_no_text_bytes"),
         CheckConstraint(
-            "purged_at IS NULL OR purged_at >= captured_at",
+            "evidence_purged_at IS NULL OR evidence_purged_at >= captured_at",
             name="ck_conversation_evidence_purge_order",
         ),
         CheckConstraint(
@@ -46,7 +46,7 @@ class ConversationEvidence(Base):
     protocol_message_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
     safe_evidence: Mapped[list | None] = mapped_column(JSON, nullable=True)
     redaction_summary: Mapped[dict] = mapped_column(JSON, nullable=False)
-    evidence_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     evidence_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     evidence_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
