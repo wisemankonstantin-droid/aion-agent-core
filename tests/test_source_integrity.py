@@ -190,7 +190,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0013_ambassador_control_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0014_conversation_intel_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -262,6 +262,7 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
     assert "0011_economic_kernel_v1.py" in migration_names
     assert "0012_ambassador_pilot_v1.py" in migration_names
     assert "0013_ambassador_control_v1.py" in migration_names
+    assert "0014_conversation_intel_v1.py" in migration_names
 
 
 def test_package6a_kernel_is_single_shared_disabled_money_boundary():
@@ -297,7 +298,7 @@ def test_alembic_revision_ids_fit_version_table_storage():
     revisions = list(ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})
     assert all(len(revision.revision) <= 32 for revision in revisions)
-    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0013_ambassador_control_v1"]
+    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0014_conversation_intel_v1"]
 
 
 def test_package5d_is_one_bounded_operator_gated_distribution_boundary():
@@ -349,6 +350,26 @@ def test_package5e_is_narrow_hidden_token_safe_operator_boundary():
     assert "AION_AMBASSADOR_OUTBOUND_ENABLED=1" not in workflow
     assert "AION_AMBASSADOR_CONTROL_TOKEN" not in workflow
     assert "subprocess" not in operator and "eval(" not in operator and "exec(" not in operator
+
+
+def test_package5f_is_digest_only_truth_separated_and_payment_free():
+    service = (ROOT / "app" / "services" / "conversation_intelligence.py").read_text(encoding="utf-8")
+    migration = (ROOT / "alembic" / "versions" / "0014_conversation_intel_v1.py").read_text(encoding="utf-8")
+    ambassador = (ROOT / "app" / "services" / "ambassador.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
+    assert 'revision = "0014_conversation_intel_v1"' in migration
+    assert 'down_revision = "0013_ambassador_control_v1"' in migration
+    assert "digest_only" in service
+    assert '"message_text_persisted": False' in service
+    assert '"raw_response_persisted": False' in service
+    assert '"paid_inference_used": False' in service
+    assert 'safe_evidence=None' in service
+    assert "capture_ambassador_response" in ambassador
+    assert ambassador.index("db.commit()", ambassador.index("def send_contact")) < ambassador.index("capture_ambassador_response", ambassador.index("def send_contact"))
+    assert "codex/package-5f-conversation-intelligence-v1" in workflow
+    assert "0014_conversation_intel_v1" in workflow
+    assert "x402" not in service.lower()
+    assert "openai" not in service.lower()
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():
