@@ -19,6 +19,7 @@ from ..db import get_db
 from ..public_origin import PublicOriginError, canonical_public_origin
 from ..security import require_participation_reader
 from . import commercial_router_legacy as _legacy
+from .commercial_payment_routes import install_commercial_payment_routes
 from .external_registry import DiscoveryResult, discover_external_agents_with_status
 from .external_registry_targeted import discover_external_agent_by_identifier_with_status
 
@@ -360,6 +361,10 @@ class _TrustedMcpOrigin:
 
 
 def install_commercial_router(app) -> None:
+    # Install adjacent paid-readiness surfaces through the existing late app
+    # extension point. They remain fail-closed until their own gates are active.
+    install_commercial_payment_routes(app)
+
     if any(
         getattr(route, "path", None) == "/commercial/routes/plan"
         for route in app.router.routes
