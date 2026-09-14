@@ -97,9 +97,12 @@ class CommercialRoutePlanRequest(_legacy.CommercialRoutePlanRequest):
     @field_validator("need", mode="before")
     @classmethod
     def _privacy_gate(cls, value):
-        if isinstance(value, str) and _sensitive_need(value):
-            # Raising here would make FastAPI/Pydantic include the original input in
-            # the default 422. Replace it with an internal sentinel and reject later.
+        # FastAPI/Pydantic's default validation error includes the rejected input.
+        # Canonicalize every non-string value to a fixed sentinel before type
+        # validation so nested objects cannot echo credentials in a 422 response.
+        if not isinstance(value, str):
+            return _REJECTED_NEED
+        if _sensitive_need(value):
             return _REJECTED_NEED
         return value
 
@@ -108,7 +111,9 @@ class CommercialRoutePlanRequest(_legacy.CommercialRoutePlanRequest):
     def _target_identifier_gate(cls, value):
         if value is None:
             return None
-        if isinstance(value, str) and not _target_identifier_valid(value.strip()):
+        if not isinstance(value, str):
+            return _REJECTED_IDENTIFIER
+        if not _target_identifier_valid(value.strip()):
             return _REJECTED_IDENTIFIER
         return value
 
