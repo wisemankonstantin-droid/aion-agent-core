@@ -44,7 +44,6 @@ def upgrade():
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("entitled_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("purchase_id", name="uq_route_intelligence_purchase_id"),
-        sa.UniqueConstraint("request_digest", name="uq_route_intelligence_request_digest"),
         sa.UniqueConstraint(
             "payment_payload_digest", name="uq_route_intelligence_payment_payload_digest"
         ),
@@ -75,6 +74,11 @@ def upgrade():
         ),
     )
     op.create_index(
+        "ix_route_intelligence_request_prepared",
+        "route_intelligence_purchases",
+        ["request_digest", "prepared_at"],
+    )
+    op.create_index(
         "ix_route_intelligence_purchase_state_updated",
         "route_intelligence_purchases",
         ["state", "updated_at"],
@@ -84,6 +88,10 @@ def upgrade():
 def downgrade():
     op.drop_index(
         "ix_route_intelligence_purchase_state_updated",
+        table_name="route_intelligence_purchases",
+    )
+    op.drop_index(
+        "ix_route_intelligence_request_prepared",
         table_name="route_intelligence_purchases",
     )
     op.drop_table("route_intelligence_purchases")
