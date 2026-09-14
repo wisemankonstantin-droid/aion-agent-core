@@ -56,7 +56,7 @@ class NeedCreate(BaseModel):
 
 class OfferCreate(BaseModel):
     capability: str = Field(min_length=1, max_length=120)
-    description: str = Field(default="", max_length=5000)
+    description: str = Field(min_length=1, max_length=5000)
     price_hint: Optional[str] = Field(default=None, max_length=120)
 
 class InteractionCreate(BaseModel):
