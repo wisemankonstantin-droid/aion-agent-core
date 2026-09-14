@@ -34,26 +34,27 @@ jobs:
               raise SystemExit(0)
 
           bounties = list_bounties()
-          events = list_release_events(limit=50)
-          if bounties.status != "success" or events.status != "success":
+          if bounties.status != "success":
               print(json.dumps({
                   "status":"provider_check_failed",
                   "bounty_status":bounties.status,
                   "bounty_failure_class":bounties.failure_class,
-                  "event_status":events.status,
-                  "event_failure_class":events.failure_class,
                   "write_operations_enabled":False,
                   "payment_enabled":False,
               }, sort_keys=True))
               raise SystemExit(1)
 
-          print(json.dumps({
-              "status":"success",
+          events = list_release_events(limit=50)
+          payload = {
+              "status":"success" if events.status == "success" else "partial_success",
               "candidate_count":len(bounties.results),
-              "release_event_count":len(events.results),
+              "event_status":events.status,
+              "event_failure_class":events.failure_class,
+              "release_event_count":len(events.results) if events.status == "success" else None,
               "write_operations_enabled":False,
               "claim_enabled":False,
               "submission_enabled":False,
               "payment_enabled":False,
-          }, sort_keys=True))
+          }
+          print(json.dumps(payload, sort_keys=True))
           PY
