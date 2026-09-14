@@ -181,8 +181,9 @@ def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypat
 
 
 def test_non_integral_asset_base_units_fail_closed(monkeypatch):
-    _configure_offer(monkeypatch, price="0.0000001", fee="0")
-    # Seven fractional digits cannot be represented exactly by a six-decimal asset.
+    _configure_offer(monkeypatch, price="0.000001", fee="0")
+    monkeypatch.setenv(ASSET_DECIMALS_ENV, "5")
+    # The Economic Kernel price is valid, but cannot map exactly to a 5-decimal asset.
     assert payment_offer_readiness()["payment_offer_configured"] is False
 
 
