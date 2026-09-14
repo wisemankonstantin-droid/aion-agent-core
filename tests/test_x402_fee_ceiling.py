@@ -10,6 +10,7 @@ from app.services.paid_route_intelligence import (
     register_paid_route_intelligence_profile,
 )
 from app.services.x402_payment_offer import (
+    ASSET_CODE_ENV,
     ASSET_DECIMALS_ENV,
     ASSET_ENV,
     ASSET_NAME_ENV,
@@ -43,7 +44,8 @@ def test_wire_fee_ceiling_cannot_exceed_economic_kernel_allowance(monkeypatch):
         OFFER_ENABLE_ENV: "1",
         NETWORK_ENV: "eip155:8453",
         ASSET_ENV: "0x" + "1" * 40,
-        ASSET_NAME_ENV: "USDC",
+        ASSET_CODE_ENV: "USDC",
+        ASSET_NAME_ENV: "USD Coin",
         ASSET_VERSION_ENV: "2",
         ASSET_DECIMALS_ENV: "6",
         PAY_TO_ENV: "0x" + "2" * 40,
