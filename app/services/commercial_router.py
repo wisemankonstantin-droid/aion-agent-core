@@ -19,7 +19,7 @@ from ..db import get_db
 from ..public_origin import PublicOriginError, canonical_public_origin
 from ..security import require_participation_reader
 from . import commercial_router_legacy as _legacy
-from .external_registry import DiscoveryResult
+from .external_registry import DiscoveryResult, discover_external_agents_with_status
 from .external_registry_targeted import discover_external_agent_by_identifier_with_status
 
 # Preserve all existing test/extension seams and public names unless explicitly
@@ -36,8 +36,10 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _BEARER_CREDENTIAL = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}\b")
 _TARGET_IDENTIFIER = re.compile(r"^[A-Za-z0-9_@+~-]+(?:\.[A-Za-z0-9_@+~-]+)*$")
-_DISCOVER = _legacy._DISCOVER
-_DISCOVER_BY_IDENTIFIER = discover_external_agent_by_identifier_with_status
+_DEFAULT_DISCOVER = discover_external_agents_with_status
+_DEFAULT_DISCOVER_BY_IDENTIFIER = discover_external_agent_by_identifier_with_status
+_DISCOVER = _DEFAULT_DISCOVER
+_DISCOVER_BY_IDENTIFIER = _DEFAULT_DISCOVER_BY_IDENTIFIER
 
 
 def _sensitive_need(value: str) -> bool:
@@ -84,9 +86,8 @@ class CommercialRoutePlanRequest(_legacy.CommercialRoutePlanRequest):
     @classmethod
     def _privacy_gate(cls, value):
         if isinstance(value, str) and _sensitive_need(value):
-            # Do not raise here: FastAPI/Pydantic's default 422 includes the original
-            # input value. Replace it with an internal sentinel and reject generically
-            # before any discovery call instead.
+            # Raising here would make FastAPI/Pydantic include the original input in
+            # the default 422. Replace it with an internal sentinel and reject later.
             return _REJECTED_NEED
         return value
 
@@ -116,6 +117,23 @@ def _reject_private_request(payload: CommercialRoutePlanRequest) -> None:
         )
 
 
+def _targeted_discovery(identifier: str) -> DiscoveryResult:
+    """Use the direct identifier path in production without ever passing ``need``.
+
+    Older Router tests/extensions monkeypatch only ``_DISCOVER``. Preserve that
+    seam without weakening the privacy contract: if and only if the generic seam
+    was explicitly replaced while the targeted seam remains the production
+    default, call the replacement with the public identifier itself, never with
+    requester need. Normal runtime always uses the direct Registry detail helper.
+    """
+
+    if _DISCOVER_BY_IDENTIFIER is not _DEFAULT_DISCOVER_BY_IDENTIFIER:
+        return _DISCOVER_BY_IDENTIFIER(identifier)
+    if _DISCOVER is not _DEFAULT_DISCOVER:
+        return _DISCOVER(identifier, MAX_ROUTE_CANDIDATES)
+    return _DISCOVER_BY_IDENTIFIER(identifier)
+
+
 def plan_commercial_route(
     db: Session,
     *,
@@ -128,7 +146,7 @@ def plan_commercial_route(
     # lifecycle/commercial evidence in V1.
     _ = requester_agent_id
     if payload.candidate_identifier is not None:
-        discovery: DiscoveryResult = _DISCOVER_BY_IDENTIFIER(payload.candidate_identifier)
+        discovery: DiscoveryResult = _targeted_discovery(payload.candidate_identifier)
         discovery_mode = "registry_identifier_lookup"
         need_sent_to_registry = False
     else:
