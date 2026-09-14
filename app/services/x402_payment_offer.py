@@ -104,7 +104,7 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
     min_fee_bps = _bounded_int(MIN_FEE_BPS_ENV, minimum=0, maximum=10000)
     max_fee_bps = _bounded_int(MAX_FEE_BPS_ENV, minimum=0, maximum=10000)
     max_timeout = _bounded_int(MAX_TIMEOUT_SECONDS_ENV, minimum=1, maximum=3600)
-    capture_window = _bounded_int(CAPTURE_WINDOW_SECONDS_ENV, minimum=60, maximum=7 * 24 * 3600)
+    capture_window = _bounded_int( CAPTURE_WINDOW_SECONDS_ENV, minimum=60, maximum=7 * 24 * 3600)
     refund_window = _bounded_int(REFUND_WINDOW_SECONDS_ENV, minimum=120, maximum=30 * 24 * 3600)
     transfer_method = (os.getenv(ASSET_TRANSFER_METHOD_ENV) or "").strip()
 
@@ -140,6 +140,16 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
     if amount is None:
         return None
 
+    # The wire-level fee ceiling is a real economic authorization boundary. It
+    # must never exceed the immutable maximum payment-fee allowance already
+    # included in Economic Kernel margin/max-spend calculations. This check is
+    # conservative even when a particular fee recipient may later be AION.
+    wire_fee_ceiling = (
+        Decimal(plan.customer_price) * Decimal(max_fee_bps) / Decimal(10_000)
+    )
+    if wire_fee_ceiling > Decimal(plan.payment_fee_allowance):
+        return None
+
     timestamp = now or datetime.now(timezone.utc)
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
         raise X402PaymentOfferError("invalid_clock", "Payment requirement clock must be timezone-aware")
@@ -160,6 +170,7 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
         "fee_recipient": fee_recipient,
         "min_fee_bps": min_fee_bps,
         "max_fee_bps": max_fee_bps,
+        "wire_fee_ceiling": format(wire_fee_ceiling, "f"),
         "max_timeout_seconds": max_timeout,
         "capture_deadline": capture_deadline,
         "refund_deadline": refund_deadline,
@@ -200,6 +211,7 @@ def payment_offer_readiness() -> dict:
             "payment_signature_is_not_reserve_until_verified_and_authorized": True,
             "stablecoin_is_not_silently_treated_as_fiat": True,
             "no_fx_assumption": True,
+            "wire_fee_ceiling_bounded_by_economic_kernel_allowance": True,
         },
     }
 
