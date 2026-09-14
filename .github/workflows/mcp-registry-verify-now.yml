@@ -1,0 +1,68 @@
+name: AION MCP Registry Verify Now
+
+on:
+  push:
+    branches:
+      - ops/mcp-registry-verify-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Query official MCP Registry read-only API
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+
+          target_name = "io.github.wisemankonstantin-droid/aion-agent-core"
+          target_version = "0.8.0"
+          query = urllib.parse.urlencode({
+              "search": "wisemankonstantin-droid",
+              "version": "latest",
+              "limit": 100,
+          })
+          url = f"https://registry.modelcontextprotocol.io/v0.1/servers?{query}"
+          req = urllib.request.Request(url, headers={"User-Agent": "AION-registry-verify/1.0"})
+          with urllib.request.urlopen(req, timeout=20) as response:
+              payload = json.load(response)
+
+          matches = []
+          for row in payload.get("servers", []):
+              server = row.get("server", {})
+              if server.get("name") == target_name:
+                  official = row.get("_meta", {}).get("io.modelcontextprotocol.registry/official", {})
+                  matches.append({
+                      "name": server.get("name"),
+                      "version": server.get("version"),
+                      "status": official.get("status"),
+                      "is_latest": official.get("isLatest"),
+                  })
+
+          result = {
+              "registry": "official_mcp_registry",
+              "exact_match_count": len(matches),
+              "matches": matches,
+              "expected_name": target_name,
+              "expected_version": target_version,
+              "read_only": True,
+          }
+          print(json.dumps(result, sort_keys=True))
+          if not any(
+              item.get("name") == target_name
+              and item.get("version") == target_version
+              and item.get("status") == "active"
+              for item in matches
+          ):
+              raise SystemExit(2)
+          PY
