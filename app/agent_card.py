@@ -9,9 +9,18 @@ def get_agent_card(base_url: str):
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
+        "provider": {
+            "organization": "AION SUPREME",
+            "url": base_url,
+        },
         "version": "0.8.0",
         "documentationUrl": f"{base_url}/docs",
         "capabilities": {"streaming": False, "pushNotifications": False, "extendedAgentCard": False},
+        # The public A2A surface intentionally requires no authentication.
+        # Declare that explicitly rather than inventing an auth scheme merely
+        # to improve a third-party trust score.
+        "securitySchemes": {},
+        "securityRequirements": [],
         "defaultInputModes": ["text/plain", "application/json"],
         "defaultOutputModes": ["application/json", "text/plain"],
         "skills": [
