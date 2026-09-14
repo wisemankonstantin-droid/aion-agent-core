@@ -4,6 +4,13 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional, List, Literal
 from .machine_journey import post_join_next_actions
+from .services.paid_route_intelligence import register_paid_route_intelligence_profile
+
+# Quote registration is fail-closed. With no explicit bounded quote config the
+# paid SKU remains recognized by the request schema but absent from the trusted
+# Economic Kernel product profiles, so preflight refuses to create a quote.
+register_paid_route_intelligence_profile()
+
 
 class CapabilityIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -49,7 +56,7 @@ class NeedCreate(BaseModel):
 
 class OfferCreate(BaseModel):
     capability: str = Field(min_length=1, max_length=120)
-    description: str = Field(min_length=1, max_length=5000)
+    description: str = Field(default="", max_length=5000)
     price_hint: Optional[str] = Field(default=None, max_length=120)
 
 class InteractionCreate(BaseModel):
@@ -68,7 +75,11 @@ class PaymentIntentCreate(BaseModel):
 
 
 class EconomicPreflightRequest(BaseModel):
-    product_sku: Literal["aion.cached.utility.v1", "aion.verified.callability.v1"]
+    product_sku: Literal[
+        "aion.cached.utility.v1",
+        "aion.verified.callability.v1",
+        "aion.verified.route_intelligence.v1",
+    ]
     currency: str = Field(min_length=3, max_length=16, pattern=r"^[A-Z][A-Z0-9]{2,15}$")
     requester_max_price: Optional[str] = Field(default=None, min_length=1, max_length=32)
     model_config = {"extra": "forbid"}
