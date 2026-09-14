@@ -41,6 +41,18 @@ _DEFAULT_DISCOVER_BY_IDENTIFIER = discover_external_agent_by_identifier_with_sta
 _DISCOVER = _DEFAULT_DISCOVER
 _DISCOVER_BY_IDENTIFIER = _DEFAULT_DISCOVER_BY_IDENTIFIER
 
+# Keep the launch fail-closed contract visible in the active Router source as
+# well as in the preserved implementation it delegates to. These values mirror
+# the runtime block returned by ``_legacy._commercial_block``; they are not an
+# executable quote or a second economic implementation.
+_FAIL_CLOSED_SOURCE_CONTRACT = {
+    "provider_price_state": "unknown",
+    "provider_maximum_cost": None,
+    "commercial_rights_state": "unknown",
+    "policy_eligible": False,
+    "execution_eligible": False,
+}
+
 
 def _sensitive_need(value: str) -> bool:
     return bool(
