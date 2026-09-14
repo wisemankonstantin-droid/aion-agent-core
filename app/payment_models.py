@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, JSON, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -18,11 +18,20 @@ class RouteIntelligencePurchase(Base):
     __tablename__ = "route_intelligence_purchases"
     __table_args__ = (
         UniqueConstraint("purchase_id", name="uq_route_intelligence_purchase_id"),
-        UniqueConstraint("request_digest", name="uq_route_intelligence_request_digest"),
         UniqueConstraint(
             "payment_payload_digest", name="uq_route_intelligence_payment_payload_digest"
         ),
         UniqueConstraint("transaction_id", name="uq_route_intelligence_transaction_id"),
+        Index(
+            "ix_route_intelligence_request_prepared",
+            "request_digest",
+            "prepared_at",
+        ),
+        Index(
+            "ix_route_intelligence_purchase_state_updated",
+            "state",
+            "updated_at",
+        ),
         CheckConstraint(
             "state IN ('prepared', 'settlement_claimed', 'settlement_pending', "
             "'entitled', 'settlement_failed', 'settlement_ambiguous')",
