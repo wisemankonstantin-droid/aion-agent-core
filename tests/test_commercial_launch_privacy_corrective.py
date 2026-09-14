@@ -51,7 +51,7 @@ def _mcp_headers(key: str, *, origin: str | None = None, host: str | None = None
     return headers
 
 
-def _mcp_payload(need: str, candidate_identifier=None):
+def _mcp_payload(need, candidate_identifier=None):
     arguments = {"need": need, "currency": "USD"}
     if candidate_identifier is not None:
         arguments["candidate_identifier"] = candidate_identifier
@@ -278,3 +278,86 @@ def test_openapi_discloses_public_registry_privacy_boundary():
     assert "public a2a registry" in text
     assert "never place secrets" in text
     assert "does not send need" in text
+
+
+def test_rest_non_string_need_is_redacted_before_validation_and_discovery(monkeypatch):
+    key = _agent_key()
+    secret = "OBJECT_SECRET_SHOULD_NOT_ECHO"
+    calls = []
+
+    def discover(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("non-string need reached discovery")
+
+    monkeypatch.setattr(commercial_router, "_DISCOVER", discover)
+    monkeypatch.setattr(commercial_router, "_DISCOVER_BY_IDENTIFIER", discover)
+    response = client.post(
+        "/commercial/routes/plan",
+        headers=_auth(key),
+        json={"need": {"token": secret}, "currency": "USD"},
+    )
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert calls == []
+
+
+def test_unauthenticated_non_string_need_remains_auth_denied_without_echo(monkeypatch):
+    secret = "UNAUTH_OBJECT_SECRET_SHOULD_NOT_ECHO"
+    calls = []
+
+    def discover(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("unauthenticated non-string need reached discovery")
+
+    monkeypatch.setattr(commercial_router, "_DISCOVER", discover)
+    monkeypatch.setattr(commercial_router, "_DISCOVER_BY_IDENTIFIER", discover)
+    response = client.post(
+        "/commercial/routes/plan",
+        json={"need": {"token": secret}, "currency": "USD"},
+    )
+    assert response.status_code in {401, 403}
+    assert secret not in response.text
+    assert calls == []
+
+
+def test_mcp_non_string_need_is_redacted_without_echo_or_discovery(monkeypatch):
+    key = _agent_key()
+    secret = "MCP_OBJECT_SECRET_SHOULD_NOT_ECHO"
+
+    def discover(*args, **kwargs):
+        raise AssertionError("non-string MCP need reached discovery")
+
+    monkeypatch.setattr(commercial_router, "_DISCOVER", discover)
+    monkeypatch.setattr(commercial_router, "_DISCOVER_BY_IDENTIFIER", discover)
+    response = client.post(
+        "/mcp",
+        headers=_mcp_headers(key),
+        json=_mcp_payload({"token": secret}),
+    )
+    assert response.status_code == 200
+    assert secret not in response.text
+    body = response.json()
+    assert body["result"]["isError"] is True
+    assert body["result"]["structuredContent"]["status"] == 422
+
+
+def test_non_string_candidate_identifier_is_redacted_without_echo_or_network(monkeypatch):
+    key = _agent_key()
+    secret = "IDENTIFIER_OBJECT_SECRET_SHOULD_NOT_ECHO"
+
+    def network(*args, **kwargs):
+        raise AssertionError("non-string identifier reached network")
+
+    monkeypatch.setattr(commercial_router, "_DISCOVER", network)
+    monkeypatch.setattr(commercial_router, "_DISCOVER_BY_IDENTIFIER", network)
+    response = client.post(
+        "/commercial/routes/plan",
+        headers=_auth(key),
+        json={
+            "need": "research",
+            "currency": "USD",
+            "candidate_identifier": {"token": secret},
+        },
+    )
+    assert response.status_code == 422
+    assert secret not in response.text
