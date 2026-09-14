@@ -22,6 +22,7 @@ from app.services.paid_route_intelligence import (
     register_paid_route_intelligence_profile,
 )
 from app.services.x402_payment_offer import (
+    ASSET_CODE_ENV,
     ASSET_DECIMALS_ENV,
     ASSET_ENV,
     ASSET_NAME_ENV,
@@ -51,6 +52,7 @@ _X402_ENVS = (
     OFFER_ENABLE_ENV,
     NETWORK_ENV,
     ASSET_ENV,
+    ASSET_CODE_ENV,
     ASSET_NAME_ENV,
     ASSET_VERSION_ENV,
     ASSET_DECIMALS_ENV,
@@ -108,7 +110,8 @@ def _configure_offer(monkeypatch, *, price="1.25", fee="0.10"):
     monkeypatch.setenv(OFFER_ENABLE_ENV, "1")
     monkeypatch.setenv(NETWORK_ENV, "eip155:8453")
     monkeypatch.setenv(ASSET_ENV, "0x" + "1" * 40)
-    monkeypatch.setenv(ASSET_NAME_ENV, "USDC")
+    monkeypatch.setenv(ASSET_CODE_ENV, "USDC")
+    monkeypatch.setenv(ASSET_NAME_ENV, "USD Coin")
     monkeypatch.setenv(ASSET_VERSION_ENV, "2")
     monkeypatch.setenv(ASSET_DECIMALS_ENV, "6")
     monkeypatch.setenv(PAY_TO_ENV, "0x" + "2" * 40)
@@ -148,12 +151,23 @@ def test_offer_requires_complete_exact_asset_configuration(monkeypatch):
     assert payment_offer_readiness()["payment_offer_configured"] is False
 
     _configure_offer(monkeypatch)
-    assert payment_offer_readiness()["payment_offer_configured"] is True
+    readiness = payment_offer_readiness()
+    assert readiness["payment_offer_configured"] is True
+    assert readiness["asset_code"] == "USDC"
+    assert readiness["token_domain_name"] == "USD Coin"
+    assert readiness["truth_boundaries"]["asset_code_is_distinct_from_token_domain_name"] is True
 
-    monkeypatch.setenv(ASSET_NAME_ENV, "USD")
+    monkeypatch.setenv(ASSET_CODE_ENV, "USD")
     mismatch = payment_offer_readiness()
     assert mismatch["payment_offer_configured"] is False
     assert mismatch["launch_ready"] is False
+
+
+def test_token_domain_name_is_not_required_to_equal_economic_asset_code(monkeypatch):
+    _configure_offer(monkeypatch)
+    assert payment_offer_readiness()["payment_offer_configured"] is True
+    required = build_payment_required()
+    assert required["accepts"][0]["extra"]["name"] == "USD Coin"
 
 
 def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypatch):
@@ -167,7 +181,7 @@ def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypat
     assert accepted["scheme"] == "auth-capture"
     assert accepted["network"] == "eip155:8453"
     assert accepted["amount"] == "1250000"
-    assert accepted["extra"]["name"] == "USDC"
+    assert accepted["extra"]["name"] == "USD Coin"
     assert accepted["extra"]["paymentFlow"] == "escrow"
     assert accepted["extra"]["captureMode"] == "deferred"
     assert accepted["extra"]["captureDeadline"] == int(at.timestamp()) + 300
@@ -183,7 +197,6 @@ def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypat
 def test_non_integral_asset_base_units_fail_closed(monkeypatch):
     _configure_offer(monkeypatch, price="0.000001", fee="0")
     monkeypatch.setenv(ASSET_DECIMALS_ENV, "5")
-    # The Economic Kernel price is valid, but cannot map exactly to a 5-decimal asset.
     assert payment_offer_readiness()["payment_offer_configured"] is False
 
 
