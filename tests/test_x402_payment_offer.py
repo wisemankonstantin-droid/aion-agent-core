@@ -95,16 +95,16 @@ def _agent():
     return key
 
 
-def _configure_quote(monkeypatch, *, price="1.25"):
+def _configure_quote(monkeypatch, *, price="1.25", fee="0.10"):
     monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
     monkeypatch.setenv(CURRENCY_ENV, "USDC")
     monkeypatch.setenv(PRICE_ENV, price)
-    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, "0.10")
+    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, fee)
     assert register_paid_route_intelligence_profile() is True
 
 
-def _configure_offer(monkeypatch, *, price="1.25"):
-    _configure_quote(monkeypatch, price=price)
+def _configure_offer(monkeypatch, *, price="1.25", fee="0.10"):
+    _configure_quote(monkeypatch, price=price, fee=fee)
     monkeypatch.setenv(OFFER_ENABLE_ENV, "1")
     monkeypatch.setenv(NETWORK_ENV, "eip155:8453")
     monkeypatch.setenv(ASSET_ENV, "0x" + "1" * 40)
@@ -181,7 +181,7 @@ def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypat
 
 
 def test_non_integral_asset_base_units_fail_closed(monkeypatch):
-    _configure_offer(monkeypatch, price="0.0000001")
+    _configure_offer(monkeypatch, price="0.0000001", fee="0")
     # Seven fractional digits cannot be represented exactly by a six-decimal asset.
     assert payment_offer_readiness()["payment_offer_configured"] is False
 
