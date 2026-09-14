@@ -10,6 +10,7 @@ from sqlalchemy import select, delete, func, text
 from .db import Base, engine, get_db
 from . import models, schemas
 from .agent_card import get_agent_card
+from .agentic_resource_discovery import get_agentic_resource_manifest
 from .services.matching import find_matches
 from .services.capabilities import normalize_capability, capability_matches
 from .services.opportunities import opportunities_for_agent
@@ -643,6 +644,12 @@ def funnel(db: Session = Depends(get_db)):
 def agent_card(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "a2a_agent_card")
     return get_agent_card(canonical_public_origin())
+
+
+@app.get("/.well-known/ai-catalog.json")
+@app.get("/.well-known/ard.json")
+def agentic_resource_discovery():
+    return get_agentic_resource_manifest(canonical_public_origin())
 
 
 @app.get("/.well-known/agent.json")
