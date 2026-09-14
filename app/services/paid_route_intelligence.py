@@ -1,0 +1,131 @@
+"""Fail-closed commercial readiness for AION-owned Verified Route Intelligence.
+
+This module deliberately does not activate a payment rail, provider execution,
+or real-money state transitions. It only makes one AION-owned paid SKU eligible
+for Economic Kernel quoting when an operator supplies a bounded, trusted price
+and maximum merchant-side payment fee. Missing or economically invalid config
+leaves the SKU unregistered and therefore unquotable.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+import os
+
+from .economic_kernel import (
+    STANDARD_TARGET_MARGIN_BPS,
+    TRUSTED_PRODUCT_PROFILES,
+    EconomicKernelError,
+    TrustedEconomicPlan,
+    canonical_money,
+    evaluate_plan,
+)
+
+ROUTE_INTELLIGENCE_SKU = "aion.verified.route_intelligence.v1"
+QUOTE_ENABLE_ENV = "AION_ROUTE_INTELLIGENCE_QUOTE_ENABLED"
+PRICE_ENV = "AION_ROUTE_INTELLIGENCE_PRICE_USD"
+MAX_PAYMENT_FEE_ENV = "AION_ROUTE_INTELLIGENCE_MAX_PAYMENT_FEE_USD"
+
+
+def _configured_money(name: str) -> str | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        value, canonical = canonical_money(raw.strip())
+    except EconomicKernelError:
+        return None
+    if value < 0:
+        return None
+    return canonical
+
+
+def configured_route_intelligence_plan() -> TrustedEconomicPlan | None:
+    """Return a trusted plan only when the full bounded quote config is valid.
+
+    Route Intelligence is AION-owned routing/verification evidence. It does not
+    include resale of a third-party provider result. Current direct variable
+    provider spend is zero; the configured payment fee is treated
+    conservatively as both expected and maximum variable monetary cost.
+    """
+    if os.getenv(QUOTE_ENABLE_ENV) != "1":
+        return None
+
+    price = _configured_money(PRICE_ENV)
+    maximum_payment_fee = _configured_money(MAX_PAYMENT_FEE_ENV)
+    if price is None or maximum_payment_fee is None:
+        return None
+    if Decimal(price) <= 0:
+        return None
+
+    plan = TrustedEconomicPlan(
+        product_sku=ROUTE_INTELLIGENCE_SKU,
+        currency="USD",
+        customer_price=price,
+        expected_variable_cost="0",
+        maximum_variable_cost="0",
+        verification_cost="0",
+        payment_fee_allowance=maximum_payment_fee,
+        maximum_attempts=1,
+        commercial_rights_state="allowed",
+        maximum_total_spend_cap=maximum_payment_fee,
+        direct_expected_cost_per_vuo=maximum_payment_fee,
+    )
+
+    try:
+        evaluated = evaluate_plan(
+            plan,
+            requested_currency="USD",
+            requester_max_price=None,
+        )
+    except EconomicKernelError:
+        return None
+
+    # The Economic Constitution has a 40% hard floor, while AION targets 60%+
+    # for standard paid work. The first commercial SKU should not launch below
+    # the target merely because it clears the absolute floor.
+    if not evaluated["policy_eligible"]:
+        return None
+    if int(evaluated["expected_margin_bps"]) < STANDARD_TARGET_MARGIN_BPS:
+        return None
+    return plan
+
+
+def register_paid_route_intelligence_profile() -> bool:
+    """Register the SKU for quoting only; real-money execution remains disabled."""
+    plan = configured_route_intelligence_plan()
+    if plan is None:
+        TRUSTED_PRODUCT_PROFILES.pop(ROUTE_INTELLIGENCE_SKU, None)
+        return False
+    TRUSTED_PRODUCT_PROFILES[ROUTE_INTELLIGENCE_SKU] = plan
+    return True
+
+
+def route_intelligence_readiness() -> dict:
+    plan = configured_route_intelligence_plan()
+    if plan is None:
+        return {
+            "product_sku": ROUTE_INTELLIGENCE_SKU,
+            "quote_configured": False,
+            "real_money_execution_enabled": False,
+            "provider_execution_enabled": False,
+            "reason": "trusted_price_or_max_payment_fee_missing_or_economically_ineligible",
+        }
+    evaluated = evaluate_plan(
+        plan,
+        requested_currency="USD",
+        requester_max_price=None,
+    )
+    return {
+        "product_sku": ROUTE_INTELLIGENCE_SKU,
+        "quote_configured": True,
+        "currency": evaluated["currency"],
+        "customer_price": evaluated["customer_price"],
+        "maximum_payment_fee": evaluated["payment_fee_allowance"],
+        "expected_margin_bps": evaluated["expected_margin_bps"],
+        "minimum_margin_bps": evaluated["minimum_margin_bps"],
+        "standard_target_margin_bps": evaluated["standard_target_margin_bps"],
+        "policy_eligible": evaluated["policy_eligible"],
+        "real_money_execution_enabled": False,
+        "provider_execution_enabled": False,
+        "commercial_rights_scope": "aion_owned_route_and_verification_intelligence_only",
+    }
