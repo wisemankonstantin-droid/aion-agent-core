@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import sys
 
-from fastapi import Depends, Header
+from fastapi import Header
 from fastapi.responses import JSONResponse
 
-from ..security import require_participation_reader
 from .paid_route_intelligence import ROUTE_INTELLIGENCE_SKU
 from .x402_payment_offer import (
     X402PaymentOfferError,
@@ -83,11 +82,15 @@ def install_commercial_payment_routes(app) -> None:
 
     if "/commercial/route-intelligence/purchase" not in existing:
         def purchase_endpoint(
-            _agent=Depends(require_participation_reader),
             payment_signature: str | None = Header(default=None, alias="PAYMENT-SIGNATURE"),
         ):
             readiness = payment_offer_readiness()
 
+            # AION membership or an AION-issued API key is intentionally NOT a
+            # prerequisite for seeing the payment requirement. A future live
+            # handler must authorize the economic scope from the rail-verified
+            # payment capability itself, without adding owner-identity friction.
+            #
             # Current accepted code has no live signature processor at all. Never
             # parse, echo, persist or reinterpret a signed payload. A later reviewed
             # activation commit must replace this branch with authenticated rail
@@ -99,6 +102,7 @@ def install_commercial_payment_routes(app) -> None:
                         "code": "x402_live_payment_handler_not_implemented",
                         "product_sku": ROUTE_INTELLIGENCE_SKU,
                         "payment_signature_accepted": False,
+                        "aion_membership_required": False,
                         "retryable_after_handler_activation": True,
                     },
                     headers={"Cache-Control": "private, no-store"},
@@ -118,6 +122,7 @@ def install_commercial_payment_routes(app) -> None:
                         "real_money_execution_enabled": readiness[
                             "real_money_execution_enabled"
                         ],
+                        "aion_membership_required": False,
                         "quote_endpoint": readiness["quote_endpoint"],
                     },
                     headers={"Cache-Control": "private, no-store"},
@@ -141,6 +146,7 @@ def install_commercial_payment_routes(app) -> None:
                     "product_sku": ROUTE_INTELLIGENCE_SKU,
                     "protocol": "x402",
                     "x402_version": 2,
+                    "aion_membership_required": False,
                 },
                 headers={
                     "PAYMENT-REQUIRED": encode_payment_required(payment_required),
@@ -155,10 +161,11 @@ def install_commercial_payment_routes(app) -> None:
             include_in_schema=True,
             summary="Purchase AION Verified Route Intelligence through x402",
             description=(
-                "Authenticated buyer surface. Current accepted code is fail-closed: "
-                "until a separately reviewed live payment handler and real-money gate "
-                "are enabled it returns 503 and never accepts PAYMENT-SIGNATURE. When "
-                "all gates are active, the unpaid response uses x402 v2 HTTP 402 with "
-                "PAYMENT-REQUIRED."
+                "Buyer payment surface. AION membership/API-key authentication is not "
+                "required merely to receive the x402 payment requirement. Current "
+                "accepted code remains fail-closed: until a separately reviewed live "
+                "payment handler and real-money gate are enabled it returns 503 and "
+                "never accepts PAYMENT-SIGNATURE. When all gates are active, the "
+                "unpaid response uses x402 v2 HTTP 402 with PAYMENT-REQUIRED."
             ),
         )
