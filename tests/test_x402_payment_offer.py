@@ -1,17 +1,13 @@
-"""Buyer-facing x402 offer tests remain fixture-only and never move money."""
+"""Future auth-capture offer tests remain fixture-only and never move money."""
 
 import base64
 from datetime import datetime, timezone
 import json
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import models
-from app.db import SessionLocal
 from app.main import MCP_TOOLS, app
-from app.security import hash_key
 from app.services import economic_kernel, x402_payment_offer
 from app.services.paid_route_intelligence import (
     CURRENCY_ENV,
@@ -82,21 +78,6 @@ def reset_payment_offer(monkeypatch):
     economic_kernel.TRUSTED_PRODUCT_PROFILES.pop(ROUTE_INTELLIGENCE_SKU, None)
 
 
-def _agent():
-    token = uuid.uuid4().hex
-    key = "aion_x402_buyer_" + token
-    with SessionLocal() as db:
-        row = models.Agent(
-            external_id="x402-buyer-" + token,
-            name="x402 buyer " + token,
-            protocol="REST",
-            api_key_hash=hash_key(key),
-        )
-        db.add(row)
-        db.commit()
-    return key
-
-
 def _configure_quote(monkeypatch, *, price="1.25", fee="0.10"):
     monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
     monkeypatch.setenv(CURRENCY_ENV, "USDC")
@@ -134,7 +115,7 @@ def test_mcp_economic_preflight_metadata_includes_paid_route_intelligence():
     assert len(values) == len(set(values))
 
 
-def test_payment_readiness_is_fail_closed_by_default():
+def test_auth_capture_readiness_is_fail_closed_by_default():
     readiness = payment_offer_readiness()
     assert readiness["quote_configured"] is False
     assert readiness["payment_offer_configured"] is False
@@ -145,7 +126,7 @@ def test_payment_readiness_is_fail_closed_by_default():
     assert readiness["truth_boundaries"]["no_fx_assumption"] is True
 
 
-def test_offer_requires_complete_exact_asset_configuration(monkeypatch):
+def test_auth_capture_offer_requires_complete_exact_asset_configuration(monkeypatch):
     _configure_quote(monkeypatch)
     monkeypatch.setenv(OFFER_ENABLE_ENV, "1")
     assert payment_offer_readiness()["payment_offer_configured"] is False
@@ -170,7 +151,7 @@ def test_token_domain_name_is_not_required_to_equal_economic_asset_code(monkeypa
     assert required["accepts"][0]["extra"]["name"] == "USD Coin"
 
 
-def test_payment_required_is_exact_x402_v2_auth_capture_and_base_units(monkeypatch):
+def test_auth_capture_payment_required_is_x402_v2_and_uses_exact_base_units(monkeypatch):
     _configure_offer(monkeypatch, price="1.25")
     at = datetime(2026, 9, 14, 19, 30, tzinfo=timezone.utc)
     required = build_payment_required(now=at)
@@ -200,58 +181,35 @@ def test_non_integral_asset_base_units_fail_closed(monkeypatch):
     assert payment_offer_readiness()["payment_offer_configured"] is False
 
 
-def test_public_readiness_route_records_no_payment_and_purchase_stays_503(monkeypatch):
+def test_public_readiness_exposes_auth_capture_only_as_future_compatibility(monkeypatch):
     _configure_offer(monkeypatch)
-    key = _agent()
-
-    readiness = client.get("/commercial/route-intelligence/payment-readiness")
-    assert readiness.status_code == 200
-    data = readiness.json()
-    assert data["payment_offer_configured"] is True
-    assert data["launch_ready"] is False
-
-    purchase = client.post(
-        "/commercial/route-intelligence/purchase",
-        headers={"Authorization": "Bearer " + key},
-    )
-    assert purchase.status_code == 503
-    assert purchase.json()["code"] == "x402_payment_rail_not_activated"
-    assert "PAYMENT-REQUIRED" not in purchase.headers
+    response = client.get("/commercial/route-intelligence/payment-readiness")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["preferred_launch_path"] == "exact_upfront"
+    assert data["payment_offer_configured"] is False
+    future = data["future_auth_capture_compatibility"]
+    assert future["payment_offer_configured"] is True
+    assert future["scheme"] == "auth-capture"
+    assert future["launch_ready"] is False
 
 
-def test_signed_payload_is_never_echoed_or_accepted_without_live_handler(monkeypatch):
-    _configure_offer(monkeypatch)
-    key = _agent()
-    secret_signature = "ZXhhbXBsZS1zaWduZWQtcGF5bG9hZA=="
-    response = client.post(
-        "/commercial/route-intelligence/purchase",
-        headers={
-            "Authorization": "Bearer " + key,
-            "PAYMENT-SIGNATURE": secret_signature,
-        },
-    )
-    assert response.status_code == 503
-    body = response.json()
-    assert body["code"] == "x402_live_payment_handler_not_implemented"
-    assert body["payment_signature_accepted"] is False
-    assert secret_signature not in response.text
-    assert "PAYMENT-REQUIRED" not in response.headers
-
-
-def test_402_header_is_emitted_only_when_all_activation_gates_are_true(monkeypatch):
+def test_future_auth_capture_builder_has_independent_activation_gates(monkeypatch):
     _configure_offer(monkeypatch)
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
     monkeypatch.setattr(x402_payment_offer, "LIVE_PAYMENT_HANDLER_IMPLEMENTED", True)
-    key = _agent()
 
     readiness = payment_offer_readiness()
     assert readiness["launch_ready"] is True
-    response = client.post(
-        "/commercial/route-intelligence/purchase",
-        headers={"Authorization": "Bearer " + key},
-    )
-    assert response.status_code == 402
-    required = json.loads(base64.b64decode(response.headers["PAYMENT-REQUIRED"]).decode("utf-8"))
+    required = build_payment_required()
     assert required["x402Version"] == 2
     assert required["accepts"][0]["scheme"] == "auth-capture"
     assert required["accepts"][0]["extra"]["paymentFlow"] == "escrow"
+    # The public purchase route deliberately does not use this future path.
+    purchase = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+    )
+    assert purchase.status_code == 503
+    assert purchase.json()["code"] == "x402_exact_upfront_not_activated"
+    assert "PAYMENT-REQUIRED" not in purchase.headers
