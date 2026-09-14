@@ -215,11 +215,7 @@ def authorize_payment_operation(
     evidence_reference: str,
 ) -> dict:
     """Bind x402 verification to payment_authorized, never funds_reserved."""
-    row = _operation_for_requester(
-        db,
-        requester_agent_id=requester_agent_id,
-        operation_id=operation_id,
-    )
+    row = _operation_for_requester(db, requester_agent_id=requester_agent_id, operation_id=operation_id)
     receipt = verifier.resolve(evidence_reference, lifecycle="verify")
     _bind_receipt_to_amount(receipt, amount=row.customer_price, currency=row.currency)
     return economic_kernel.apply_economic_transition(
@@ -245,11 +241,7 @@ def reserve_funds_operation(
     evidence_reference: str,
 ) -> dict:
     """Create reserve only from successful x402 auth-capture authorize settle."""
-    row = _operation_for_requester(
-        db,
-        requester_agent_id=requester_agent_id,
-        operation_id=operation_id,
-    )
+    row = _operation_for_requester(db, requester_agent_id=requester_agent_id, operation_id=operation_id)
     if row.authorized_amount is None:
         raise economic_kernel.EconomicKernelError(
             409,
@@ -281,11 +273,7 @@ def capture_settlement_operation(
     evidence_reference: str,
 ) -> dict:
     """Record customer settlement only from successful x402 capture evidence."""
-    row = _operation_for_requester(
-        db,
-        requester_agent_id=requester_agent_id,
-        operation_id=operation_id,
-    )
+    row = _operation_for_requester(db, requester_agent_id=requester_agent_id, operation_id=operation_id)
     receipt = verifier.resolve(evidence_reference, lifecycle="capture")
     _bind_receipt_to_amount(receipt, amount=row.customer_price, currency=row.currency)
     return economic_kernel.apply_economic_transition(
@@ -353,16 +341,7 @@ def void_reserved_operation(
         lock=True,
     )
     receipt = verifier.resolve(evidence_reference, lifecycle="void")
-    release_amount = row.reserved_amount
 
-    material = {
-        "to_state": "cancelled",
-        "reason_code": "x402_escrow_void_verified",
-        "amount": release_amount,
-        "currency": row.currency,
-        "evidence_digest": receipt["digest"],
-    }
-    transition_digest = _digest(material)
     existing = db.scalar(
         select(models.EconomicTransition).where(
             models.EconomicTransition.economic_operation_id == row.id,
@@ -370,10 +349,18 @@ def void_reserved_operation(
         )
     )
     if existing is not None:
-        if existing.transition_digest != transition_digest:
+        if (
+            existing.to_state != "cancelled"
+            or existing.reason_code != "x402_escrow_void_verified"
+            or existing.evidence_authority != "payment_rail_verified"
+            or existing.evidence_digest != receipt["digest"]
+            or existing.currency != row.currency
+            or existing.amount != receipt["quote_amount"]
+        ):
             raise economic_kernel.EconomicKernelError(409, "idempotency_conflict", "Void idempotency key was used for different material")
         return economic_kernel.serialize_operation(db, row, idempotent_replay=True)
 
+    release_amount = row.reserved_amount
     if row.state not in {"funds_reserved", "execution_started"}:
         raise economic_kernel.EconomicKernelError(
             409,
@@ -386,6 +373,14 @@ def void_reserved_operation(
         raise economic_kernel.EconomicKernelError(409, "settlement_already_recorded", "Captured settlement cannot be represented as a pre-capture void")
     _bind_receipt_to_amount(receipt, amount=release_amount, currency=row.currency)
 
+    material = {
+        "to_state": "cancelled",
+        "reason_code": "x402_escrow_void_verified",
+        "amount": release_amount,
+        "currency": row.currency,
+        "evidence_digest": receipt["digest"],
+    }
+    transition_digest = _digest(material)
     sequence = (
         db.scalar(
             select(func.max(models.EconomicTransition.sequence)).where(
