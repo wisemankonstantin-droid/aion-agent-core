@@ -1,8 +1,6 @@
 name: AION Bounty Market Scan
 
 on:
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -27,7 +25,6 @@ jobs:
           python - <<'PY'
           import json
           import os
-          import sys
 
           from app.services.bounty_market import list_bounties, list_release_events
 
@@ -67,11 +64,8 @@ jobs:
               "payment_enabled": False,
           }, sort_keys=True))
 
-          # Intentionally do not print titles, descriptions, verification criteria,
-          # bounty IDs, or event payloads because Actions logs are public in this repo.
-          # A non-zero exit is only a signal that the private Bounty dashboard/API
-          # needs operator review; it never claims or submits work.
+          # Public logs intentionally expose counts only. They never print titles,
+          # descriptions, verification criteria, bounty IDs, or event payloads.
           if candidate_count or release_event_count:
               print("AION_BOUNTY_CANDIDATES_PRESENT")
-              raise SystemExit(2)
           PY
