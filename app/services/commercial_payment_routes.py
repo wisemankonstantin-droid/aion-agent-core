@@ -12,7 +12,10 @@ import sys
 from fastapi import Header
 from fastapi.responses import JSONResponse
 
-from .paid_route_intelligence import ROUTE_INTELLIGENCE_SKU
+from .paid_route_intelligence import (
+    ROUTE_INTELLIGENCE_SKU,
+    register_paid_route_intelligence_profile,
+)
 from .x402_payment_offer import (
     X402PaymentOfferError,
     build_payment_required,
@@ -57,6 +60,10 @@ def _patch_mcp_paid_sku_metadata() -> None:
 
 
 def install_commercial_payment_routes(app) -> None:
+    # Resolve the operator-supplied bounded product economics exactly once at
+    # application startup. Missing/invalid config removes the profile, so a
+    # restart cannot accidentally retain a stale in-process paid quote profile.
+    register_paid_route_intelligence_profile()
     _patch_mcp_paid_sku_metadata()
 
     existing = {getattr(route, "path", None) for route in app.router.routes}
