@@ -9,10 +9,11 @@ import uuid
 import urllib.error
 import urllib.request
 
+from app.release_identity import EXPECTED_SCHEMA_REVISION
+
 
 APP_VERSION = "0.8.0"
 MCP_VERSION = "2026-07-28"
-EXPECTED_SCHEMA_REVISION = "0014_conversation_intel_v1"
 MAX_SMOKE_RESPONSE_BYTES = 1024 * 1024
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
