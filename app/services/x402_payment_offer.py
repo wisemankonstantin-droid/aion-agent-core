@@ -26,6 +26,7 @@ from .paid_route_intelligence import (
 OFFER_ENABLE_ENV = "AION_X402_PAYMENT_OFFER_ENABLED"
 NETWORK_ENV = "AION_X402_NETWORK"
 ASSET_ENV = "AION_X402_ASSET"
+ASSET_CODE_ENV = "AION_X402_ASSET_CODE"
 ASSET_NAME_ENV = "AION_X402_ASSET_NAME"
 ASSET_VERSION_ENV = "AION_X402_ASSET_VERSION"
 ASSET_DECIMALS_ENV = "AION_X402_ASSET_DECIMALS"
@@ -47,8 +48,9 @@ LIVE_PAYMENT_HANDLER_IMPLEMENTED = False
 
 _CAIP_EVM = re.compile(r"^eip155:[1-9][0-9]{0,18}$")
 _EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
-_TOKEN_NAME = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+_TOKEN_NAME = re.compile(r"^[A-Za-z0-9 ._-]{1,64}$")
 _TOKEN_VERSION = re.compile(r"^[A-Za-z0-9._-]{1,16}$")
+_ASSET_CODE = re.compile(r"^[A-Z][A-Z0-9]{2,15}$")
 
 
 class X402PaymentOfferError(Exception):
@@ -93,6 +95,7 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
 
     network = (os.getenv(NETWORK_ENV) or "").strip()
     asset = _address(ASSET_ENV)
+    asset_code = (os.getenv(ASSET_CODE_ENV) or "").strip()
     pay_to = _address(PAY_TO_ENV)
     escrow = _address(AUTH_CAPTURE_ESCROW_ENV)
     capture_authorizer = _address(CAPTURE_AUTHORIZER_ENV)
@@ -104,7 +107,7 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
     min_fee_bps = _bounded_int(MIN_FEE_BPS_ENV, minimum=0, maximum=10000)
     max_fee_bps = _bounded_int(MAX_FEE_BPS_ENV, minimum=0, maximum=10000)
     max_timeout = _bounded_int(MAX_TIMEOUT_SECONDS_ENV, minimum=1, maximum=3600)
-    capture_window = _bounded_int( CAPTURE_WINDOW_SECONDS_ENV, minimum=60, maximum=7 * 24 * 3600)
+    capture_window = _bounded_int(CAPTURE_WINDOW_SECONDS_ENV, minimum=60, maximum=7 * 24 * 3600)
     refund_window = _bounded_int(REFUND_WINDOW_SECONDS_ENV, minimum=120, maximum=30 * 24 * 3600)
     transfer_method = (os.getenv(ASSET_TRANSFER_METHOD_ENV) or "").strip()
 
@@ -125,9 +128,9 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
         refund_window,
     }:
         return None
-    if not _TOKEN_NAME.fullmatch(asset_name) or not _TOKEN_VERSION.fullmatch(asset_version):
+    if not _ASSET_CODE.fullmatch(asset_code) or asset_code != plan.currency:
         return None
-    if asset_name != plan.currency:
+    if not _TOKEN_NAME.fullmatch(asset_name) or not _TOKEN_VERSION.fullmatch(asset_version):
         return None
     if min_fee_bps > max_fee_bps:
         return None
@@ -136,18 +139,18 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
     if transfer_method not in {"eip3009", "permit2"}:
         return None
 
-    amount = _exact_base_units(plan.customer_price, decimals)
-    if amount is None:
-        return None
-
-    # The wire-level fee ceiling is a real economic authorization boundary. It
-    # must never exceed the immutable maximum payment-fee allowance already
-    # included in Economic Kernel margin/max-spend calculations. This check is
-    # conservative even when a particular fee recipient may later be AION.
-    wire_fee_ceiling = (
+    # Protocol fee ceilings are percentages of the customer charge, while the
+    # Economic Kernel carries an immutable absolute payment-fee allowance in the
+    # quote asset. The public wire requirement must never authorize a higher fee
+    # than the bounded economic plan allows.
+    maximum_fee_from_bps = (
         Decimal(plan.customer_price) * Decimal(max_fee_bps) / Decimal(10_000)
     )
-    if wire_fee_ceiling > Decimal(plan.payment_fee_allowance):
+    if maximum_fee_from_bps > Decimal(plan.payment_fee_allowance):
+        return None
+
+    amount = _exact_base_units(plan.customer_price, decimals)
+    if amount is None:
         return None
 
     timestamp = now or datetime.now(timezone.utc)
@@ -159,6 +162,7 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
     return {
         "network": network,
         "asset": asset,
+        "asset_code": asset_code,
         "asset_name": asset_name,
         "asset_version": asset_version,
         "asset_decimals": decimals,
@@ -170,7 +174,6 @@ def _configured_offer(*, now: datetime | None = None) -> dict | None:
         "fee_recipient": fee_recipient,
         "min_fee_bps": min_fee_bps,
         "max_fee_bps": max_fee_bps,
-        "wire_fee_ceiling": format(wire_fee_ceiling, "f"),
         "max_timeout_seconds": max_timeout,
         "capture_deadline": capture_deadline,
         "refund_deadline": refund_deadline,
@@ -192,6 +195,8 @@ def payment_offer_readiness() -> dict:
         "x402_version": 2,
         "scheme": "auth-capture",
         "payment_flow": "escrow",
+        "asset_code": offer["asset_code"] if offer is not None else None,
+        "token_domain_name": offer["asset_name"] if offer is not None else None,
         "live_payment_handler_implemented": LIVE_PAYMENT_HANDLER_IMPLEMENTED,
         "real_money_execution_enabled": bool(economic_kernel.REAL_MONEY_EXECUTION_ENABLED),
         "launch_ready": bool(
@@ -210,8 +215,8 @@ def payment_offer_readiness() -> dict:
             "payment_requirement_is_not_authorization": True,
             "payment_signature_is_not_reserve_until_verified_and_authorized": True,
             "stablecoin_is_not_silently_treated_as_fiat": True,
+            "asset_code_is_distinct_from_token_domain_name": True,
             "no_fx_assumption": True,
-            "wire_fee_ceiling_bounded_by_economic_kernel_allowance": True,
         },
     }
 
