@@ -15,14 +15,24 @@ import os
 import re
 import secrets
 from threading import RLock
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 import uuid
 
+from a2a.types import (
+    Message,
+    Part,
+    Role,
+    SendMessageConfiguration,
+    SendMessageRequest,
+    SendMessageResponse,
+)
+from google.protobuf.json_format import MessageToDict, ParseDict
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..public_origin import PublicOriginError, canonical_public_origin
 from . import safe_http
 from .external_registry import discover_external_agents_with_status
 from .identity_resolution import logical_groups
@@ -36,6 +46,13 @@ TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_ACTIVE_REFERRAL_TOKENS_PER_AGENT = 10
 MIN_CONTACT_INTERVAL_SECONDS = 5
 _IDEMPOTENCY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_REGISTRY_IDENTIFIER = re.compile(r"^[A-Za-z0-9._:@/+~-]{1,240}$")
+_URL_SECRET_PATH = re.compile(
+    r"(?i)(?:^|/)(?:bearer|api[_-]?key|password|passwd|secret|token|credential)(?:$|[/=:._-])"
+)
+_LONG_URL_TOKEN = re.compile(
+    r"\b(?=[A-Za-z0-9_+=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+=-]+\b"
+)
 _SQLITE_LOCK = RLock()
 _RESERVED_TRUSTED_ATTRIBUTION = {
     "aion_ambassador_outbound",
@@ -81,6 +98,23 @@ def _key(value: str | None) -> str:
 
 
 def _canonical_public_url(value: str) -> str:
+    text = str(value or "")
+    if (
+        not text
+        or len(text) > 1_000
+        or any(ord(character) <= 32 or ord(character) == 127 for character in text)
+    ):
+        raise AmbassadorError(422, "unsafe_public_destination", "invalid_url")
+    try:
+        lexical = urlsplit(text)
+        _ = lexical.port
+    except ValueError as exc:
+        raise AmbassadorError(422, "unsafe_public_destination", "invalid_port") from exc
+    if lexical.query or lexical.fragment:
+        raise AmbassadorError(422, "unsafe_public_destination", "query_or_fragment_not_allowed")
+    decoded_path = unquote(lexical.path)
+    if _URL_SECRET_PATH.search(decoded_path) or _LONG_URL_TOKEN.search(decoded_path):
+        raise AmbassadorError(422, "unsafe_public_destination", "credential_like_url_path")
     parsed, addresses, reason = safe_http.resolve_public_https(value, max_addresses=4)
     if reason or not addresses or parsed is None:
         raise AmbassadorError(422, "unsafe_public_destination", reason or "destination_not_public")
@@ -94,33 +128,15 @@ def _canonical_public_url(value: str) -> str:
     display_host = f"[{hostname}]" if ":" in hostname else hostname
     netloc = display_host if port in (None, 443) else f"{display_host}:{port}"
     path = (parsed.path or "/").rstrip("/") or "/"
-    return urlunsplit(("https", netloc, path, parsed.query, ""))
+    return urlunsplit(("https", netloc, path, "", ""))
 
 
 def canonical_aion_public_base_url() -> str:
     """Return only the operator-controlled canonical public AION origin."""
-
-    raw = (os.getenv("AION_PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
     try:
-        parsed = urlsplit(raw)
-        port = parsed.port
-    except ValueError as exc:
+        return canonical_public_origin()
+    except PublicOriginError as exc:
         raise AmbassadorError(503, "trusted_public_url_unavailable", "Configured AION public URL is invalid") from exc
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
-        or parsed.path not in ("", "/")
-        or (port is not None and not 1 <= port <= 65535)
-    ):
-        raise AmbassadorError(503, "trusted_public_url_unavailable", "A trusted canonical AION HTTPS origin is required")
-    hostname = parsed.hostname.lower()
-    display_host = f"[{hostname}]" if ":" in hostname else hostname
-    netloc = display_host if port in (None, 443) else f"{display_host}:{port}"
-    return urlunsplit(("https", netloc, "", "", ""))
 
 
 def _target_fingerprint(interaction_url: str) -> str:
@@ -189,7 +205,11 @@ def _qualification(candidate: dict) -> tuple[str, list[str]]:
         reasons.append("payment_required_initial_contact")
     if any(marker in identifier for marker in ("aion-agent-core", "synthetic", "fixture", "test-agent", "probe-test")):
         reasons.append("self_or_test_target")
-    public = (os.getenv("AION_PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
+    try:
+        public = canonical_aion_public_base_url()
+    except AmbassadorError:
+        public = None
+        reasons.append("trusted_public_origin_unavailable")
     if public and candidate.get("interaction_url"):
         try:
             if urlsplit(public).hostname == urlsplit(candidate["interaction_url"]).hostname:
@@ -200,10 +220,15 @@ def _qualification(candidate: dict) -> tuple[str, list[str]]:
 
 
 def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidate: dict) -> tuple[models.AmbassadorTarget | None, str]:
-    source_identifier = str(candidate.get("identifier") or candidate.get("package_name") or "").strip()[:240]
+    source_identifier = str(candidate.get("identifier") or candidate.get("package_name") or "").strip()
     card_url = str(candidate.get("url") or "").strip()
     interaction_url = str(candidate.get("interaction_url") or "").strip()
-    if not source_identifier or not card_url or not interaction_url:
+    if (
+        "://" in source_identifier
+        or not _REGISTRY_IDENTIFIER.fullmatch(source_identifier)
+        or not card_url
+        or not interaction_url
+    ):
         return None, "candidate_missing_bounded_identity"
     if len(card_url) > 1_000 or len(interaction_url) > 1_000:
         return None, "candidate_metadata_too_large"
@@ -318,12 +343,32 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
         raise AmbassadorError(422, "public_url_required", "A public HTTPS AION URL is required")
     message = {
         "sender": "AION", "purpose": "bounded_machine_utility_invitation",
-        "utility": "Inspect current agent-protocol compatibility and try bounded public utility before deciding whether to join.",
+        "utility": "Tell AION what capability or result you need; bounded public utility and discovery are available before optional joining.",
         "agent_card": f"{base}/.well-known/agent-card.json",
         "first_step": {"method": "GET", "url": f"{base}/onboarding", "cost": "known_zero"},
         "join": {"optional": True, "method": "POST", "url": f"{base}/agents", "distribution_token": distribution_token},
-        "next_actions": ["public_utility", "optional_explicit_join", "authenticated_verified_action", "inspect_durable_evidence"],
-        "truth": "Invitation is coordinated AION Ambassador traffic, not independent adoption or a verified useful outcome.",
+        "commercial_route": {
+            "after_optional_join": True,
+            "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
+            "MCP_tool": "plan_commercial_route",
+            "planning_only": True,
+            "fresh_current_job_verification_required_before_execution": True,
+        },
+        "optional_structured_feedback": {
+            "part_type": "A2A data part",
+            "shape": {
+                "aion_feedback": {
+                    "routing_need": "required single-line text, 1-128 characters",
+                    "currency": "USD",
+                    "requester_max_price": "optional decimal preference/ceiling, not funds",
+                    "candidate_identifier": "optional registry/package identifier, not a URL",
+                }
+            },
+            "unknown_or_secret_bearing_fields_rejected": True,
+            "reply_causes_no_payment_or_provider_execution": True,
+        },
+        "next_actions": ["public_utility", "optional_explicit_join", "authenticated_commercial_route_plan", "fresh_current_job_verification_before_future_execution", "inspect_durable_evidence"],
+        "truth": "Invitation is coordinated AION Ambassador traffic, not independent adoption or a verified useful outcome. It performs no provider execution or payment.",
     }
     encoded = json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     if len(encoded) > MAX_MESSAGE_BYTES:
@@ -464,18 +509,78 @@ def suppress_target(db: Session, *, target_id: str, reason: str) -> dict:
 
 def _contact_payload(message: dict, *, target_id: str, idempotency_key: str) -> dict:
     namespace = f"{target_id}:{idempotency_key}:{_digest_json(message)}"
+    official_request = SendMessageRequest(
+        message=Message(
+            message_id=str(uuid.uuid5(uuid.NAMESPACE_URL, "message:" + namespace)),
+            role=Role.ROLE_USER,
+            parts=[
+                Part(
+                    text=json.dumps(
+                        message, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+                    )
+                )
+            ],
+        ),
+        configuration=SendMessageConfiguration(
+            accepted_output_modes=["application/json", "text/plain"],
+            return_immediately=False,
+        ),
+    )
     return {
         "jsonrpc": "2.0",
         "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "rpc:" + namespace)),
-        "method": "message/send",
-        "params": {
-            "message": {
-                "messageId": str(uuid.uuid5(uuid.NAMESPACE_URL, "message:" + namespace)),
-                "role": "ROLE_USER",
-                "parts": [{"text": json.dumps(message, sort_keys=True, separators=(",", ":"))}],
-            }
-        },
+        "method": "SendMessage",
+        "params": MessageToDict(official_request),
     }
+
+
+def _validated_semantic_response(response: object, expected_id: str) -> dict | None:
+    """Return normalized official A2A semantic material only when fully correlated."""
+    if (
+        not isinstance(response, dict)
+        or response.get("jsonrpc") != "2.0"
+        or response.get("id") != expected_id
+        or response.get("error") is not None
+        or not isinstance(response.get("result"), dict)
+    ):
+        return None
+    try:
+        parsed = ParseDict(response["result"], SendMessageResponse())
+        payload_kind = parsed.WhichOneof("payload")
+        if payload_kind not in {"message", "task"}:
+            return None
+        normalized = MessageToDict(parsed)
+    except Exception:
+        return None
+    if payload_kind == "task":
+        state = str(((normalized.get("task") or {}).get("status") or {}).get("state") or "")
+        if state != "TASK_STATE_COMPLETED":
+            return None
+    return {"jsonrpc": "2.0", "id": expected_id, "result": normalized}
+
+
+def _semantic_data_objects(response: dict) -> list[dict]:
+    result = response.get("result") if isinstance(response, dict) else None
+    if not isinstance(result, dict):
+        return []
+    containers = []
+    message = result.get("message")
+    if isinstance(message, dict):
+        containers.append(message)
+    task = result.get("task")
+    if isinstance(task, dict):
+        status_message = (task.get("status") or {}).get("message")
+        if isinstance(status_message, dict):
+            containers.append(status_message)
+        for artifact in task.get("artifacts") or []:
+            if isinstance(artifact, dict):
+                containers.append(artifact)
+    values = []
+    for container in containers:
+        for part in container.get("parts") or []:
+            if isinstance(part, dict) and isinstance(part.get("data"), dict):
+                values.append(part["data"])
+    return values
 
 
 def _prepared_token_for_message(
@@ -620,7 +725,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         target.contact_state = "blocked"
         db.commit()
         raise
-    policy = safe_http.FetchPolicy(timeout_seconds=4.0, max_response_bytes=64_000, max_attempts=1, max_resolved_addresses=4, user_agent="AION-Ambassador-Pilot/0.7.1")
+    policy = safe_http.FetchPolicy(timeout_seconds=4.0, max_response_bytes=64_000, max_attempts=1, max_resolved_addresses=4, user_agent="AION-Ambassador-Pilot/0.8.0")
     try:
         result, response = safe_http.fetch_json("POST", target.interaction_url, payload=payload, headers={"A2A-Version": "1.0"}, policy=policy)
     except Exception:
@@ -629,20 +734,14 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     contact.completed_at = _now()
     contact.response_received = response is not None
     contact.response_digest = _digest_json(response) if response is not None else None
+    semantic_response = _validated_semantic_response(response, str(payload["id"]))
     if result.status == 402 or result.error == "http_402":
         contact.result_class, target.contact_state = "payment_required", "blocked"
     elif result.status in {401, 403}:
         contact.result_class, target.contact_state = "credentials_required", "blocked"
-    elif (
-        result.status is not None
-        and 200 <= result.status < 300
-        and isinstance(response, dict)
-        and response.get("jsonrpc") == "2.0"
-        and (("result" in response) ^ ("error" in response))
-    ):
+    elif result.status is not None and 200 <= result.status < 300 and semantic_response is not None:
         contact.result_class, target.contact_state = "response_received", "response_received"
-        structured_result = response.get("result")
-        if isinstance(structured_result, dict) and structured_result.get("opt_out") is True:
+        if any(item.get("opt_out") is True for item in _semantic_data_objects(semantic_response)):
             target.suppressed = True
             target.suppression_reason = "remote_structured_opt_out"
             target.contact_state = "blocked"
@@ -653,12 +752,12 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     target.updated_at = _now()
     contact_id = contact.contact_id
     db.commit()
-    conversation_capture_state = "no_response"
-    if response is not None:
+    conversation_capture_state = "no_response" if response is None else "invalid_protocol_response"
+    if semantic_response is not None:
         from .conversation_intelligence import capture_ambassador_response
         conversation_capture_state = capture_ambassador_response(
             contact_id=contact_id,
-            response=response,
+            response=semantic_response,
         )
     return {
         "contact_id": contact_id, "target_id": target.target_id,

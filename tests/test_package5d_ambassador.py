@@ -14,7 +14,7 @@ from app import models, schemas
 from app.db import SessionLocal
 from app.main import MCP_VERSION, app
 from app.security import hash_key
-from app.services import ambassador, economic_kernel, package5_proof
+from app.services import ambassador, conversation_intelligence, economic_kernel, package5_proof
 from app.services.external_registry import DiscoveryResult
 from app.services.joining import join_agent
 from app.services.safe_http import FetchResult
@@ -227,6 +227,32 @@ def test_url_canonicalization_preserves_safe_ports_and_endpoint_identity(monkeyp
         ambassador._canonical_public_url("https://example.com:99999/a2a")
 
 
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"identifier": "https://unsafe.example"},
+        {"url": "https://cards.example/card?token=secret"},
+        {"url": "https://cards.example/token/secret-value"},
+        {"interaction_url": "https://agents.example/a2a?tenant=123"},
+        {"interaction_url": "https://agents.example/a2a#fragment"},
+        {"interaction_url": "https://agents.example/credential/secret-value"},
+    ],
+)
+def test_unsafe_registry_identity_or_urls_never_enter_ambassador_shortlist(monkeypatch, override):
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        ambassador.safe_http._socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: [(2, 1, 6, "", ("93.184.216.34", port))],
+    )
+    with SessionLocal() as db:
+        campaign_id = _campaign(db, maximum_targets=1, maximum_contacts=0)
+        campaign = db.scalar(select(models.AmbassadorCampaign).where(models.AmbassadorCampaign.campaign_id == campaign_id))
+        row, outcome = ambassador._insert_candidate(db, campaign, _candidate(**override))
+        assert row is None
+        assert outcome in {"candidate_missing_bounded_identity", "unsafe_public_destination"}
+
+
 def test_message_is_deterministic_bounded_and_ignores_remote_prompt_injection():
     token = "aion_dist_" + "x" * 43
     first = ambassador.build_ambassador_message(public_base_url="https://aion.example", distribution_token=token)
@@ -292,7 +318,11 @@ def test_send_requires_both_gates_and_one_transport_attempt(monkeypatch):
         policies = []
         def respond(*args, **kwargs):
             policies.append(kwargs["policy"])
-            return FetchResult(200, b"{}", None, 1), {"jsonrpc": "2.0", "result": {}}
+            return FetchResult(200, b"{}", None, 1), {
+                "jsonrpc": "2.0",
+                "id": kwargs["payload"]["id"],
+                "result": {"message": {"messageId": "reply", "role": "ROLE_AGENT", "parts": [{"text": "ack"}]}},
+            }
         monkeypatch.setattr(ambassador.safe_http, "fetch_json", respond)
         result = ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="one", send=True)
         assert result["result_class"] == "response_received"
@@ -399,13 +429,79 @@ def test_malformed_response_is_rejected_and_structured_opt_out_is_suppressed(mon
         _, target_id, prepared = _target(db, ready=True)
         monkeypatch.setattr(
             ambassador.safe_http, "fetch_json",
-            lambda *a, **k: (FetchResult(200, b"{}", None, 1), {"jsonrpc": "2.0", "result": {"opt_out": True}}),
+            lambda *a, **k: (
+                FetchResult(200, b"{}", None, 1),
+                {
+                    "jsonrpc": "2.0",
+                    "id": k["payload"]["id"],
+                    "result": {"message": {"messageId": "opt-out", "role": "ROLE_AGENT", "parts": [{"data": {"opt_out": True}}]}},
+                },
+            ),
         )
         accepted = ambassador.send_contact(db, target_id=target_id, message=prepared["message"], idempotency_key="opt-out", send=True)
         assert accepted["result_class"] == "response_received"
         target = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id))
         assert target.suppressed is True
         assert target.suppression_reason == "remote_structured_opt_out"
+
+
+@pytest.mark.parametrize(
+    "response_factory",
+    [
+        lambda request_id: {
+            "jsonrpc": "2.0",
+            "id": "wrong-" + request_id,
+            "result": {"message": {"messageId": "reply", "role": "ROLE_AGENT", "parts": [{"text": "demand"}]}},
+        },
+        lambda request_id: {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32000, "message": "demand must not be captured"},
+        },
+        lambda request_id: {"jsonrpc": "2.0", "id": request_id, "result": {}},
+        lambda request_id: {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "task": {
+                    "id": "task",
+                    "contextId": "context",
+                    "status": {"state": "TASK_STATE_WORKING"},
+                }
+            },
+        },
+    ],
+)
+def test_invalid_semantic_responses_never_enter_conversation_intelligence(
+    monkeypatch, response_factory
+):
+    monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
+    monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")
+    monkeypatch.setattr(
+        conversation_intelligence,
+        "capture_ambassador_response",
+        lambda **kwargs: pytest.fail("invalid protocol response reached market feedback capture"),
+    )
+    with SessionLocal() as db:
+        _, target_id, prepared = _target(db, ready=True)
+        attempts = []
+
+        def respond(*args, **kwargs):
+            attempts.append(kwargs["payload"]["id"])
+            return FetchResult(200, b"{}", None, 1), response_factory(kwargs["payload"]["id"])
+
+        monkeypatch.setattr(ambassador.safe_http, "fetch_json", respond)
+        result = ambassador.send_contact(
+            db,
+            target_id=target_id,
+            message=prepared["message"],
+            idempotency_key="invalid-semantic-" + uuid.uuid4().hex,
+            send=True,
+        )
+        assert result["result_class"] == "rejected"
+        assert result["conversation_capture_state"] == "invalid_protocol_response"
+        assert result["automatic_retry"] is False
+        assert len(attempts) == 1
 
 
 def test_campaign_contact_interval_is_enforced(monkeypatch):

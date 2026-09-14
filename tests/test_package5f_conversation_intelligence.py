@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
+import pytest
 from sqlalchemy import delete, select
 
 from app import models
@@ -139,7 +140,11 @@ def test_digest_only_capture_separates_evidence_from_interpretation():
 def test_structured_opt_out_is_explicit_not_inferred():
     campaign_id, _, contact_id = _seed_contact(suffix="optout")
     try:
-        response = {"jsonrpc": "2.0", "id": "x", "result": {"opt_out": True}}
+        response = {
+            "jsonrpc": "2.0",
+            "id": "x",
+            "result": {"message": {"messageId": "opt-out", "role": "ROLE_AGENT", "parts": [{"data": {"opt_out": True}}]}},
+        }
         assert conversation_intelligence.capture_ambassador_response(contact_id=contact_id, response=response) == "captured"
         with SessionLocal() as db:
             contact = db.scalar(select(models.AmbassadorContactAttempt).where(models.AmbassadorContactAttempt.contact_id == contact_id))
@@ -149,6 +154,116 @@ def test_structured_opt_out_is_explicit_not_inferred():
             assert intelligence.explicit_signals == ["opt_out"]
             assert "positive_interest" not in intelligence.inferred_signals
             assert intelligence.summary == "Counterparty explicitly requested opt-out."
+    finally:
+        _cleanup_campaign(campaign_id)
+
+
+def test_safe_structured_routing_feedback_is_normalized_and_reported_without_raw_text():
+    campaign_id, _, contact_id = _seed_contact(suffix="routing-feedback")
+    response = {
+        "jsonrpc": "2.0",
+        "id": "routing",
+        "result": {
+            "message": {
+                "messageId": "routing-reply",
+                "role": "ROLE_AGENT",
+                "parts": [
+                    {
+                        "data": {
+                            "aion_feedback": {
+                                "routing_need": "  verify an external A2A provider  ",
+                                "currency": "USD",
+                                "requester_max_price": "0.050",
+                                "candidate_identifier": "registry.provider-1",
+                            }
+                        }
+                    }
+                ],
+            }
+        },
+    }
+    try:
+        assert conversation_intelligence.capture_ambassador_response(contact_id=contact_id, response=response) == "captured"
+        with SessionLocal() as db:
+            contact = db.scalar(select(models.AmbassadorContactAttempt).where(models.AmbassadorContactAttempt.contact_id == contact_id))
+            evidence = db.scalar(select(ConversationEvidence).where(ConversationEvidence.ambassador_contact_id == contact.id))
+            assert evidence.safe_evidence == [{
+                "kind": "routing_feedback_v1",
+                "routing_need": "verify an external A2A provider",
+                "currency": "USD",
+                "requester_max_price": "0.05",
+                "candidate_identifier": "registry.provider-1",
+            }]
+            report = conversation_intelligence.campaign_intelligence_report(db, campaign_id)
+            assert report["conversations"][0]["safe_evidence"] == evidence.safe_evidence
+            assert report["truth_boundaries"]["response_is_not_payment_or_revenue"] is True
+            evidence.evidence_expires_at = evidence.captured_at
+            db.add(evidence)
+            db.commit()
+            expired = conversation_intelligence.campaign_intelligence_report(db, campaign_id)
+            assert expired["conversations"][0]["capture_state"] == "expired"
+            assert expired["conversations"][0]["safe_evidence"] == []
+    finally:
+        _cleanup_campaign(campaign_id)
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    [
+        {"routing_need": "research", "currency": "EUR"},
+        {"routing_need": "research", "currency": "USD", "requester_max_price": "01.00"},
+        {"routing_need": "https://secret.example/work", "currency": "USD"},
+        {"routing_need": "research", "currency": "USD", "unknown": "field"},
+        {"routing_need": "api_key=do-not-store", "currency": "USD"},
+        {"routing_need": "token=do-not-store", "currency": "USD"},
+        {"routing_need": "A" * 40, "currency": "USD"},
+        {"routing_need": "research", "currency": "USD", "candidate_identifier": "https://provider.example"},
+    ],
+)
+def test_malformed_or_secret_structured_routing_feedback_is_rejected_entirely(feedback):
+    campaign_id, _, contact_id = _seed_contact(suffix="rejected-" + uuid.uuid4().hex[:8])
+    response = {
+        "jsonrpc": "2.0",
+        "id": "routing",
+        "result": {"message": {"messageId": "reply", "role": "ROLE_AGENT", "parts": [{"data": {"aion_feedback": feedback}}]}},
+    }
+    try:
+        assert conversation_intelligence.capture_ambassador_response(contact_id=contact_id, response=response) == "captured"
+        with SessionLocal() as db:
+            contact = db.scalar(select(models.AmbassadorContactAttempt).where(models.AmbassadorContactAttempt.contact_id == contact_id))
+            evidence = db.scalar(select(ConversationEvidence).where(ConversationEvidence.ambassador_contact_id == contact.id))
+            assert evidence.safe_evidence is None
+            assert evidence.redaction_summary["structured_routing_candidate_rejected"] is True
+            assert "do-not-store" not in json.dumps(evidence.redaction_summary)
+    finally:
+        _cleanup_campaign(campaign_id)
+
+
+def test_opt_out_suppresses_structured_routing_feedback():
+    campaign_id, _, contact_id = _seed_contact(suffix="routing-optout")
+    response = {
+        "jsonrpc": "2.0",
+        "id": "routing",
+        "result": {
+            "message": {
+                "messageId": "reply",
+                "role": "ROLE_AGENT",
+                "parts": [
+                    {"data": {"aion_feedback": {"routing_need": "research", "currency": "USD"}}},
+                    {"data": {"opt_out": True}},
+                ],
+            }
+        },
+    }
+    try:
+        assert conversation_intelligence.capture_ambassador_response(contact_id=contact_id, response=response) == "captured"
+        with SessionLocal() as db:
+            contact = db.scalar(select(models.AmbassadorContactAttempt).where(models.AmbassadorContactAttempt.contact_id == contact_id))
+            evidence = db.scalar(select(ConversationEvidence).where(ConversationEvidence.ambassador_contact_id == contact.id))
+            intelligence = db.scalar(select(ConversationIntelligence).where(ConversationIntelligence.conversation_evidence_id == evidence.id))
+            assert evidence.safe_evidence is None
+            assert evidence.redaction_summary["structured_routing_suppressed_by_opt_out"] is True
+            assert intelligence.explicit_signals == ["opt_out"]
     finally:
         _cleanup_campaign(campaign_id)
 
@@ -222,11 +337,13 @@ def test_semantic_capture_failure_does_not_retry_or_rollback_contact(monkeypatch
         prepared = ambassador.prepare_target(db, target_id=target.target_id, public_base_url="https://aion.example")
 
         calls = []
-        response = {"jsonrpc": "2.0", "id": "rpc", "result": {"parts": [{"text": "need integration"}]}}
-
         def fake_fetch(*args, **kwargs):
             calls.append(1)
-            return FetchResult(200, b"{}", None, 1), response
+            return FetchResult(200, b"{}", None, 1), {
+                "jsonrpc": "2.0",
+                "id": kwargs["payload"]["id"],
+                "result": {"message": {"messageId": "capture", "role": "ROLE_AGENT", "parts": [{"text": "need integration"}]}},
+            }
 
         monkeypatch.setenv("AION_AMBASSADOR_OUTBOUND_ENABLED", "1")
         monkeypatch.setenv("AION_AMBASSADOR_OPERATOR", "1")

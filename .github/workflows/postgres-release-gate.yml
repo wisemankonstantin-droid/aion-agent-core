@@ -14,6 +14,7 @@ on:
       - codex/package-5e-ambassador-operator-control-v1
       - codex/package-5f-conversation-intelligence-v1
       - codex/commercial-router-v1
+      - codex/commercial-launch-readiness-v1
 permissions:
   contents: read
 jobs:

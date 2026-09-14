@@ -267,6 +267,30 @@ cannot create a second customer authorization, reserve, settlement or revenue.
 Package 6B/real-rail activation has not started and
 requires separate acceptance and production Human Gates.
 
+Commercial Router V1 is merged in repository main as an authenticated,
+planning-only bridge from a concrete need to bounded external discovery,
+qualification, evidence-aware ranking and a fail-closed route plan. It performs
+no provider execution, quote, reserve, payment or settlement. Historical
+callability evidence may rank only the same endpoint/protocol identity and does
+not replace fresh current-job verification before any future execution.
+It is not production-live at the Commercial Launch Readiness baseline. Package
+5F is production-live at `5e53fc242ec5beb418be10ee16d068b6b012baf0`, with
+schema `0014_conversation_intel_v1`. Package 6A's controlled `$10`/`$5.5`/`$6`
+values are policy fixtures, not proven market price or provider-cost evidence.
+
+Commercial Launch Readiness exposes that existing value path consistently to
+machine clients through REST and MCP. Its next steps are exact-SHA validation,
+independent review, separately authorized merge and gated manual deployment,
+exact live smoke, passive registry distribution, bounded demand-pilot contact,
+learning from real demand, and only then the
+quote/payment adapter evidence shows is required. Trusted Quote, migration
+`0015`, payment/settlement activation and provider execution remain explicitly
+outside this readiness scope.
+
+Repository `render.yaml` is not authoritative for the current external-Neon
+production infrastructure and must not be Blueprint-synchronized without a
+separate Human Gate.
+
 Implement the controlled economic path:
 
 `quote -> payment authorization -> reserve funds -> execute/spend -> verify outcome -> settle -> record cost/revenue/margin`

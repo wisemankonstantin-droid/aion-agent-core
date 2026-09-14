@@ -36,7 +36,7 @@ def test_health():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
-    assert r.json()["version"] == "0.7.1"
+    assert r.json()["version"] == "0.8.0"
 
 
 def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
@@ -44,11 +44,11 @@ def test_agent_card_is_a2a_v1_and_does_not_overclaim_write_skills():
     assert r.status_code == 200
     card = r.json()
     assert card["name"].startswith("AION")
-    assert card["version"] == "0.7.1"
+    assert card["version"] == "0.8.0"
     assert card["supportedInterfaces"][0]["protocolVersion"] == "1.0"
     assert card["supportedInterfaces"][0]["url"].endswith("/a2a/v1")
     ids = {skill["id"] for skill in card["skills"]}
-    assert {"aion_first_contact", "aion_live_utility", "join_aion", "aion_onboarding", "discover_aion_agents", "discover_external_agents"} <= ids
+    assert {"aion_first_contact", "aion_live_utility", "join_aion", "aion_onboarding", "aion_commercial_route_planning", "discover_aion_agents", "discover_external_agents"} <= ids
     skills = {skill["id"]: skill for skill in card["skills"]}
     assert skills["aion_first_contact"]["examples"] == ["help", '{"action":"first_contact"}']
     assert skills["aion_onboarding"]["examples"] == ['{"action":"onboarding"}']
@@ -99,7 +99,8 @@ def test_onboarding_is_machine_readable():
     data = r.json()
     assert data['audience'] == 'AI agents'
     assert data['cold_start']['external_results_are_not_aion_members'] is True
-    assert "get_opportunities" in data["mcp_path"][3]
+    assert "plan_commercial_route" in data["mcp_path"][3]
+    assert data["commercial_route_planning"]["planning_only"] is True
 
 
 def test_stats_include_activation_signals_and_funnel():
@@ -123,7 +124,7 @@ def test_a2a_version_guard_rejects_old_or_missing_version():
     r=client.post('/a2a/v1',json=payload)
     assert r.status_code==400
     assert r.json()['error']['code']==-32009
-    assert r.json()['error']['data']['requested']=='0.3'
+    assert r.json()['error']['data']['requested']=='missing'
 
 
 

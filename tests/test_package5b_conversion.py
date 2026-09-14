@@ -198,12 +198,12 @@ def test_a2a_onboarding_and_join_expose_cross_interface_path_without_bearer_in_m
 def test_skill_and_llms_are_complete_consistent_and_contain_no_real_credential():
     documents = [client.get("/skill.md").text, client.get("/llms.txt").text]
     for document in documents:
-        assert "POST http://testserver/actions/verify-callability" in document
+        assert "POST https://aion.example/actions/verify-callability" in document
         assert "MCP verify_external_callability" in document
-        assert "GET http://testserver/actions/{action_id}" in document
+        assert "GET https://aion.example/actions/{action_id}" in document
         assert "independent_external_countable" in document
         assert "Late reclassification does not upgrade" in document
-        assert "POST http://testserver/proof/package-5/vuos" in document
+        assert "POST https://aion.example/proof/package-5/vuos" in document
         assert "MCP get_package5_proof" in document
         assert "Callability alone is not a semantic VUO" in document
         assert "requester-confirmed evidence, not independent third-party verification" in document

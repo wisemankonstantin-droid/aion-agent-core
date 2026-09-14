@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 
 
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.8.0"
 MCP_VERSION = "2026-07-28"
 EXPECTED_SCHEMA_REVISION = "0014_conversation_intel_v1"
 MAX_SMOKE_RESPONSE_BYTES = 1024 * 1024
@@ -129,12 +129,15 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         _ok(client, "GET", path)
 
     card = _ok(client, "GET", "/.well-known/agent-card.json")
+    assert card.get("version") == APP_VERSION, card
     interfaces = card.get("supportedInterfaces") or []
     assert any(
         interface.get("protocolBinding") == "JSONRPC"
         and interface.get("protocolVersion") == "1.0"
         for interface in interfaces
     ), card
+    skill_ids = {skill.get("id") for skill in card.get("skills") or []}
+    assert "aion_commercial_route_planning" in skill_ids, card
 
     meta = {
         "io.modelcontextprotocol/protocolVersion": MCP_VERSION,
@@ -154,6 +157,7 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         "get_action_status",
         "submit_learning_evidence",
         "get_package5_proof",
+        "plan_commercial_route",
     }
     assert required_tools <= tool_names, (required_tools, tool_names)
     mcp_utility = _mcp(
@@ -175,6 +179,13 @@ def run_live_smoke(client, expected_sha: str) -> dict:
     )["structuredContent"]
     assert package5["package"] == 5, package5
     assert package5["status"] == "evidence_snapshot", package5
+
+    commercial_route_status, _ = client.request(
+        "POST",
+        "/commercial/routes/plan",
+        {"need": "commercial-launch-boundary", "currency": "USD"},
+    )
+    assert commercial_route_status in {401, 403}, commercial_route_status
 
     utility = _ok(client, "POST", "/utility/query", {"subject": "all"})
     assert utility["action"] == "live_utility", utility
@@ -240,6 +251,10 @@ def run_live_smoke(client, expected_sha: str) -> dict:
         "evidence_submitted": False,
         "vuo_submitted": False,
         "learning_cycle_run": False,
+        "commercial_route_planned": False,
+        "economic_operation_created": False,
+        "payment_intent_created": False,
+        "provider_contacted": False,
     }
 
 

@@ -63,7 +63,7 @@ class FakeLiveClient:
         if path == "/health":
             return 200, {
                 "status": "ok",
-                "version": "0.7.1",
+                "version": "0.8.0",
                 "a2a_runtime": "mounted",
                 "release_sha": self.release_sha,
                 "release_source": "render_git_commit",
@@ -85,7 +85,11 @@ class FakeLiveClient:
                 "release_sha": self.release_sha,
             }
         if path == "/.well-known/agent-card.json":
-            return 200, {"supportedInterfaces": [{"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}]}
+            return 200, {
+                "version": "0.8.0",
+                "supportedInterfaces": [{"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
+                "skills": [{"id": "aion_commercial_route_planning"}],
+            }
         if path in {"/.well-known/aion.json", "/llms.txt", "/openapi.json", "/funnel", "/a2a/status"}:
             return 200, {}
         if path == "/proof/package-5":
@@ -99,7 +103,7 @@ class FakeLiveClient:
             }
         if path == "/a2a/v1":
             return 200, self._a2a(payload)
-        if path in {"/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos"}:
+        if path in {"/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/commercial/routes/plan"}:
             return 401, {"detail": "authentication required"}
         if path == "/mcp":
             rpc_method = payload["method"]
@@ -109,7 +113,7 @@ class FakeLiveClient:
                 result = {"tools": [{"name": name} for name in (
                     "get_live_utility", "verify_external_callability",
                     "get_action_status", "submit_learning_evidence",
-                    "get_package5_proof",
+                    "get_package5_proof", "plan_commercial_route",
                 )]}
             elif payload["params"].get("name") == "get_package5_proof":
                 result = {"structuredContent": {"package": 5, "status": "evidence_snapshot"}}
@@ -226,11 +230,16 @@ def test_live_smoke_checks_stack_without_join_action_or_evidence_mutation():
         "evidence_submitted": False,
         "vuo_submitted": False,
         "learning_cycle_run": False,
+        "commercial_route_planned": False,
+        "economic_operation_created": False,
+        "payment_intent_created": False,
+        "provider_contacted": False,
     }
     paths = [(method, path) for method, path, _, _ in fake.calls]
     assert ("POST", "/agents") not in paths
     assert paths.count(("POST", "/actions/verify-callability")) == 1
     assert paths.count(("POST", "/learning/evidence")) == 1
+    assert paths.count(("POST", "/commercial/routes/plan")) == 1
     assert all(not headers.get("Authorization") for _, _, _, headers in fake.calls)
 
 

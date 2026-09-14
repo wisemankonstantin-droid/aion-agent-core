@@ -275,6 +275,80 @@ def test_valid_a2a_declaration_does_not_contact_interaction_url(monkeypatch):
     assert _Connection.instances[0].requests[0][0] == "GET"
 
 
+def test_a2a_v1_security_requirements_and_exact_interface_are_preferred(monkeypatch):
+    manifest = "https://manifest.example/card"
+    card = {
+        "name": "External Agent",
+        "securityRequirements": [],
+        "supportedInterfaces": [
+            {"url": "https://old.example/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "0.3"},
+            {"url": "https://current.example/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+        ],
+    }
+    _Connection.responses = {"manifest.example": _Response(payload=card)}
+    monkeypatch.setattr(external_registry._socket, "getaddrinfo", lambda *args, **kwargs: PUBLIC_V4)
+    monkeypatch.setattr(external_registry, "_PinnedHTTPSConnection", _Connection)
+    result = external_registry._validate_external({"url": manifest, "followable": True})
+    assert result["authentication_requirement"] == "none"
+    assert result["interaction_url"] == "https://current.example/a2a"
+    assert result["declared_a2a_v1_jsonrpc"] is True
+
+
+@pytest.mark.parametrize(
+    ("security_field", "expected"),
+    [
+        ({"securityRequirements": [{"bearer": []}]}, "credentials_required"),
+        ({"security_requirements": [{"apiKey": []}]}, "credentials_required"),
+        ({"securityRequirements": {}}, "unknown"),
+        ({"securityRequirements": ["malformed"]}, "unknown"),
+    ],
+)
+def test_a2a_security_metadata_fails_closed(monkeypatch, security_field, expected):
+    manifest = "https://manifest.example/card"
+    card = {
+        "name": "External Agent",
+        "supportedInterfaces": [
+            {"url": "https://current.example/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+        **security_field,
+    }
+    _Connection.responses = {"manifest.example": _Response(payload=card)}
+    monkeypatch.setattr(external_registry._socket, "getaddrinfo", lambda *args, **kwargs: PUBLIC_V4)
+    monkeypatch.setattr(external_registry, "_PinnedHTTPSConnection", _Connection)
+    result = external_registry._validate_external({"url": manifest, "followable": True})
+    assert result["authentication_requirement"] == expected
+    assert result["public_no_credentials"] is (expected == "none")
+
+
+@pytest.mark.parametrize(
+    "interaction_url",
+    [
+        "http://provider.example/a2a",
+        "https://" + "user:pass" + "@provider.example/a2a",
+        "https://provider.example/a2a?tenant=123",
+        "https://provider.example/a2a#fragment",
+        "https://provider.example/" + "to" + "ken/se" + "cret-value",
+        "https://provider.example/" + "Abc123" * 8,
+    ],
+)
+def test_interaction_url_identity_is_rejected_not_rewritten(monkeypatch, interaction_url):
+    manifest = "https://manifest.example/card"
+    card = {
+        "name": "External Agent",
+        "securityRequirements": [],
+        "supportedInterfaces": [
+            {"url": interaction_url, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    _Connection.responses = {"manifest.example": _Response(payload=card)}
+    monkeypatch.setattr(external_registry._socket, "getaddrinfo", lambda *args, **kwargs: PUBLIC_V4)
+    monkeypatch.setattr(external_registry, "_PinnedHTTPSConnection", _Connection)
+    result = external_registry._validate_external({"url": manifest, "followable": True})
+    assert result["interaction_url_validated"] is False
+    assert result["interaction_url"] is None
+    assert result["validation_status"] == "unverified"
+
+
 def test_external_response_size_limit_is_preserved(monkeypatch):
     _Connection.responses = {
         "agent.example": _Response(raw=b"x" * (external_registry._AION_MAX_EXTERNAL_BYTES + 1))

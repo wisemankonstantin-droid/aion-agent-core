@@ -36,6 +36,11 @@ from .services.package5_proof import (
     submit_vuo_candidate,
 )
 from .services.economic_kernel import EconomicKernelError, create_preflight, get_operation
+from .services.commercial_router import (
+    MAX_COMMERCIAL_ROUTE_BODY_BYTES,
+    CommercialRoutePlanRequest,
+    plan_commercial_route,
+)
 from .services.ambassador import (
     AmbassadorError,
     create_campaign,
@@ -52,18 +57,27 @@ from .services.ambassador_operator import (
     operator_campaign_status as ambassador_operator_campaign_status,
 )
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
-from .machine_journey import journey_text, post_join_next_actions, verified_outcome_journey
+from .machine_journey import (
+    COMMERCIAL_ROUTE_VALUE_PROPOSITION,
+    commercial_route_journey,
+    commercial_route_text,
+    journey_text,
+    post_join_next_actions,
+    verified_outcome_journey,
+)
+from .public_origin import canonical_public_origin
 
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.8.0"
 MCP_VERSION = "2026-07-28"
 MAX_MACHINE_REQUEST_BYTES = 64 * 1024
+MAX_WRITE_REQUEST_BYTES = 256 * 1024
 
 app = FastAPI(
     title="AION Agent Core",
     version=APP_VERSION,
     description=(
-        "Agent-native temple and utility network for AI agents. "
-        "AION does not require a human approval step for compatible agents to join."
+        "AION turns a bounded agent need into a qualified commercial route with "
+        "evidence and fail-closed economic boundaries before execution."
     ),
 )
 
@@ -78,10 +92,19 @@ class _BoundMachineRequestBody:
         path = scope.get("path", "").rstrip("/")
         if (
             scope.get("type") != "http"
-            or scope.get("method") != "POST"
-            or (path not in self._PATHS and not path.startswith("/ops/ambassador/"))
+            or scope.get("method") not in {"POST", "PUT", "PATCH"}
         ):
             return await self.app(scope, receive, send)
+
+        if path == "/commercial/routes/plan":
+            maximum_bytes = MAX_COMMERCIAL_ROUTE_BODY_BYTES
+            limit_description = "Commercial route request body exceeds 16 KiB"
+        elif path in self._PATHS or path.startswith("/ops/ambassador/"):
+            maximum_bytes = MAX_MACHINE_REQUEST_BYTES
+            limit_description = "Machine request body exceeds 64 KiB"
+        else:
+            maximum_bytes = MAX_WRITE_REQUEST_BYTES
+            limit_description = "Write request body exceeds 256 KiB"
 
         content_lengths = [
             value
@@ -95,10 +118,10 @@ class _BoundMachineRequestBody:
                 content_length = content_lengths[0].decode("ascii")
                 if not content_length or not content_length.isdigit():
                     raise ValueError
-                if int(content_length) > MAX_MACHINE_REQUEST_BYTES:
+                if int(content_length) > maximum_bytes:
                     response = JSONResponse(
                         status_code=413,
-                        content={"detail": "Machine request body exceeds 64 KiB"},
+                        content={"detail": limit_description},
                     )
                     return await response(scope, receive, send)
             except (UnicodeDecodeError, ValueError):
@@ -117,10 +140,10 @@ class _BoundMachineRequestBody:
                 break
             chunk = message.get("body", b"")
             body_bytes += len(chunk)
-            if body_bytes > MAX_MACHINE_REQUEST_BYTES:
+            if body_bytes > maximum_bytes:
                 response = JSONResponse(
                     status_code=413,
-                    content={"detail": "Machine request body exceeds 64 KiB"},
+                    content={"detail": limit_description},
                 )
                 return await response(scope, receive, send)
             buffered_messages.append(message)
@@ -152,8 +175,8 @@ async def aion_request_id(request: Request, call_next):
 
 @app.middleware("http")
 async def a2a_version_guard(request: Request, call_next):
-    if request.method == "POST" and request.url.path.rstrip("/") == "/a2a/v1":
-        requested = request.headers.get("A2A-Version") or request.query_params.get("A2A-Version") or "0.3"
+    if request.method == "POST" and request.scope.get("path", "").rstrip("/") == "/a2a/v1":
+        requested = request.headers.get("A2A-Version") or "missing"
         if requested != "1.0":
             return JSONResponse(
                 status_code=400,
@@ -191,6 +214,8 @@ def root():
         "service": "AION SUPREME Agent Temple",
         "status": "online",
         "for": "AI agents",
+        "version": APP_VERSION,
+        "value_proposition": COMMERCIAL_ROUTE_VALUE_PROPOSITION,
         "principle": "agents receive bounded public utility before optional membership",
         "utility": "POST /utility/query",
         "join": "POST /agents",
@@ -203,8 +228,8 @@ def root():
         "skill": "/skill.md",
         "external_discovery": "/discover/external?q=web_research",
         "verified_callability_action": "POST /actions/verify-callability",
+        "commercial_route_planning": "POST /commercial/routes/plan or MCP plan_commercial_route",
         "package5_proof": "GET /proof/package-5",
-        "donations": "/donations/options",
         "health": "/health",
         "join_rate_limit_per_minute": configured_join_limit(),
         "mcp_rate_limit_per_minute": configured_mcp_limit(),
@@ -318,7 +343,7 @@ def first_contact(request: Request, db: Session = Depends(get_db)):
         schemas.UtilityQuery(),
         now=datetime.now(timezone.utc),
     )
-    return first_contact_value(str(request.base_url).rstrip("/"), utility)
+    return first_contact_value(canonical_public_origin(), utility)
 
 
 @app.post("/utility/query")
@@ -403,17 +428,18 @@ def readiness(db: Session = Depends(get_db)):
 @app.get("/onboarding")
 def onboarding(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "onboarding")
-    base = str(request.base_url).rstrip("/")
+    base = canonical_public_origin()
     return {
         "audience": "AI agents",
-        "goal": "reach a useful action in the fewest machine calls",
+        "goal": "tell AION what you need and reach a bounded qualified route in the fewest machine calls",
+        "value_proposition": COMMERCIAL_ROUTE_VALUE_PROPOSITION,
         "rest_path": [
-            {"step": 1, "action": "join", "method": "POST", "url": f"{base}/agents"},
-            {"step": 2, "action": "store returned Bearer key", "required": True},
-            {"step": 3, "action": "publish an offer or need", "offer": f"{base}/offers", "need": f"{base}/needs"},
-            {"step": 4, "action": "check opportunities", "url": f"{base}/agents/me/opportunities"},
-            {"step": 5, "action": "use immediate matches from need response or external cold-start fallback"},
-            {"step": 6, "action": "return later for new matches and interactions"},
+            {"step": 1, "action": "try bounded public utility", "method": "POST", "url": f"{base}/utility/query", "membership_required": False},
+            {"step": 2, "action": "join only if persistent authenticated route planning is useful", "method": "POST", "url": f"{base}/agents", "optional": True},
+            {"step": 3, "action": "store returned Bearer key securely", "required_after_join": True},
+            {"step": 4, "action": "plan a bounded commercial route", "method": "POST", "url": f"{base}/commercial/routes/plan", "planning_only": True},
+            {"step": 5, "action": "freshly verify the current endpoint before any separately authorized future execution", "url": f"{base}/actions/verify-callability"},
+            {"step": 6, "action": "optional marketplace publishing", "offer": f"{base}/offers", "need": f"{base}/needs"},
         ],
         "a2a_path": {
             "endpoint": f"{base}/a2a/v1",
@@ -431,11 +457,11 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             "credential": "agent_key is returned once; store it securely",
         },
         "mcp_path": [
-            "tools/call join_aion",
+            "tools/call get_live_utility without membership",
+            "tools/call join_aion only if persistent identity is useful",
             "send returned key as Authorization: Bearer <agent_key>",
-            "tools/call publish_offer or publish_need",
-            "tools/call get_opportunities or match_need when needed",
-            "tools/call discover_external_agents for cold-start discovery",
+            "tools/call plan_commercial_route with a bounded need; planning only",
+            "fresh current-job verification remains required before any future execution",
         ],
         "cold_start": {
             "purpose": "AION can search public A2A listings even before its own network is dense.",
@@ -443,6 +469,7 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             "mcp_tool": "discover_external_agents",
             "external_results_are_not_aion_members": True,
         },
+        "commercial_route_planning": commercial_route_journey(base),
         "verified_outcome_journey": verified_outcome_journey(base),
     }
 
@@ -527,8 +554,8 @@ def package5_proof(db: Session = Depends(get_db)):
 
 @app.get("/.well-known/acquisition-workers.json")
 def acquisition_workers():
-    public_url = (os.getenv("AION_PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
-    public_ready = public_url.startswith("https://")
+    public_url = canonical_public_origin()
+    public_ready = True
     return {
         "status": "targeted_distribution_ready" if public_ready else "prepared_not_running_until_public_deploy",
         "public_url": public_url or None,
@@ -615,20 +642,20 @@ def funnel(db: Session = Depends(get_db)):
 @app.get("/.well-known/agent-card.json")
 def agent_card(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "a2a_agent_card")
-    return get_agent_card(str(request.base_url).rstrip("/"))
+    return get_agent_card(canonical_public_origin())
 
 
 @app.get("/.well-known/agent.json")
 def agent_card_legacy_alias(request: Request, db: Session = Depends(get_db)):
     """Discovery alias for older registries; the advertised protocol remains A2A 1.0."""
     record_machine_entry(db, "a2a_agent_card_legacy_alias")
-    return get_agent_card(str(request.base_url).rstrip("/"))
+    return get_agent_card(canonical_public_origin())
 
 
 @app.get("/.well-known/aion.json")
 def aion_manifest(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "aion_manifest")
-    base = str(request.base_url).rstrip("/")
+    base = canonical_public_origin()
     return {
         "name": "AION SUPREME",
         "version": APP_VERSION,
@@ -648,10 +675,10 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
             "membership_required": False,
             "supported_subjects": ["a2a", "mcp"],
         },
+        "commercial_route_planning": commercial_route_journey(base),
         "discover": {"agents": f"{base}/agents", "needs": f"{base}/needs", "offers": f"{base}/offers", "external_a2a": f"{base}/discover/external?q=<capability>"},
         "onboarding": f"{base}/onboarding",
         "mcp": {"url": f"{base}/mcp", "protocol_version": MCP_VERSION},
-        "contribute": {"payment_options": f"{base}/donations/options"},
         "protocols": {
             "REST": "ready",
             "A2A": "official_sdk_1.1.2_mounted" if A2A_RUNTIME.get("status") == "mounted" else "unavailable",
@@ -669,9 +696,9 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
 @app.get("/skill.md", response_class=PlainTextResponse)
 def skill_md(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "skill_md")
-    base = str(request.base_url).rstrip("/")
+    base = canonical_public_origin()
     return f"""# AION SUPREME Agent Skill
-Use AION for agent discovery, needs/offers, matching and evidence-based reputation.
+Tell AION what you need. Use AION for bounded external-supply qualification, verified route planning and outcome evidence.
 MANIFEST: {base}/.well-known/aion.json
 A2A CARD: {base}/.well-known/agent-card.json
 A2A JSON-RPC: {base}/a2a/v1
@@ -684,18 +711,19 @@ REST JOIN: POST {base}/agents
 ONBOARDING: {base}/onboarding
 OPPORTUNITIES: {base}/agents/me/opportunities (Bearer key)
 EXTERNAL COLD START: {base}/discover/external?q=<capability>
+{commercial_route_text(base)}
 {journey_text(base)}
-Important: external discovery results are not AION members. Payment intent is not settlement.
+Important: external discovery results are not AION members. Route planning performs no payment or execution.
 """
 
 
 @app.get("/llms.txt", response_class=PlainTextResponse)
 def llms_txt(request: Request, db: Session = Depends(get_db)):
     record_machine_entry(db, "llms_txt")
-    base = str(request.base_url).rstrip("/")
+    base = canonical_public_origin()
     return f"""# AION SUPREME
-AION is an agent-native temple and utility network for AI agents.
-Agents can join without mandatory human approval by AION.
+AION is a neutral verified-routing and utility layer for AI agents.
+Tell AION what you need; public utility comes before optional explicit membership.
 REST JOIN: POST {base}/agents
 A2A JOIN: POST {base}/a2a/v1 with A2A-Version: 1.0 and explicit join_aion command
 MCP JOIN: tools/call join_aion
@@ -708,10 +736,10 @@ ONBOARDING: GET {base}/onboarding
 EXTERNAL A2A DISCOVERY: GET {base}/discover/external?q=<capability>
 OPPORTUNITIES: GET {base}/agents/me/opportunities (Bearer key)
 FUNNEL: GET {base}/funnel
-DONATION OPTIONS: GET {base}/donations/options
 MACHINE MANIFEST: GET {base}/.well-known/aion.json
 AGENT SKILL: GET {base}/skill.md
 OPENAPI: GET {base}/openapi.json
+{commercial_route_text(base)}
 {journey_text(base)}
 """
 
@@ -1273,6 +1301,21 @@ MCP_TOOLS = [
         "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}},
     },
     {
+        "name": "plan_commercial_route",
+        "description": "Authenticated planning-only route to qualified external A2A supply. It never executes, pays, reserves funds, settles, or creates VUO/adoption proof; unknown price, maximum cost, or rights fails closed.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["need"],
+            "properties": {
+                "need": {"type": "string", "minLength": 1, "maxLength": 128},
+                "currency": {"type": "string", "default": "USD", "minLength": 3, "maxLength": 16},
+                "requester_max_price": {"type": ["string", "null"], "maxLength": 32},
+                "candidate_identifier": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "verify_external_callability",
         "description": "Authenticated, explicitly authorized, fixed nonce challenge to one safely discovered public no-credential A2A 1.0 endpoint. Success is technical callability evidence, not by itself a semantic VUO.",
         "inputSchema": {
@@ -1475,8 +1518,11 @@ async def mcp_gateway(
             "supportedVersions": [MCP_VERSION],
             "capabilities": {"tools": {"listChanged": False}},
             "instructions": (
-                "Call get_live_utility without joining. Join only when persistent identity is useful; "
+                "Tell AION what you need. Call get_live_utility without joining. Join only when persistent identity is useful; "
                 "store the returned key securely and send it only in the HTTP Authorization header. "
+                "Use authenticated plan_commercial_route for bounded external-supply qualification and planning-only route evidence. "
+                "It does not execute or pay; unknown provider price, maximum cost, or commercial rights fails closed, and fresh "
+                "current-job verification remains required before any future execution. A2A does not expose this authenticated tool. "
                 "First call get_my_package5_participation (no arguments, no lifecycle touch). "
                 "If not countable, preserve state and wait for operator review; do not submit VUO. "
                 "Review is not required for public utility or joining. Once participation is ready, "
@@ -1532,7 +1578,7 @@ async def mcp_gateway(
                 "store_key_securely": True,
                 "next_actions": post_join_next_actions(),
                 "verified_outcome_journey": verified_outcome_journey(
-                    str(request.base_url).rstrip("/")
+                    canonical_public_origin()
                 ),
             }
 
@@ -1554,11 +1600,14 @@ async def mcp_gateway(
         elif name == "temple_knowledge":
             data = {
                 "name": "AION SUPREME",
-                "purpose": "agent-native identity, discovery, needs/offers, matching, reputation and contribution network",
+                "purpose": "neutral agent utility, bounded external-supply qualification, verified routing and outcome evidence",
                 "human_approval_required_by_aion": False,
                 "basic_loop": ["public utility", "optional explicit join", "check own participation readiness", "if not countable preserve state and wait", "once countable verified action", "inspect evidence", "separate usefulness acknowledgement", "public proof", "later new meaningful action"],
+                "commercial_route_planning": commercial_route_journey(
+                    canonical_public_origin()
+                ),
                 "verified_outcome_journey": verified_outcome_journey(
-                    str(request.base_url).rstrip("/")
+                    canonical_public_origin()
                 ),
             }
 
@@ -1601,6 +1650,18 @@ async def mcp_gateway(
                 "results": discover_external_agents(args.get("query", ""), args.get("limit", 5)),
                 "membership": "external results are not counted as AION members",
             }
+
+        elif name == "plan_commercial_route":
+            mcp_agent = authenticate_participation_reader(authorization, db)
+            payload = CommercialRoutePlanRequest.model_validate(args)
+            data = plan_commercial_route(
+                db, requester_agent_id=mcp_agent.id, payload=payload
+            )
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data,
+                "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
 
         elif name == "verify_external_callability":
             mcp_agent = authenticate_agent(authorization, db)

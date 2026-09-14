@@ -43,7 +43,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z0-9._:@/+~-]{1,240}$")
 _REMOTE_SECRET = re.compile(
     r"(?i)\b(?:Bearer\s+[^\s,;]+|(?:api[_-]?key|password|passwd|secret|token|credential)\s*[:=]\s*[^\s,;]+)"
 )
-_LONG_REMOTE_TOKEN = re.compile(r"\b(?=[A-Za-z0-9_+/=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+/=-]+\b")
+_LONG_REMOTE_TOKEN = re.compile(r"\b(?=[A-Za-z0-9_+=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+=-]+\b")
 _URL_SECRET_PATH = re.compile(
     r"(?i)(?:^|/)(?:bearer|api[_-]?key|password|passwd|secret|token|credential)(?:$|[/=:._-])"
 )

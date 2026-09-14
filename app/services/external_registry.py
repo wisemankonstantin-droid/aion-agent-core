@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 import os
+import re
 import threading
 import time as _time
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from app.services import safe_http as _safe_http
 
@@ -24,6 +25,12 @@ _AION_VALIDATION_TTL = 600
 _AION_VALIDATION_CACHE_MAX_ENTRIES = 128
 _AION_DISCOVERY_RATE_LIMIT = 30
 _AION_DISCOVERY_RATE_WINDOW_SECONDS = 60
+_URL_SECRET_PATH = re.compile(
+    r"(?i)(?:^|/)(?:bearer|api[_-]?key|password|passwd|secret|token|credential)(?:$|[/=:._-])"
+)
+_LONG_URL_TOKEN = re.compile(
+    r"\b(?=[A-Za-z0-9_+=-]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_+=-]+\b"
+)
 
 _socket = _safe_http._socket
 _ssl = _safe_http._ssl
@@ -147,6 +154,27 @@ def _public_url(url):
     return bool(candidates), reason
 
 
+def _strict_interaction_url(url):
+    text = str(url or "")
+    if (
+        not text
+        or len(text) > 1_000
+        or any(ord(character) <= 32 or ord(character) == 127 for character in text)
+    ):
+        return False, "invalid_interaction_url"
+    try:
+        parsed = urlsplit(text)
+        _ = parsed.port
+    except ValueError:
+        return False, "invalid_port"
+    if parsed.query or parsed.fragment:
+        return False, "interaction_url_query_or_fragment_not_allowed"
+    decoded_path = unquote(parsed.path)
+    if _URL_SECRET_PATH.search(decoded_path) or _LONG_URL_TOKEN.search(decoded_path):
+        return False, "credential_like_interaction_path"
+    return _public_url(text)
+
+
 def _read_json(
     method,
     url,
@@ -166,7 +194,7 @@ def _read_json(
         max_response_bytes=_AION_MAX_EXTERNAL_BYTES,
         max_attempts=max_attempts,
         max_resolved_addresses=4,
-        user_agent="AION-External-Discovery/0.7.1",
+        user_agent="AION-External-Discovery/0.8.0",
     )
     result, data = _safe_http.fetch_json(
         method,
@@ -357,6 +385,7 @@ def _interface(card):
         return None, None, None
     interfaces = card.get("supportedInterfaces") or card.get("supported_interfaces") or []
     if isinstance(interfaces, list):
+        candidates = []
         for interface in interfaces:
             if not isinstance(interface, dict):
                 continue
@@ -372,7 +401,12 @@ def _interface(card):
             )
             url = interface.get("url")
             if binding == "JSONRPC" and url:
-                return url, version or None, "JSONRPC"
+                candidates.append((url, version or None, "JSONRPC"))
+        for candidate in candidates:
+            if candidate[1] == "1.0":
+                return candidate
+        if candidates:
+            return candidates[0]
     url = card.get("url") or card.get("endpoint")
     version = str(card.get("protocolVersion") or card.get("protocol_version") or "")
     if url:
@@ -427,14 +461,23 @@ def _validate_external(row, budget=None):
             state["card_name"] = card.get("name")
             state["card_version"] = card.get("version")
             security_schemes = card.get("securitySchemes", card.get("security_schemes"))
-            security_requirements = card.get("security")
+            marker = object()
+            security_requirements = card.get(
+                "securityRequirements",
+                card.get("security_requirements", card.get("security", marker)),
+            )
             if security_schemes is not None and not isinstance(security_schemes, dict):
                 authentication_requirement = "unknown"
-            elif security_requirements is not None and not isinstance(
-                security_requirements, list
+            elif security_requirements is not marker and (
+                not isinstance(security_requirements, list)
+                or any(not isinstance(item, dict) or not item for item in security_requirements)
             ):
                 authentication_requirement = "unknown"
-            elif security_schemes or security_requirements:
+            elif security_requirements is not marker:
+                authentication_requirement = (
+                    "credentials_required" if security_requirements else "none"
+                )
+            elif security_schemes:
                 authentication_requirement = "credentials_required"
             else:
                 # In the A2A Agent Card schema, absent/empty security
@@ -443,7 +486,6 @@ def _validate_external(row, budget=None):
             state["authentication_requirement"] = authentication_requirement
             state["public_no_credentials"] = authentication_requirement == "none"
             interaction_url, version, binding = _interface(card)
-            state["interaction_url"] = interaction_url
             state["protocol_version"] = version
             state["protocol_binding"] = binding
             state["protocol_declared"] = bool(interaction_url and binding)
@@ -451,10 +493,12 @@ def _validate_external(row, budget=None):
                 interaction_url and binding == "JSONRPC" and str(version) == "1.0"
             )
             if interaction_url:
-                valid_url, validation_error = _public_url(interaction_url)
+                valid_url, validation_error = _strict_interaction_url(interaction_url)
                 state["interaction_url_validated"] = valid_url
+                state["interaction_url"] = interaction_url if valid_url else None
             else:
                 validation_error = "no_interaction_url_declared"
+                state["interaction_url"] = None
 
             if state["declared_a2a_v1_jsonrpc"] and state["interaction_url_validated"]:
                 state["evidence_state"] = "reachable_a2a_v1_declaration"

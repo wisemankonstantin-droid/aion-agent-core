@@ -441,7 +441,7 @@ def _post_challenge(url: str, encoded: bytes):
         max_response_bytes=ACTION_RESPONSE_BYTE_LIMIT,
         max_attempts=ACTION_MAX_POST_ATTEMPTS,
         max_resolved_addresses=4,
-        user_agent="AION-Callability-Action/0.7.1",
+        user_agent="AION-Callability-Action/0.8.0",
     )
     return safe_http.fetch_bytes(
         "POST",

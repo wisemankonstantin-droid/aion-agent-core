@@ -1,4 +1,4 @@
-# AION machine protocol map v0.7.1
+# AION machine protocol map — 0.8.0 release candidate
 
 ## Release identity and readiness
 
@@ -7,14 +7,15 @@ also reports only a validated 40-hex release SHA and its approved source, or an
 explicit unknown value; it does not expose arbitrary environment values.
 
 `GET /readiness` is read-only and non-mutating. The repository implementation checks
-database connectivity, the exact repository Alembic head `0013_ambassador_control_v1`, A2A runtime
+database connectivity, the exact repository Alembic head `0014_conversation_intel_v1`, A2A runtime
 mounting, Package 3B's fixed zero-paid-spend configuration, and release
 identity. A managed runtime is not ready without a valid release SHA. The
 endpoint performs no migration, remote fetch, action, evidence write or
 learning cycle and returns HTTP 503 when any required check fails.
-Production is live on accepted Package 5E SHA
-`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, deploy
-`dep-daj7899594qs73b35g4g`, and schema `0013_ambassador_control_v1`.
+Production is live on Package 5F-lineage SHA
+`5e53fc242ec5beb418be10ee16d068b6b012baf0` and schema
+`0014_conversation_intel_v1`. Commercial Router V1 is merged to repository main
+but is not production-live at this checkpoint.
 AutoDeploy is OFF. The closeout does not claim current Ambassador environment-
 variable values; deployment alone proves no outreach or commercial outcome.
 
@@ -57,6 +58,16 @@ The 64 KiB stream limiter covers preflight and legacy payment-intent writes.
 Free preflight creation also has a bounded process-local per-agent MVP guard
 (default 30/minute, at most 1,024 retained buckets); status reads remain
 read-only and MCP retains its existing shared request guard.
+
+Commercial Router V1 adds authenticated `POST /commercial/routes/plan`. It
+accepts a bounded concrete need plus optional routing constraints, reuses the
+existing safe discovery/evidence services and returns a deterministic
+planning-only result. It does not contact a selected provider, create an
+ActionRun or economic lifecycle record, obtain a quote, reserve funds, pay,
+settle or claim revenue/VUO/adoption. Historical verified callability can affect
+ranking only for the same exact interaction URL and protocol identity; it never
+substitutes for fresh current-job verification before any future execution.
+Unknown provider price, maximum cost or commercial rights remain fail-closed.
 
 Package 5D extends optional explicit join with an optional bounded
 `distribution_token`. A raw token is returned only at intentional issuance and
@@ -133,6 +144,12 @@ Package 6A REST service and retain the same requester scope, trusted-input and
 no-lifecycle-touch semantics. MCP does not expose state transitions, mark-paid,
 reserve, execution, settlement or refund operations. Bearer credentials remain
 in the HTTP Authorization header.
+
+Authenticated `plan_commercial_route` mirrors the REST Commercial Router
+service directly and has no idempotency key because planning is non-mutating.
+It returns the same planning result and does not create lifecycle state or
+contact the selected provider. A2A advertises this as cross-interface guidance
+only; it does not claim an A2A protected route-planning or execution adapter.
 
 ## Package 5 proof semantics
 
@@ -252,7 +269,7 @@ Compatibility card alias: `/.well-known/agent.json`.
 JSON-RPC: `/a2a/v1`.
 Production uses official `a2a-sdk[fastapi]==1.1.2` route factories.
 
-A2A v0.7.1 supports:
+A2A 1.0 in the 0.8.0 release candidate supports:
 - useful `first_contact` without membership
 - public Package 1-backed `live_utility` compatibility results
 - onboarding

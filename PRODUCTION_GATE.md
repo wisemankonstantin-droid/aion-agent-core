@@ -7,6 +7,15 @@
 > `PACKAGE_4_PRODUCTION_CLOSEOUT.md`. This file grants no Package 5 production
 > authorization.
 
+> Current launch pointer (2026-09-14): production is on
+> `5e53fc242ec5beb418be10ee16d068b6b012baf0` at schema
+> `0014_conversation_intel_v1`; Commercial Router V1 is merged to repository
+> main but is not production-live. AION 0.8.0 requires a newly accepted exact
+> SHA, a separate manual-deploy Human Gate, exact live smoke, then passive
+> registry distribution and a bounded demand pilot. `render.yaml` is not the
+> authoritative external-Neon production configuration and must not be synced
+> without a separate Human Gate.
+
 This is the canonical production gate for moving the HQ-accepted Package 1–3B
 stack from deployed SHA `419f11b2a34fdec26269a216de65e9dcf955e963` to a
 future exact approved release SHA. Preparing or merging a candidate does not

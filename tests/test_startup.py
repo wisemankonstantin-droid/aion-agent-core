@@ -35,7 +35,7 @@ def test_migrated_database_and_real_server(tmp_path):
                         log.seek(0)
                         raise AssertionError(log.read())
                     time.sleep(0.1)
-            assert health['version'] == '0.7.1'
+            assert health['version'] == '0.8.0'
             assert health['a2a_runtime'] == 'mounted'
             with urlopen(f'http://127.0.0.1:{port}/stats', timeout=3) as response:
                 assert json.load(response)['agents_raw_rows'] == 0

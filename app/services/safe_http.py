@@ -16,7 +16,7 @@ from typing import Callable, Mapping
 import urllib.parse as _uparse
 
 
-DEFAULT_USER_AGENT = "AION-Live-Utility/0.7.1"
+DEFAULT_USER_AGENT = "AION-Live-Utility/0.8.0"
 
 
 @dataclass(frozen=True, slots=True)

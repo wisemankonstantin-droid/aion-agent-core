@@ -32,7 +32,7 @@ def test_version_and_readiness_surface_v071():
     assert version.json() == {
         "status": "ok",
         "service": "aion-agent-core",
-        "version": "0.7.1",
+        "version": "0.8.0",
         "a2a_protocol": "1.0",
         "mcp_protocol": "2026-07-28",
     }

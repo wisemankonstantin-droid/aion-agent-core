@@ -30,20 +30,25 @@
   corrective merged to main; not deployed).
 - **Package 5E repository starting checkpoint:**
   `373da335367c2ec686ccc0bb8e24c167fad0f672` (preserved historical task start).
+- **Commercial Launch Readiness V1 task baseline:**
+  `76541a7ae342b5344b9a914d496242aae7da2e58`. At this checkpoint, Package 5F,
+  Package 6A and Commercial Router V1 are merged to repository main but are not
+  part of the verified production deployment below.
 - **Live repository state rule:** verify the current branch HEAD directly from
   GitHub. The verified GitHub ref wins over this durable checkpoint document;
   no field here claims that a commit contains its own future SHA.
 - **Repository main at Package 2 task start:**
   `d5257c539dc2bf86411297aca8b787933a1bed42`.
 - **Production deployed SHA:**
-  `c6a976d8af7afa8adc7456a0022fb2b657f5af2e` (HQ-verified Package 5E application).
+  `5e53fc242ec5beb418be10ee16d068b6b012baf0`. Commercial Router V1 is newer
+  repository-main behavior and is not production-live at this checkpoint.
 - **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
 - **Render:** service `aion-agent-core-live`
   (`srv-daei9gpt0dsc73abhs10`) in workspace
   `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **HQ-verified Package 5E production deploy:** `dep-daj7899594qs73b35g4g`
-  (`live`). Verify live state again before any separately authorized production
-  operation.
+- **Historical Package 5E deploy:** `dep-daj7899594qs73b35g4g`. The current
+  production deploy identifier for the newer SHA above is not asserted here;
+  verify external state before any separately authorized production operation.
 - **Deployment architecture:** the controlled direct-source cutover is
   complete. Production builds tracked source directly from GitHub main. The old
   ZIP plus environment-backed runtime-patch architecture is historical and is
@@ -62,19 +67,21 @@
   database ready and the A2A runtime mounted.
 - **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
 - **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0013_ambassador_control_v1`. Render startup
-  showed the additive `0012_ambassador_pilot_v1 ->
+- **Production database revision:** `0014_conversation_intel_v1`. The earlier
+  Package 5E startup showed the additive `0012_ambassador_pilot_v1 ->
   0013_ambassador_control_v1` migration and successful application startup.
   Package 4's
   separately verified historical revision was `0009_continuous_learning_v1`.
+- **Repository Alembic head:** `0014_conversation_intel_v1`.
 - **Production recovery:** the Package 4 Neon manual recovery snapshot was
   restored on a separate rehearsal branch and integrity-checked. Canonical
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
 - **Production boundary:** Package 5 engineering is merged, deployed and live
   at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B, Package 5C, Package 6A, Package 5D and Package 5E are merged and
-  production-live through the verified Package 5E application above. Package
-  6A is present only as disabled economic infrastructure; real-money behavior
+  Package 5B, Package 5C, Package 6A, Package 5D, Package 5E and Package 5F are
+  in the current production ancestry. Commercial Router V1 is merged to main
+  but not production-live. Package 6A is disabled economic infrastructure;
+  real-money behavior
   remains disabled. Deployment does not prove outreach, independent adoption,
   VUO, return, payment, settlement or revenue. This closeout does not claim
   current values for Ambassador environment variables or expose secrets.
@@ -437,6 +444,44 @@ locally. The final local suite passed with 425 tests and the same 15 PostgreSQL
 tests skipped; exact PostgreSQL locking evidence remains pending the corrective
 SHA's pre-production gate. Real money remains disabled, and these fixtures are
 not payment, settlement, revenue, VUO or adoption evidence.
+
+## Package 5F production baseline and Commercial Router V1 repository main
+
+Package 5F Conversation Intelligence V1 is production-live at
+`5e53fc242ec5beb418be10ee16d068b6b012baf0`. Commercial Router V1 is merged to
+repository main at the Commercial Launch Readiness baseline above but is not
+production-live. Repository and production schema are both
+`0014_conversation_intel_v1`; this launch-readiness work adds no migration.
+
+Commercial Router V1 is authenticated planning only:
+`discover -> qualify -> rank -> plan -> fail closed`. Historical verified
+callability may influence ranking only when provider identifier, exact
+interaction URL, protocol binding and protocol version match correlated proof.
+It never establishes current callability: any later real execution still
+requires fresh current-job verification. Planning performs no provider contact,
+action execution, quote, reserve, payment, settlement, revenue/VUO claim or
+route-plan persistence, and unknown price, maximum cost, commercial rights or
+economic authority remain fail-closed. Package 6A's controlled `$10` customer
+price, `$5.5` expected variable cost and `$6` maximum-spend values are policy
+fixtures, not observed market price or provider-cost evidence.
+
+The bounded launch-readiness sequence is to expose this existing planning path
+consistently across machine discovery, REST and MCP, then require a separate
+Human Gate for deployment, proceed to bounded registry/pilot contact, learn
+from real demand, and only then add the quote/payment adapter actually required
+by evidence. Trusted Quote, migration `0015`, real provider execution,
+settlement/payment activation and Package 6B remain separate future work and
+are not part of this readiness change.
+
+Commercial Launch Readiness V1 local validation on the uncommitted candidate
+tree completed with 564 tests passed and 22 disposable-PostgreSQL-only tests
+skipped. The launch/security focus, source-integrity checks, regenerated
+hash-lock installation, dependency check, secret scan, compileall, readiness,
+workflow/manifest parsing, fresh SQLite migration through the sole
+`0014_conversation_intel_v1` head, repeated upgrade, Alembic check and diff
+checks also passed. Exact PostgreSQL 18 behavior remains subject to the
+candidate SHA's pre-production release gate; no local or production PostgreSQL
+result is invented here.
 
 ## Pre-Package-3 audit-correction validation
 

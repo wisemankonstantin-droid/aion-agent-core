@@ -363,7 +363,9 @@ def test_package5f_is_digest_only_truth_separated_and_payment_free():
     assert '"message_text_persisted": False' in service
     assert '"raw_response_persisted": False' in service
     assert '"paid_inference_used": False' in service
-    assert 'safe_evidence=None' in service
+    assert 'safe_evidence=safe_evidence' in service
+    assert "_structured_routing_evidence" in service
+    assert 'state == "captured"' in service
     assert "capture_ambassador_response" in ambassador
     assert ambassador.index("db.commit()", ambassador.index("def send_contact")) < ambassador.index("capture_ambassador_response", ambassador.index("def send_contact"))
     assert "codex/package-5f-conversation-intelligence-v1" in workflow
@@ -392,6 +394,7 @@ def test_commercial_router_is_authenticated_read_only_and_fail_closed():
     assert "safe_http" not in router and "httpx" not in router and "requests" not in router
     assert "install_commercial_router(app)" in a2a
     assert "codex/commercial-router-v1" in workflow
+    assert "codex/commercial-launch-readiness-v1" in workflow
     assert "0015" not in " ".join(migration_names)
 
 

@@ -33,7 +33,7 @@ def test_mcp_discovery_and_tools_list():
     assert r.status_code == 200
     result = r.json()["result"]
     assert result["supportedVersions"] == [MCP_VERSION]
-    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.7.1"
+    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == "0.8.0"
     r = rpc("tools/list")
     result = r.json()["result"]
     names = {t["name"] for t in result["tools"]}

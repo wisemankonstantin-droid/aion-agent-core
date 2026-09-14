@@ -413,9 +413,11 @@ def test_operator_contact_sends_exact_bound_message_without_secret_leak(monkeypa
             assert target.prepared_message_digest == ambassador._digest_json(message)
             assert token.token_digest == ambassador._token_digest(raw_token)
             assert token.campaign_id == target.campaign_id
-        return safe_http.FetchResult(200, b'{}', None, 1), {
-            "jsonrpc": "2.0", "id": payload["id"], "result": {"accepted": True}
-        }
+            return safe_http.FetchResult(200, b'{}', None, 1), {
+                "jsonrpc": "2.0",
+                "id": payload["id"],
+                "result": {"message": {"messageId": "operator-reply", "role": "ROLE_AGENT", "parts": [{"text": "accepted"}]}},
+            }
 
     monkeypatch.setattr(safe_http, "fetch_json", respond)
     response = client.post(

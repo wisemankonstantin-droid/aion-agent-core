@@ -20,7 +20,7 @@ ambassador = (root / "app/services/ambassador.py").read_text(encoding="utf-8")
 conversation_intelligence = (root / "app/services/conversation_intelligence.py").read_text(encoding="utf-8")
 
 checks = {
-    "version_0_7_1": 'APP_VERSION = "0.7.1"' in main,
+    "version_0_8_0": 'APP_VERSION = "0.8.0"' in main,
     "render_blueprint": (root / "render.yaml").exists(),
     "migration_0004": (root / "alembic/versions/0004_reputation_idempotency.py").exists(),
     "migration_0005_live_utility": (root / "alembic/versions/0005_live_utility_persistence.py").exists(),
@@ -130,7 +130,7 @@ checks = {
     "known_limitations": (root / "KNOWN_LIMITATIONS.md").exists(),
     "security_notes": (root / "SECURITY.md").exists(),
     "env_example": (root / ".env.example").exists(),
-    "version_file": (root / "VERSION").read_text(encoding="utf-8").strip() == "0.7.1",
+    "version_file": (root / "VERSION").read_text(encoding="utf-8").strip() == "0.8.0",
     "no_bundled_runtime_db": not (root / "aion.db").exists() and not (root / ".aion-test.db").exists(),
 }
 

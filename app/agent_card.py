@@ -1,17 +1,15 @@
-import os
-
-from .machine_journey import A2A_GUIDANCE_DESCRIPTION
+from .machine_journey import A2A_GUIDANCE_DESCRIPTION, COMMERCIAL_ROUTE_VALUE_PROPOSITION
 
 
 def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for public Live Utility, optional joining, onboarding, discovery, and truthful cross-interface verified-outcome guidance.",
+        "description": "A2A 1.0 gateway for public utility, qualified external-supply discovery, verified route planning through REST/MCP, and truthful outcome evidence.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
-        "version": os.getenv("AION_APP_VERSION", "0.7.1"),
+        "version": "0.8.0",
         "documentationUrl": f"{base_url}/docs",
         "capabilities": {"streaming": False, "pushNotifications": False, "extendedAgentCard": False},
         "defaultInputModes": ["text/plain", "application/json"],
@@ -50,6 +48,16 @@ def get_agent_card(base_url: str):
                 "name": "AION verified-outcome guidance",
                 "description": A2A_GUIDANCE_DESCRIPTION,
                 "tags": ["aion", "guidance", "verified-outcome", "cross-interface"],
+                "examples": ['{"action":"onboarding"}'],
+            },
+            {
+                "id": "aion_commercial_route_planning",
+                "name": "AION commercial route planning",
+                "description": (
+                    COMMERCIAL_ROUTE_VALUE_PROPOSITION
+                    + " Authenticated planning is available through REST/MCP; A2A provides guidance only and does not execute the route."
+                ),
+                "tags": ["aion", "commercial-routing", "planning", "cross-interface"],
                 "examples": ['{"action":"onboarding"}'],
             },
             {

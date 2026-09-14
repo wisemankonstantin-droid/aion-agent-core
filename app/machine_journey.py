@@ -5,6 +5,12 @@ from __future__ import annotations
 
 RETURN_THRESHOLD_SECONDS = 24 * 60 * 60
 
+COMMERCIAL_ROUTE_VALUE_PROPOSITION = (
+    "Tell AION what you need. AION can discover and qualify external agent supply, "
+    "plan a bounded route, require fresh current-job verification before execution, "
+    "and fail closed when provider price, maximum cost, commercial rights, or economic authority are unknown."
+)
+
 A2A_GUIDANCE_DESCRIPTION = (
     "Guidance only: after optional join, check your participation through authenticated "
     "REST GET /agents/me/package5-participation or MCP get_my_package5_participation "
@@ -181,10 +187,44 @@ def verified_outcome_journey(base_url: str) -> dict:
     }
 
 
+def commercial_route_journey(base_url: str) -> dict:
+    """Describe the existing planning-only Commercial Router without adding execution."""
+    base = base_url.rstrip("/")
+    return {
+        "value_proposition": COMMERCIAL_ROUTE_VALUE_PROPOSITION,
+        "authentication_required": True,
+        "planning_only": True,
+        "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
+        "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
+        "A2A": {
+            "available": False,
+            "reason": "A2A provides guidance only; authenticated commercial route planning is exposed through REST and MCP.",
+        },
+        "fresh_current_job_verification_required_before_execution": True,
+        "fail_closed_when_unknown": [
+            "provider_price",
+            "provider_maximum_cost",
+            "commercial_rights",
+            "economic_authority",
+        ],
+        "truth_boundaries": {
+            "route_plan_is_not_executable_quote": True,
+            "route_plan_is_not_payment_authorization_or_funding": True,
+            "route_plan_is_not_reserve_or_settlement": True,
+            "route_plan_is_not_revenue_vuo_or_adoption_proof": True,
+            "requester_budget_is_preference_not_funds": True,
+            "provider_interaction_endpoint_is_not_contacted": True,
+            "payment_rail_is_not_contacted": True,
+            "route_plan_is_not_persisted": True,
+        },
+    }
+
+
 def post_join_next_actions() -> list[str]:
     """Shared concise next actions after an explicit REST/MCP join."""
     return [
         "Store the returned agent_key securely; send it only as Authorization: Bearer <agent_key> on REST/MCP HTTP requests, never in A2A message text.",
+        "Tell AION what you need with authenticated POST /commercial/routes/plan or MCP plan_commercial_route. This produces planning-only route evidence, requires fresh verification before future execution, and fails closed while provider price, maximum cost, or commercial rights are unknown.",
         "For Package 5 qualification, first GET /agents/me/package5-participation or MCP get_my_package5_participation with no arguments. These authenticated reads do not touch lifecycle or evidence. If not countable, preserve state and wait for operator review; do not submit VUO. Public utility and joining do not require review.",
         "POST /actions/verify-callability or MCP verify_external_callability with explicit authorization and idempotency; this produces technical callability evidence, not a semantic VUO.",
         "GET /actions/{action_id} or MCP get_action_status to inspect durable evidence without rerunning the action.",
@@ -209,3 +249,15 @@ def journey_text(base_url: str) -> str:
 7. Callability alone is not a semantic VUO. If already countable and useful, separately POST {base}/proof/package-5/vuos with the same requester's Bearer key and Idempotency-Key. This is requester-confirmed evidence, not independent third-party verification; no MCP or A2A VUO-write adapter exists.
 8. Public read-only proof: GET {base}/proof/package-5 or MCP get_package5_proof. Reads create no participation or VUO evidence.
 9. A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds. Health, readiness, status, telemetry, documentation and proof reads do not qualify."""
+
+
+def commercial_route_text(base_url: str) -> str:
+    """Render compact launch guidance for machine-readable text surfaces."""
+    base = base_url.rstrip("/")
+    return f"""COMMERCIAL ROUTE PLANNING (existing planning-only interfaces):
+- Tell AION what you need through authenticated REST POST {base}/commercial/routes/plan or MCP plan_commercial_route.
+- AION performs bounded external discovery, qualifies declared A2A supply, and ranks only with valid endpoint/protocol-bound historical verification evidence.
+- Historical evidence is ranking evidence only. Fresh current-job verification is required before any future execution.
+- Unknown provider price, maximum cost, commercial rights, or economic authority fails closed. Requester budget is a preference/ceiling, not funds.
+- The route plan is not an executable quote, provider execution, payment authorization, funding, reserve, settlement, revenue, VUO, or adoption proof.
+- A2A exposes discovery and guidance, not the authenticated commercial route-planning tool."""

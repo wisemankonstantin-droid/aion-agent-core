@@ -6,7 +6,6 @@ peer can create its own identity without switching protocols. Only an explicit
 join command creates membership; first contact, discovery and onboarding do not.
 """
 import json
-import os
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -21,15 +20,17 @@ from .services.lifecycle import record_machine_entry, mark_useful_action
 from .services.joining import join_agent
 from .services.first_contact import first_contact_value
 from .services.agent_utility import select_current_utility
-from .machine_journey import A2A_GUIDANCE_DESCRIPTION, verified_outcome_journey
+from .machine_journey import (
+    A2A_GUIDANCE_DESCRIPTION,
+    COMMERCIAL_ROUTE_VALUE_PROPOSITION,
+    commercial_route_journey,
+    verified_outcome_journey,
+)
+from .public_origin import canonical_public_origin
 
 
 def _public_base_url() -> str:
-    return (
-        os.getenv("AION_PUBLIC_URL")
-        or os.getenv("RENDER_EXTERNAL_URL")
-        or "http://127.0.0.1:8000"
-    ).rstrip("/")
+    return canonical_public_origin()
 
 
 def _utility_query_from_command(command: dict | None):
@@ -279,7 +280,7 @@ def install_official_a2a(app):
             else:
                 payload = {
                     "name": "AION SUPREME",
-                    "purpose": "agent-native discovery, collaboration and reputation network",
+                    "purpose": "neutral utility, qualified external-supply discovery, verified routing and outcome evidence",
                     "a2a_gateway": f"{base}/a2a/v1",
                     "join_over_a2a": {
                         "action": "join_aion",
@@ -312,6 +313,7 @@ def install_official_a2a(app):
                     ],
                     "progression": "first contact -> immediate utility -> optional onboarding -> explicit join",
                     "important": "Only an explicit join_aion command creates membership. First-contact, discovery and onboarding calls do not.",
+                    "commercial_route_planning": commercial_route_journey(base),
                     "verified_outcome_journey": verified_outcome_journey(base),
                 }
 
@@ -322,8 +324,8 @@ def install_official_a2a(app):
 
     card = AgentCard(
         name="AION SUPREME Temple Gateway",
-        description="A2A 1.0 gateway for public Live Utility, optional joining, onboarding, discovery, and truthful cross-interface verified-outcome guidance.",
-        version=os.getenv("AION_APP_VERSION", "0.7.1"),
+        description="A2A 1.0 gateway for public utility, qualified external-supply discovery, verified route planning through REST/MCP, and truthful outcome evidence.",
+        version="0.8.0",
         default_input_modes=["text/plain", "application/json"],
         default_output_modes=["application/json", "text/plain"],
         capabilities=AgentCapabilities(streaming=False),
@@ -368,6 +370,16 @@ def install_official_a2a(app):
                 name="AION verified-outcome guidance",
                 description=A2A_GUIDANCE_DESCRIPTION,
                 tags=["aion", "guidance", "verified-outcome", "cross-interface"],
+                examples=['{"action":"onboarding"}'],
+            ),
+            AgentSkill(
+                id="aion_commercial_route_planning",
+                name="AION commercial route planning",
+                description=(
+                    COMMERCIAL_ROUTE_VALUE_PROPOSITION
+                    + " Authenticated planning is available through REST/MCP; A2A provides guidance only and does not execute the route."
+                ),
+                tags=["aion", "commercial-routing", "planning", "cross-interface"],
                 examples=['{"action":"onboarding"}'],
             ),
             AgentSkill(

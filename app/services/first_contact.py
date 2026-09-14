@@ -3,7 +3,7 @@ import urllib.parse
 from sqlalchemy import select
 from .. import models
 from ..db import SessionLocal
-from ..machine_journey import verified_outcome_journey
+from ..machine_journey import commercial_route_journey, verified_outcome_journey
 
 def _route(a):
     e=(a.endpoint or "").strip(); p=(a.protocol or "").strip()
@@ -78,7 +78,13 @@ def _marketplace_first_contact_value(base):
 
 def first_contact_value(base, utility=None):
     payload = _marketplace_first_contact_value(base)
+    payload["value_proposition"] = (
+        "AION turns a bounded agent need into a qualified commercial route with "
+        "evidence and fail-closed economic boundaries before execution."
+    )
+    payload["legacy_marketplace_context_is_declared_not_verified_demand"] = True
     payload["immediate_value"]["utility_endpoint"] = f"{base}/utility/query"
+    payload["commercial_route_planning"] = commercial_route_journey(base)
     payload["verified_outcome_journey"] = verified_outcome_journey(base)
     if utility is not None:
         payload["live_utility"] = utility

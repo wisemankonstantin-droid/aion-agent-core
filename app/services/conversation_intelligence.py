@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import re
 import uuid
 
 from sqlalchemy import select
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..conversation_models import ConversationEvidence, ConversationIntelligence
 from ..db import SessionLocal
+from .economic_kernel import EconomicKernelError, canonical_money
 
 
 ANALYSIS_METHOD = "deterministic_rules_v1"
@@ -28,6 +30,12 @@ MAX_FRAGMENTS = 16
 MAX_FRAGMENT_CHARS = 512
 MAX_ANALYSIS_CHARS = 4096
 MAX_CAMPAIGN_TARGETS = 30
+MAX_STRUCTURED_FEEDBACK_BYTES = 2_048
+_ROUTER_IDENTIFIER = re.compile(r"^[A-Za-z0-9._:@/+~-]{1,240}$")
+_SECRET_LIKE = re.compile(
+    r"(?i)(?:bearer\s+|api[_-]?key|password|passwd|secret|credential|access[_-]?token|private[_-]?key|(?:auth[_-]?)?token\s*[:=])"
+)
+_LONG_TOKEN_LIKE = re.compile(r"[A-Za-z0-9_-]{32,}")
 
 _PATTERNS = {
     "need": ("need ", "looking for", "require ", "want "),
@@ -101,6 +109,96 @@ def _known_text(response: dict) -> list[str]:
     return values[:MAX_FRAGMENTS]
 
 
+def _complete_data_objects(response: dict) -> list[dict]:
+    """Read only complete official A2A data parts; never truncated text fragments."""
+    result = response.get("result") if isinstance(response, dict) else None
+    if not isinstance(result, dict):
+        return []
+    containers = []
+    message = result.get("message")
+    if isinstance(message, dict):
+        containers.append(message)
+    task = result.get("task")
+    if isinstance(task, dict):
+        status_message = (task.get("status") or {}).get("message")
+        if isinstance(status_message, dict):
+            containers.append(status_message)
+        for artifact in task.get("artifacts") or []:
+            if isinstance(artifact, dict):
+                containers.append(artifact)
+    values = []
+    for container in containers:
+        for part in container.get("parts") or []:
+            if isinstance(part, dict) and isinstance(part.get("data"), dict):
+                values.append(part["data"])
+    return values
+
+
+def _structured_routing_evidence(response: dict) -> tuple[list[dict] | None, bool, bool]:
+    """Return allowlisted feedback, opt-out state, and whether a candidate was rejected."""
+    data_objects = _complete_data_objects(response)
+    opted_out = any(item.get("opt_out") is True for item in data_objects)
+    candidates = [item for item in data_objects if "aion_feedback" in item]
+    if opted_out:
+        return None, True, bool(candidates)
+    if not candidates:
+        return None, False, False
+    if len(candidates) != 1 or set(candidates[0]) != {"aion_feedback"}:
+        return None, False, True
+    feedback = candidates[0].get("aion_feedback")
+    allowed = {"routing_need", "currency", "requester_max_price", "candidate_identifier"}
+    if not isinstance(feedback, dict) or set(feedback) - allowed:
+        return None, False, True
+    try:
+        encoded = json.dumps(feedback, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    except (TypeError, ValueError):
+        return None, False, True
+    if (
+        len(encoded.encode("utf-8")) > MAX_STRUCTURED_FEEDBACK_BYTES
+        or _SECRET_LIKE.search(encoded)
+        or _LONG_TOKEN_LIKE.search(encoded)
+    ):
+        return None, False, True
+    routing_need = feedback.get("routing_need")
+    if not isinstance(routing_need, str):
+        return None, False, True
+    normalized_need = routing_need.strip()
+    if (
+        not 1 <= len(normalized_need) <= 128
+        or "\n" in normalized_need
+        or "\r" in normalized_need
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized_need)
+        or re.search(r"(?i)(?:https?://|www\.)", normalized_need)
+    ):
+        return None, False, True
+    if feedback.get("currency") != "USD":
+        return None, False, True
+    normalized = {
+        "kind": "routing_feedback_v1",
+        "routing_need": normalized_need,
+        "currency": "USD",
+    }
+    maximum_price = feedback.get("requester_max_price")
+    if maximum_price is not None:
+        if not isinstance(maximum_price, str):
+            return None, False, True
+        try:
+            _, normalized_price = canonical_money(maximum_price)
+        except EconomicKernelError:
+            return None, False, True
+        normalized["requester_max_price"] = normalized_price
+    identifier = feedback.get("candidate_identifier")
+    if identifier is not None:
+        if (
+            not isinstance(identifier, str)
+            or "://" in identifier
+            or not _ROUTER_IDENTIFIER.fullmatch(identifier)
+        ):
+            return None, False, True
+        normalized["candidate_identifier"] = identifier
+    return [normalized], False, False
+
+
 def _protocol_digests(response: dict) -> dict[str, str | None]:
     result = response.get("result") if isinstance(response, dict) else None
     context_id = task_id = message_id = None
@@ -123,8 +221,7 @@ def _protocol_digests(response: dict) -> dict[str, str | None]:
 
 def _signals(response: dict, fragments: list[str]) -> tuple[list[str], list[str]]:
     explicit = set()
-    result = response.get("result") if isinstance(response, dict) else None
-    if isinstance(result, dict) and result.get("opt_out") is True:
+    if any(item.get("opt_out") is True for item in _complete_data_objects(response)):
         explicit.add("opt_out")
     combined = " ".join(fragments)[:MAX_ANALYSIS_CHARS].lower()
     inferred = {
@@ -160,6 +257,7 @@ def capture_ambassador_response(*, contact_id: str, response: object) -> str:
             if existing is not None:
                 return "captured"
             fragments = _known_text(response)
+            safe_evidence, opted_out, structured_rejected = _structured_routing_evidence(response)
             explicit, inferred = _signals(response, fragments)
             digests = _protocol_digests(response)
             combined = "\n".join(fragments)[:MAX_ANALYSIS_CHARS]
@@ -174,13 +272,16 @@ def capture_ambassador_response(*, contact_id: str, response: object) -> str:
                 protocol_context_digest=digests["context"],
                 protocol_task_digest=digests["task"],
                 protocol_message_digest=digests["message"],
-                safe_evidence=None,
+                safe_evidence=safe_evidence,
                 redaction_summary={
                     "message_text_persisted": False,
                     "raw_response_persisted": False,
                     "semantic_fragment_count": len(fragments),
                     "semantic_material_digest": _digest(combined) if fragments else None,
                     "semantic_chars_analyzed": len(combined),
+                    "structured_routing_evidence_retained": bool(safe_evidence),
+                    "structured_routing_candidate_rejected": structured_rejected,
+                    "structured_routing_suppressed_by_opt_out": opted_out and structured_rejected,
                 },
                 evidence_bytes=0,
                 evidence_expires_at=now + timedelta(days=EVIDENCE_RETENTION_DAYS),
@@ -289,7 +390,7 @@ def campaign_intelligence_report(db: Session, campaign_id: str) -> dict:
             "protocol_context_digest": evidence.protocol_context_digest if evidence else None,
             "protocol_task_digest": evidence.protocol_task_digest if evidence else None,
             "protocol_message_digest": evidence.protocol_message_digest if evidence else None,
-            "safe_evidence": [],
+            "safe_evidence": list(evidence.safe_evidence or []) if evidence and state == "captured" else [],
             "summary": intelligence.summary if intelligence else None,
             "explicit_signals": explicit,
             "inferred_signals": inferred,
