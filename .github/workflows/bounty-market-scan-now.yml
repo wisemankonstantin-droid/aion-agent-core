@@ -1,0 +1,59 @@
+name: AION Bounty Market Scan Now
+
+on:
+  push:
+    branches:
+      - ops/bounty-market-scan-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BOUNTY_AGENT_API_KEY: ${{ secrets.BOUNTY_AGENT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: pip install --require-hashes -r requirements.txt
+      - name: Poll Bounty read-only counts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from app.services.bounty_market import list_bounties, list_release_events
+
+          if not os.getenv("BOUNTY_AGENT_API_KEY"):
+              print(json.dumps({"status":"not_configured","write_operations_enabled":False,"payment_enabled":False}, sort_keys=True))
+              raise SystemExit(0)
+
+          bounties = list_bounties()
+          events = list_release_events(limit=50)
+          if bounties.status != "success" or events.status != "success":
+              print(json.dumps({
+                  "status":"provider_check_failed",
+                  "bounty_status":bounties.status,
+                  "bounty_failure_class":bounties.failure_class,
+                  "event_status":events.status,
+                  "event_failure_class":events.failure_class,
+                  "write_operations_enabled":False,
+                  "payment_enabled":False,
+              }, sort_keys=True))
+              raise SystemExit(1)
+
+          print(json.dumps({
+              "status":"success",
+              "candidate_count":len(bounties.results),
+              "release_event_count":len(events.results),
+              "write_operations_enabled":False,
+              "claim_enabled":False,
+              "submission_enabled":False,
+              "payment_enabled":False,
+          }, sort_keys=True))
+          PY
