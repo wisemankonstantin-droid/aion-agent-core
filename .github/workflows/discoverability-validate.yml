@@ -1,0 +1,72 @@
+name: AION Discoverability Validate
+
+on:
+  push:
+    branches:
+      - fix/commercial-launch-privacy-origin-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate A2A v1 Agent Card source
+        env:
+          AION_PUBLIC_URL: https://aion-agent-core-live.onrender.com
+        run: |
+          python - <<'PY'
+          import os
+          from app.agent_card import get_agent_card
+
+          base = os.environ["AION_PUBLIC_URL"].rstrip("/")
+          card = get_agent_card(base)
+          assert card["name"] == "AION SUPREME Temple Gateway"
+          assert card["version"] == "0.8.0"
+          assert card["supportedInterfaces"] == [{
+              "url": base + "/a2a/v1",
+              "protocolBinding": "JSONRPC",
+              "protocolVersion": "1.0",
+          }]
+          assert card["defaultInputModes"]
+          assert card["defaultOutputModes"]
+          assert card["capabilities"]["streaming"] is False
+          assert card["capabilities"]["pushNotifications"] is False
+          assert card["skills"]
+          assert all(skill.get("id") and skill.get("name") and skill.get("description") and skill.get("tags") for skill in card["skills"])
+          ids = {skill["id"] for skill in card["skills"]}
+          assert "aion_commercial_route_planning" in ids
+          assert "aion_live_utility" in ids
+          print("A2A DISCOVERABILITY METADATA PASS")
+          PY
+      - name: Generate MCP Registry server.json
+        env:
+          AION_PUBLIC_URL: https://aion-agent-core-live.onrender.com
+        run: python scripts/render_server_json.py
+      - name: Verify MCP metadata identity
+        run: |
+          python - <<'PY'
+          import json
+          data = json.load(open("server.json", encoding="utf-8"))
+          assert data["name"] == "io.github.wisemankonstantin-droid/aion-agent-core"
+          assert data["version"] == "0.8.0"
+          assert data["remotes"] == [{"type": "streamable-http", "url": "https://aion-agent-core-live.onrender.com/mcp"}]
+          assert data["repository"]["url"] == "https://github.com/wisemankonstantin-droid/aion-agent-core"
+          print("MCP METADATA IDENTITY PASS")
+          PY
+      - name: Install pinned mcp-publisher
+        run: |
+          curl --fail --location --silent --show-error \
+            --output mcp-publisher_linux_amd64.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz"
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher_linux_amd64.tar.gz" | sha256sum --check --strict
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+          chmod +x mcp-publisher
+      - name: Validate MCP Registry server.json only
+        run: ./mcp-publisher validate server.json
