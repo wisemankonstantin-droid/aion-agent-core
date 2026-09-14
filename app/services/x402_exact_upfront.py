@@ -3,7 +3,7 @@
 The contract is intentionally separate from the future auth-capture escrow path.
 With ``upfront`` the facilitator settles before AION releases the prepared
 resource, matching AION's PAY BEFORE EXECUTION law without pretending that a
-settled payment is a reserve.
+settled payment is a reserve. V1 deliberately supports EIP-3009 only.
 """
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def configured_exact_upfront_offer() -> dict | None:
         return None
     if not _TOKEN_NAME.fullmatch(token_name) or not _TOKEN_VERSION.fullmatch(token_version):
         return None
-    if transfer_method not in {"eip3009", "permit2"}:
+    if transfer_method != "eip3009":
         return None
 
     amount = _base_units(plan.customer_price, decimals)
@@ -127,7 +127,7 @@ def exact_payment_requirements() -> dict:
     if offer is None:
         raise ExactUpfrontError(
             "x402_exact_upfront_not_configured",
-            "Bounded x402 exact upfront offer is not fully configured",
+            "Bounded x402 exact upfront EIP-3009 offer is not fully configured",
         )
     return {
         "scheme": "exact",
@@ -139,7 +139,7 @@ def exact_payment_requirements() -> dict:
         "extra": {
             "name": offer["token_name"],
             "version": offer["token_version"],
-            "assetTransferMethod": offer["asset_transfer_method"],
+            "assetTransferMethod": "eip3009",
             "paymentFlow": "upfront",
         },
     }
@@ -190,6 +190,7 @@ def exact_upfront_readiness() -> dict:
         "x402_version": 2,
         "scheme": "exact",
         "payment_flow": "upfront",
+        "asset_transfer_method": "eip3009",
         "quote_configured": bool(product.get("quote_configured")),
         "payment_offer_configured": configured,
         "facilitator_credentials_configured": credentials_present,
@@ -211,5 +212,6 @@ def exact_upfront_readiness() -> dict:
             "requester_budget_is_not_funds": True,
             "no_hidden_fx": True,
             "raw_payment_signature_persisted": False,
+            "permit2_not_in_launch_scope": True,
         },
     }
