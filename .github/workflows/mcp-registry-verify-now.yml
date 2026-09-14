@@ -1,4 +1,4 @@
-name: AION MCP Registry Verify Now
+name: AION AgentNative Free Canary
 
 on:
   push:
@@ -9,60 +9,83 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  canary:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Query official MCP Registry read-only API
+      - name: Send one free A2A sample request
         shell: bash
         run: |
           python - <<'PY'
           import json
-          import urllib.parse
+          import urllib.error
           import urllib.request
+          import uuid
 
-          target_name = "io.github.wisemankonstantin-droid/aion-agent-core"
-          target_version = "0.8.0"
-          query = urllib.parse.urlencode({
-              "search": "wisemankonstantin-droid",
-              "version": "latest",
-              "limit": 100,
-          })
-          url = f"https://registry.modelcontextprotocol.io/v0.1/servers?{query}"
-          req = urllib.request.Request(url, headers={"User-Agent": "AION-registry-verify/1.0"})
-          with urllib.request.urlopen(req, timeout=20) as response:
-              payload = json.load(response)
-
-          matches = []
-          for row in payload.get("servers", []):
-              server = row.get("server", {})
-              if server.get("name") == target_name:
-                  official = row.get("_meta", {}).get("io.modelcontextprotocol.registry/official", {})
-                  matches.append({
-                      "name": server.get("name"),
-                      "version": server.get("version"),
-                      "status": official.get("status"),
-                      "is_latest": official.get("isLatest"),
-                  })
-
-          result = {
-              "registry": "official_mcp_registry",
-              "exact_match_count": len(matches),
-              "matches": matches,
-              "expected_name": target_name,
-              "expected_version": target_version,
-              "read_only": True,
+          endpoint = "https://agentnative.cazimedia.com/a2a"
+          prompt = "Show me useful free data with provenance."
+          payload = {
+              "jsonrpc": "2.0",
+              "id": "aion-bounded-free-canary",
+              "method": "SendMessage",
+              "params": {
+                  "message": {
+                      "messageId": "aion-canary-" + uuid.uuid4().hex,
+                      "role": "ROLE_USER",
+                      "parts": [{"text": prompt}],
+                  }
+              },
           }
-          print(json.dumps(result, sort_keys=True))
-          if not any(
-              item.get("name") == target_name
-              and item.get("version") == target_version
-              and item.get("status") == "active"
-              for item in matches
-          ):
+          request = urllib.request.Request(
+              endpoint,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                  "A2A-Version": "1.0",
+                  "User-Agent": "AION-bounded-free-canary/1.0",
+              },
+              method="POST",
+          )
+          try:
+              response = urllib.request.urlopen(request, timeout=30)
+          except urllib.error.HTTPError as exc:
+              response = exc
+
+          with response:
+              raw = response.read(256 * 1024)
+              status = getattr(response, "status", None) or getattr(response, "code", None)
+          text = raw.decode("utf-8", errors="replace")
+          try:
+              body = json.loads(text)
+          except Exception:
+              body = {"raw": text[:1000]}
+
+          serialized = json.dumps(body, ensure_ascii=False).lower()
+          payment_required = any(marker in serialized for marker in (
+              "payment required", "payment_required", "x402", "settle", "paymentpayload"
+          ))
+          has_error = isinstance(body, dict) and bool(body.get("error"))
+          result_text = ""
+          try:
+              result_text = body["result"]["message"]["parts"][0]["text"]
+          except Exception:
+              pass
+
+          summary = {
+              "target": "com.cazimedia.agentnative_data_exchange",
+              "http_status": status,
+              "jsonrpc_error": has_error,
+              "payment_required": payment_required,
+              "response_text_length": len(result_text),
+              "mentions_provenance": "provenance" in result_text.lower(),
+              "write_operation": False,
+              "payment_executed": False,
+              "single_request": True,
+          }
+          print(json.dumps(summary, sort_keys=True))
+
+          if status != 200 or has_error or payment_required or not result_text:
               raise SystemExit(2)
           PY
