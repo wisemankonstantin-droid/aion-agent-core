@@ -88,17 +88,18 @@ def install_commercial_payment_routes(app) -> None:
         ):
             readiness = payment_offer_readiness()
 
-            # Never parse, echo, persist or reinterpret a signed payload while the
-            # live handler is unavailable. This prevents a client signature from
-            # being mistaken for authorization or reserved funds.
-            if payment_signature is not None and not readiness["launch_ready"]:
+            # Current accepted code has no live signature processor at all. Never
+            # parse, echo, persist or reinterpret a signed payload. A later reviewed
+            # activation commit must replace this branch with authenticated rail
+            # verification before the code-owned live-handler gate can be enabled.
+            if payment_signature is not None:
                 return JSONResponse(
                     status_code=503,
                     content={
-                        "code": "x402_live_payment_handler_not_activated",
+                        "code": "x402_live_payment_handler_not_implemented",
                         "product_sku": ROUTE_INTELLIGENCE_SKU,
                         "payment_signature_accepted": False,
-                        "retryable_after_activation": True,
+                        "retryable_after_handler_activation": True,
                     },
                     headers={"Cache-Control": "private, no-store"},
                 )
