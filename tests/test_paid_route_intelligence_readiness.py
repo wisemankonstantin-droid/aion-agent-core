@@ -12,6 +12,7 @@ from app.main import app
 from app.security import hash_key
 from app.services import economic_kernel
 from app.services.paid_route_intelligence import (
+    CURRENCY_ENV,
     MAX_PAYMENT_FEE_ENV,
     PRICE_ENV,
     QUOTE_ENABLE_ENV,
@@ -26,7 +27,7 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def reset_paid_route_intelligence(monkeypatch):
-    for name in (QUOTE_ENABLE_ENV, PRICE_ENV, MAX_PAYMENT_FEE_ENV):
+    for name in (QUOTE_ENABLE_ENV, CURRENCY_ENV, PRICE_ENV, MAX_PAYMENT_FEE_ENV):
         monkeypatch.delenv(name, raising=False)
     economic_kernel.TRUSTED_PRODUCT_PROFILES.pop(ROUTE_INTELLIGENCE_SKU, None)
     with SessionLocal() as db:
@@ -57,10 +58,17 @@ def _agent():
         return row.id, key
 
 
+def _configure_quote(monkeypatch, *, currency="USDC", price="1", fee="0.1"):
+    monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
+    monkeypatch.setenv(CURRENCY_ENV, currency)
+    monkeypatch.setenv(PRICE_ENV, price)
+    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, fee)
+
+
 def test_paid_sku_is_recognized_but_unquotable_without_trusted_config():
     parsed = schemas.EconomicPreflightRequest(
         product_sku=ROUTE_INTELLIGENCE_SKU,
-        currency="USD",
+        currency="USDC",
     )
     assert parsed.product_sku == ROUTE_INTELLIGENCE_SKU
     assert register_paid_route_intelligence_profile() is False
@@ -72,13 +80,18 @@ def test_paid_sku_is_recognized_but_unquotable_without_trusted_config():
     assert readiness["provider_execution_enabled"] is False
 
 
-def test_quote_registration_requires_complete_config_and_standard_target_margin(monkeypatch):
+def test_quote_registration_requires_explicit_asset_complete_config_and_target_margin(monkeypatch):
     monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
     monkeypatch.setenv(PRICE_ENV, "1")
+    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, "0.1")
+    assert register_paid_route_intelligence_profile() is False
+
+    monkeypatch.setenv(CURRENCY_ENV, "usd")
     assert register_paid_route_intelligence_profile() is False
 
     # 50% contribution margin clears the constitutional 40% floor but misses
     # AION's 60% standard target, so the first commercial SKU stays disabled.
+    monkeypatch.setenv(CURRENCY_ENV, "USDC")
     monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, "0.5")
     assert register_paid_route_intelligence_profile() is False
 
@@ -87,9 +100,10 @@ def test_quote_registration_requires_complete_config_and_standard_target_margin(
     plan = economic_kernel.TRUSTED_PRODUCT_PROFILES[ROUTE_INTELLIGENCE_SKU]
     evaluated = economic_kernel.evaluate_plan(
         plan,
-        requested_currency="USD",
+        requested_currency="USDC",
         requester_max_price=None,
     )
+    assert evaluated["currency"] == "USDC"
     assert evaluated["customer_price"] == "1"
     assert evaluated["maximum_total_spend"] == "0.4"
     assert evaluated["expected_margin_bps"] == 6000
@@ -99,9 +113,7 @@ def test_quote_registration_requires_complete_config_and_standard_target_margin(
 
 
 def test_configured_route_intelligence_creates_quote_but_cannot_activate_money(monkeypatch):
-    monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
-    monkeypatch.setenv(PRICE_ENV, "1")
-    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, "0.1")
+    _configure_quote(monkeypatch)
     assert register_paid_route_intelligence_profile() is True
 
     agent_id, key = _agent()
@@ -113,13 +125,14 @@ def test_configured_route_intelligence_creates_quote_but_cannot_activate_money(m
         },
         json={
             "product_sku": ROUTE_INTELLIGENCE_SKU,
-            "currency": "USD",
+            "currency": "USDC",
             "requester_max_price": "1",
         },
     )
     assert response.status_code == 200
     quote = response.json()
     assert quote["product_sku"] == ROUTE_INTELLIGENCE_SKU
+    assert quote["currency"] == "USDC"
     assert quote["customer_price"] == "1"
     assert quote["maximum_total_spend"] == "0.1"
     assert quote["expected_margin_bps"] == 9000
@@ -133,6 +146,21 @@ def test_configured_route_intelligence_creates_quote_but_cannot_activate_money(m
     assert "reserve_not_established" in quote["decision_reasons"]
     assert "real_money_adapter_disabled" in quote["decision_reasons"]
 
+    fiat_mismatch = client.post(
+        "/economic/preflight",
+        headers={
+            "Authorization": "Bearer " + key,
+            "Idempotency-Key": "route-intel-fiat-mismatch-" + uuid.uuid4().hex,
+        },
+        json={
+            "product_sku": ROUTE_INTELLIGENCE_SKU,
+            "currency": "USD",
+            "requester_max_price": "1",
+        },
+    )
+    assert fiat_mismatch.status_code == 422
+    assert fiat_mismatch.json()["detail"]["code"] == "currency_mismatch"
+
     with SessionLocal() as db:
         with pytest.raises(economic_kernel.EconomicKernelError) as exc:
             economic_kernel.apply_economic_transition(
@@ -143,7 +171,7 @@ def test_configured_route_intelligence_creates_quote_but_cannot_activate_money(m
                 idempotency_key="no-real-money",
                 evidence_reference="not-a-real-rail",
                 amount="1",
-                currency="USD",
+                currency="USDC",
             )
         assert exc.value.code == "real_money_adapter_disabled"
 
@@ -158,13 +186,13 @@ def test_configured_route_intelligence_creates_quote_but_cannot_activate_money(m
 
 
 def test_readiness_truth_scope_is_aion_owned_intelligence_only(monkeypatch):
-    monkeypatch.setenv(QUOTE_ENABLE_ENV, "1")
-    monkeypatch.setenv(PRICE_ENV, "2")
-    monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, "0.2")
+    _configure_quote(monkeypatch, price="2", fee="0.2")
     readiness = route_intelligence_readiness()
     assert readiness["quote_configured"] is True
+    assert readiness["currency"] == "USDC"
     assert readiness["policy_eligible"] is True
     assert readiness["expected_margin_bps"] == 9000
     assert readiness["commercial_rights_scope"] == "aion_owned_route_and_verification_intelligence_only"
+    assert readiness["fx_assumption_used"] is False
     assert readiness["provider_execution_enabled"] is False
     assert readiness["real_money_execution_enabled"] is False
