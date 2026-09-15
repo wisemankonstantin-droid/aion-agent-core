@@ -1,0 +1,76 @@
+name: PostgreSQL settlement reconciliation gate
+
+on:
+  push:
+    branches:
+      - launch/settlement-reconciliation-closeout
+      - main
+    paths:
+      - "app/payment_models.py"
+      - "app/services/cdp_x402_facilitator.py"
+      - "app/services/commercial_payment_routes.py"
+      - "app/services/route_intelligence_purchase.py"
+      - "app/services/settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation_ambiguity.py"
+      - "tests/test_x402_preparation_race.py"
+      - "tests/test_x402_exact_upfront.py"
+      - ".github/workflows/postgres-settlement-reconciliation-gate.yml"
+  pull_request:
+    paths:
+      - "app/payment_models.py"
+      - "app/services/cdp_x402_facilitator.py"
+      - "app/services/commercial_payment_routes.py"
+      - "app/services/route_intelligence_purchase.py"
+      - "app/services/settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation_ambiguity.py"
+      - "tests/test_x402_preparation_race.py"
+      - "tests/test_x402_exact_upfront.py"
+      - ".github/workflows/postgres-settlement-reconciliation-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-settlement-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: aion_settlement_gate
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aion_settlement_gate"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      AION_REQUIRE_A2A: "1"
+      AION_DISABLE_EXTERNAL_DISCOVERY: "1"
+      AION_POSTGRES_GATE: "1"
+      DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/aion_settlement_gate
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install --require-hashes -r requirements.txt
+      - run: python -m pip check
+      - run: python scripts/check_secrets.py
+      - name: Exact migration head
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
+          python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect(); assert c.execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'; c.close()"
+      - name: PostgreSQL settlement replay concurrency and failure proofs
+        run: >-
+          python -m pytest -q
+          tests/test_x402_settlement_reconciliation.py
+          tests/test_x402_settlement_reconciliation_ambiguity.py
+          tests/test_x402_preparation_race.py
+          tests/test_x402_exact_upfront.py
+          tests/test_cdp_x402_facilitator.py
