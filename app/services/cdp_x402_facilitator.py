@@ -105,13 +105,16 @@ def generate_cdp_request_jwt(
         "typ": "JWT",
         "nonce": nonce or uuid.uuid4().hex,
     }
+    # Coinbase CDP request authentication binds one JWT to one exact request
+    # through a singular `uri` claim: "METHOD host/path". Keep the claim set
+    # minimal and aligned with the current official API examples; in particular
+    # do not emit an `aud: null` value or a non-standard `uris` array.
     claims = {
         "sub": key_id,
         "iss": "cdp",
-        "aud": None,
         "nbf": timestamp,
         "exp": timestamp + 120,
-        "uris": [f"POST {host}{path}"],
+        "uri": f"POST {host}{path}",
     }
     signing_input = (
         _b64url(json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8"))
