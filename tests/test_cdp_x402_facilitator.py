@@ -207,7 +207,76 @@ def test_server_or_transport_failure_is_ambiguous_and_never_retried(monkeypatch)
     assert calls == [1]
 
 
-def test_settlement_pending_requires_transaction_and_matching_network(monkeypatch):
+def test_documented_confirmation_timeout_is_pending_with_valid_transaction(monkeypatch):
+    _, secret = _ed25519_secret()
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+
+    def timed_out(method, url, *, payload, headers, policy):
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": False,
+                "errorReason": "settle_exact_evm_transaction_confirmation_timed_out",
+                "errorMessage": "confirmation timed out",
+                "transaction": "0x" + "5" * 64,
+                "network": "base",
+                "payer": "0x" + "3" * 40,
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", timed_out)
+    result = settle_exact_upfront(_payload(), _requirements())
+    assert result["outcome"] == "pending"
+    assert result["code"] == "settle_exact_evm_transaction_confirmation_timed_out"
+    assert result["transaction"] == "0x" + "5" * 64
+
+    def bad_timeout(method, url, *, payload, headers, policy):
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": False,
+                "errorReason": "settle_exact_evm_transaction_confirmation_timed_out",
+                "transaction": "not-a-transaction",
+                "network": "base",
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", bad_timeout)
+    bad = settle_exact_upfront(_payload(), _requirements())
+    assert bad["outcome"] == "ambiguous"
+    assert bad["code"] == "settle_exact_evm_transaction_confirmation_timed_out_evidence_invalid"
+
+
+def test_documented_node_failure_is_ambiguous_not_rejected(monkeypatch):
+    _, secret = _ed25519_secret()
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+
+    def node_failure(method, url, *, payload, headers, policy):
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": False,
+                "errorReason": "settle_exact_node_failure",
+                "errorMessage": "node unavailable after submit",
+                "transaction": "0x" + "6" * 64,
+                "network": "base",
+                "payer": "0x" + "3" * 40,
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", node_failure)
+    result = settle_exact_upfront(_payload(), _requirements())
+    assert result["outcome"] == "ambiguous"
+    assert result["code"] == "settle_exact_node_failure"
+    assert result["transaction"] == "0x" + "6" * 64
+    assert result["payer"] == "0x" + "3" * 40
+
+
+def test_legacy_settlement_pending_requires_transaction_and_matching_network(monkeypatch):
     _, secret = _ed25519_secret()
     monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
     monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
@@ -230,19 +299,3 @@ def test_settlement_pending_requires_transaction_and_matching_network(monkeypatc
     result = settle_exact_upfront(_payload(), _requirements())
     assert result["outcome"] == "pending"
     assert result["transaction"] == "0x" + "5" * 64
-
-    def bad_pending(method, url, *, payload, headers, policy):
-        return (
-            FetchResult(status=200, body=b"{}", error=None, attempts=1),
-            {
-                "success": False,
-                "errorReason": "settlement_pending",
-                "transaction": "not-a-transaction",
-                "network": "base",
-            },
-        )
-
-    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", bad_pending)
-    bad = settle_exact_upfront(_payload(), _requirements())
-    assert bad["outcome"] == "ambiguous"
-    assert bad["code"] == "settlement_pending_evidence_invalid"
