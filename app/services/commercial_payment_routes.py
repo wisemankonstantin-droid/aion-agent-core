@@ -26,6 +26,11 @@ from .route_intelligence_purchase import (
     prepare_route_intelligence,
     settle_and_release,
 )
+from .settlement_reconciliation import (
+    SettlementReconciliationError,
+    get_purchase_status,
+    reconcile_purchase,
+)
 from .x402_exact_upfront import (
     encode_exact_payment_required,
     exact_upfront_readiness,
@@ -145,6 +150,21 @@ def _payment_response_header(data: dict) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
+def _reconciliation_error(exc: SettlementReconciliationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.code,
+            "message": exc.message,
+            "product_sku": ROUTE_INTELLIGENCE_SKU,
+            "result_released": False,
+            "aion_membership_created": False,
+            "commercial_proof_created": False,
+        },
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 def install_commercial_payment_routes(app) -> None:
     register_paid_route_intelligence_profile()
     _patch_mcp_paid_sku_metadata()
@@ -173,6 +193,75 @@ def install_commercial_payment_routes(app) -> None:
                 "Read-only truth surface. It creates no payment, entitlement, revenue, "
                 "VUO, membership or adoption evidence. Production-first semantics are "
                 "x402 exact/upfront; auth-capture remains future compatibility."
+            ),
+        )
+
+    status_path = "/commercial/route-intelligence/purchases/{purchase_id}"
+    if status_path not in existing:
+        def purchase_status_endpoint(
+            purchase_id: str,
+            db: Session = Depends(get_db),
+        ):
+            try:
+                return JSONResponse(
+                    get_purchase_status(db, purchase_id),
+                    headers={"Cache-Control": "private, no-store"},
+                )
+            except SettlementReconciliationError as exc:
+                return _reconciliation_error(exc)
+
+        app.add_api_route(
+            status_path,
+            purchase_status_endpoint,
+            methods=["GET"],
+            include_in_schema=True,
+            summary="Read durable Route Intelligence purchase status",
+            description=(
+                "Read-only status by opaque purchase id. It never contacts a facilitator, "
+                "never releases the prepared result, and creates no membership, VUO or "
+                "adoption evidence."
+            ),
+        )
+
+    reconcile_path = "/commercial/route-intelligence/purchases/{purchase_id}/reconcile"
+    if reconcile_path not in existing:
+        def purchase_reconcile_endpoint(
+            purchase_id: str,
+            payment_signature: str | None = Header(default=None, alias="PAYMENT-SIGNATURE"),
+            db: Session = Depends(get_db),
+        ):
+            if payment_signature is not None:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "code": "reconciliation_payment_signature_rejected",
+                        "message": "Reconciliation never accepts or re-submits PAYMENT-SIGNATURE",
+                        "product_sku": ROUTE_INTELLIGENCE_SKU,
+                        "result_released": False,
+                        "aion_membership_created": False,
+                        "commercial_proof_created": False,
+                    },
+                    headers={"Cache-Control": "private, no-store"},
+                )
+            try:
+                return JSONResponse(
+                    reconcile_purchase(db, purchase_id),
+                    headers={"Cache-Control": "private, no-store"},
+                )
+            except SettlementReconciliationError as exc:
+                return _reconciliation_error(exc)
+
+        app.add_api_route(
+            reconcile_path,
+            purchase_reconcile_endpoint,
+            methods=["POST"],
+            include_in_schema=True,
+            summary="Reconcile uncertain Route Intelligence settlement",
+            description=(
+                "No payment signature is accepted. AION performs read-only checks against "
+                "a fixed allowlisted Base RPC and only records entitlement after finalized "
+                "on-chain evidence proves the exact configured ERC-20 transfer. The result "
+                "is not released by this endpoint."
             ),
         )
 
