@@ -25,3 +25,36 @@ jobs:
           rm -f /tmp/aion-migration.db
           DATABASE_URL=sqlite:////tmp/aion-migration.db alembic upgrade head
           DATABASE_URL=sqlite:////tmp/aion-migration.db alembic current
+      - name: Official MCP 2026-07-28 and A2A 1.0 interoperability
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/aion-mcp-sdk
+          /tmp/aion-mcp-sdk/bin/python -m pip install --disable-pip-version-check "mcp==2.2.0"
+          rm -f /tmp/aion-interop.db /tmp/aion-interop.log /tmp/aion-key.pem /tmp/aion-cert.pem
+          DATABASE_URL=sqlite:////tmp/aion-interop.db alembic upgrade head
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tmp/aion-key.pem -out /tmp/aion-cert.pem -days 1 \
+            -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
+          AION_TEST_PUBLIC_URL=https://127.0.0.1:8765 \
+          DATABASE_URL=sqlite:////tmp/aion-interop.db \
+            uvicorn app.main:app --host 127.0.0.1 --port 8765 \
+              --ssl-keyfile /tmp/aion-key.pem --ssl-certfile /tmp/aion-cert.pem \
+              >/tmp/aion-interop.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --silent --show-error --fail --insecure https://127.0.0.1:8765/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat /tmp/aion-interop.log
+            exit 1
+          fi
+          AION_INTEROP_BASE_URL=https://127.0.0.1:8765 \
+            /tmp/aion-mcp-sdk/bin/python scripts/mcp_official_interop.py
+          AION_INTEROP_BASE_URL=https://127.0.0.1:8765 \
+            python scripts/a2a_official_interop.py
