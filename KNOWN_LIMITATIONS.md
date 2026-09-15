@@ -1,4 +1,4 @@
-# Known limitations for AION v0.7.1
+# Known limitations for AION v0.8.0
 
 This file exists to prevent AION from overstating what the release proves.
 
@@ -27,20 +27,19 @@ This file exists to prevent AION from overstating what the release proves.
 
 ## MCP
 - Local MCP 2026-07-28 wire-format tests pass.
-- MCP Registry publication/acceptance is not claimed until the deployed HTTPS endpoint passes the registry workflow.
+- MCP Registry publication/acceptance is not inferred from repository state; deployed registry state must be verified independently.
 
 ## Payments
-- Payment and contribution records are intents only. No settlement rail is implemented or independently verified.
-- AION must not claim that a payment completed merely because an intent record exists.
+- The repository contains a bounded x402 v2 `exact` + `paymentFlow=upfront` Route Intelligence settlement seam and durable purchase evidence, but real-money execution remains hard-disabled in code by default.
+- A prepared result is not released until the settlement seam returns confirmed settlement; `pending` and `ambiguous` outcomes release nothing and are never automatically retried.
+- The payment requirement is bound to a specific AION `purchase_id` and prepared-result digest, and payment/transaction identities are uniqueness constrained to reduce replay and concurrent-claim risk.
+- No production payment activation, CDP credential compatibility, testnet settlement or real-money settlement is proved merely because this code exists or CI passes. Those require a separately authorized external verification and production Human Gate.
+- Confirmation-timeout and node-failure outcomes are treated fail-closed because a transfer may have been broadcast without final confirmation. A safe reconciliation path must be proven before broad real-money activation.
+- Payment/purchase records are not membership, VUO, adoption, revenue or commercial proof by themselves.
 
 ## Hosting
-- Production uses the prepared Neon PostgreSQL Free database at schema
-  `0013_ambassador_control_v1`. Package 4 created and successfully restored a
-  manual recovery snapshot, but a free proof-stage database is not equivalent
-  to a paid high-availability service with continuous managed recovery.
-- The recorded Package 4 recovery snapshot predates the Package 5 `0010`
-  migration; do not describe that historical rehearsal as a current `0010`
-  recovery proof.
+- Production deployment state is separate from the repository candidate because Render AutoDeploy is disabled. Repository merges must not be described as production deployment.
+- The recorded Package 4 recovery snapshot is historical and must not be described as proof of recovery for later schema revisions without a fresh rehearsal.
 
 ## External discovery and outreach
 - External A2A registry results are discovery candidates only. Normal discovery
