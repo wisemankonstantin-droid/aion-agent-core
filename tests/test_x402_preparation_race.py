@@ -1,4 +1,4 @@
-"""Regression proof for ambiguous concurrent exact/upfront preparations.
+"""Regression proofs for exact/upfront preparation binding.
 
 No test contacts a facilitator or moves money.
 """
@@ -24,7 +24,10 @@ from app.services.paid_route_intelligence import (
     ROUTE_INTELLIGENCE_SKU,
     register_paid_route_intelligence_profile,
 )
-from app.services.x402_exact_upfront import EXACT_UPFRONT_ENABLE_ENV, exact_payment_requirements
+from app.services.x402_exact_upfront import (
+    EXACT_UPFRONT_ENABLE_ENV,
+    bound_exact_payment_requirements,
+)
 from app.services.x402_payment_offer import (
     ASSET_CODE_ENV,
     ASSET_DECIMALS_ENV,
@@ -97,8 +100,8 @@ def _route_result(marker: str) -> dict:
     }
 
 
-def _payment_header() -> str:
-    requirements = exact_payment_requirements()
+def _payment_header(purchase_id: str, result_digest: str, *, signature_byte="a") -> str:
+    requirements = bound_exact_payment_requirements(purchase_id, result_digest)
     payload = {
         "x402Version": 2,
         "resource": {
@@ -108,14 +111,14 @@ def _payment_header() -> str:
         },
         "accepted": requirements,
         "payload": {
-            "signature": "0x" + "a" * 130,
+            "signature": "0x" + signature_byte * 130,
             "authorization": {
                 "from": "0x" + "3" * 40,
                 "to": requirements["payTo"],
                 "value": requirements["amount"],
                 "validAfter": "1",
                 "validBefore": "4102444800",
-                "nonce": "0x" + "a" * 64,
+                "nonce": "0x" + signature_byte * 64,
             },
         },
     }
@@ -124,7 +127,25 @@ def _payment_header() -> str:
     ).decode("ascii")
 
 
-def test_different_concurrent_preparations_block_before_facilitator_contact(monkeypatch):
+def _settled():
+    transaction = "0x" + "4" * 64
+    return {
+        "outcome": "settled",
+        "transaction": transaction,
+        "network": "eip155:8453",
+        "payer": "0x" + "3" * 40,
+        "amount": "1250000",
+        "response": {
+            "success": True,
+            "transaction": transaction,
+            "network": "eip155:8453",
+            "payer": "0x" + "3" * 40,
+            "amount": "1250000",
+        },
+    }
+
+
+def test_concurrent_different_preparations_release_only_the_bound_snapshot(monkeypatch):
     _configure(monkeypatch)
     monkeypatch.setattr(
         commercial_router,
@@ -141,12 +162,19 @@ def test_different_concurrent_preparations_block_before_facilitator_contact(monk
     with SessionLocal() as db:
         first = db.scalar(select(RouteIntelligencePurchase))
         assert first is not None
+        first_purchase_id = first.purchase_id
+        first_result_digest = first.result_digest
+        duplicate_purchase_id = str(uuid.uuid4())
+        duplicate_result_digest = "sha256:" + "f" * 64
+        duplicate_requirements = bound_exact_payment_requirements(
+            duplicate_purchase_id, duplicate_result_digest
+        )
         duplicate = RouteIntelligencePurchase(
-            purchase_id=str(uuid.uuid4()),
+            purchase_id=duplicate_purchase_id,
             product_sku=first.product_sku,
             request_digest=first.request_digest,
             request_evidence=first.request_evidence,
-            result_digest="sha256:" + "f" * 64,
+            result_digest=duplicate_result_digest,
             prepared_result=_route_result("two"),
             quote_currency=first.quote_currency,
             quote_amount=first.quote_amount,
@@ -155,7 +183,7 @@ def test_different_concurrent_preparations_block_before_facilitator_contact(monk
             asset_code=first.asset_code,
             pay_to=first.pay_to,
             atomic_amount=first.atomic_amount,
-            payment_requirements_digest=first.payment_requirements_digest,
+            payment_requirements_digest=route_intelligence_purchase._digest(duplicate_requirements),
             state="prepared",
             prepared_at=first.prepared_at + timedelta(microseconds=1),
             expires_at=first.expires_at,
@@ -163,6 +191,84 @@ def test_different_concurrent_preparations_block_before_facilitator_contact(monk
         )
         db.add(duplicate)
         db.commit()
+
+    settlement_calls = []
+
+    def settle(payload, requirements):
+        settlement_calls.append(requirements["extra"]["aionPurchaseId"])
+        return _settled()
+
+    monkeypatch.setattr(route_intelligence_purchase, "settle_exact_upfront", settle)
+
+    paid = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+        headers={
+            "PAYMENT-SIGNATURE": _payment_header(
+                first_purchase_id, first_result_digest
+            )
+        },
+    )
+    assert paid.status_code == 200
+    assert paid.json()["purchase_id"] == first_purchase_id
+    assert paid.json()["prepared_result_digest"] == first_result_digest
+    assert paid.json()["result"] == _route_result("one")
+    assert settlement_calls == [first_purchase_id]
+
+    with SessionLocal() as db:
+        first = db.scalar(
+            select(RouteIntelligencePurchase).where(
+                RouteIntelligencePurchase.purchase_id == first_purchase_id
+            )
+        )
+        duplicate = db.scalar(
+            select(RouteIntelligencePurchase).where(
+                RouteIntelligencePurchase.purchase_id == duplicate_purchase_id
+            )
+        )
+        assert first.state == "entitled"
+        assert duplicate.state == "prepared"
+        assert duplicate.payment_payload_digest is None
+
+
+def test_expired_payment_binding_cannot_slide_to_newer_snapshot(monkeypatch):
+    _configure(monkeypatch)
+    marker = {"value": "one"}
+    monkeypatch.setattr(
+        commercial_router,
+        "plan_commercial_route",
+        lambda db, *, requester_agent_id, payload: _route_result(marker["value"]),
+    )
+
+    first_response = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+    )
+    assert first_response.status_code == 402
+    first_body = first_response.json()
+    old_signature = _payment_header(
+        first_body["purchase_id"], first_body["prepared_result_digest"], signature_byte="b"
+    )
+
+    with SessionLocal() as db:
+        first = db.scalar(
+            select(RouteIntelligencePurchase).where(
+                RouteIntelligencePurchase.purchase_id == first_body["purchase_id"]
+            )
+        )
+        first.expires_at = first.prepared_at
+        db.add(first)
+        db.commit()
+
+    marker["value"] = "two"
+    second_response = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+    )
+    assert second_response.status_code == 402
+    second_body = second_response.json()
+    assert second_body["purchase_id"] != first_body["purchase_id"]
+    assert second_body["prepared_result_digest"] != first_body["prepared_result_digest"]
 
     settlement_calls = []
     monkeypatch.setattr(
@@ -174,15 +280,18 @@ def test_different_concurrent_preparations_block_before_facilitator_contact(monk
     blocked = client.post(
         "/commercial/route-intelligence/purchase",
         json={"need": "research"},
-        headers={"PAYMENT-SIGNATURE": _payment_header()},
+        headers={"PAYMENT-SIGNATURE": old_signature},
     )
     assert blocked.status_code == 409
-    assert blocked.json()["code"] == "ambiguous_preparation_binding"
+    assert blocked.json()["code"] == "preparation_expired"
     assert blocked.json()["result_released"] is False
     assert settlement_calls == []
 
     with SessionLocal() as db:
-        rows = list(db.scalars(select(RouteIntelligencePurchase)).all())
-        assert len(rows) == 2
-        assert all(row.state == "prepared" for row in rows)
-        assert all(row.payment_payload_digest is None for row in rows)
+        newer = db.scalar(
+            select(RouteIntelligencePurchase).where(
+                RouteIntelligencePurchase.purchase_id == second_body["purchase_id"]
+            )
+        )
+        assert newer.state == "prepared"
+        assert newer.payment_payload_digest is None
