@@ -31,6 +31,10 @@ _MAX_RESPONSE_BYTES = 32_768
 _MAX_ERROR_DETAIL = 240
 _EVM_TRANSACTION = __import__("re").compile(r"^0x[0-9a-fA-F]{64}$")
 _EVM_ADDRESS = __import__("re").compile(r"^0x[0-9a-fA-F]{40}$")
+_CDP_NETWORK_ALIASES = {
+    "eip155:8453": "base",
+    "eip155:84532": "base-sepolia",
+}
 
 
 class FacilitatorSettlementError(Exception):
@@ -138,6 +142,22 @@ def _safe_detail(value) -> str | None:
     return text[:_MAX_ERROR_DETAIL]
 
 
+def _network_matches(requirement_network: object, response_network: object) -> bool:
+    """Accept only the documented CDP alias for the exact configured CAIP-2 network.
+
+    x402 v2 requirements use CAIP-2 identifiers, while CDP's settle response
+    schema documents human-readable Base aliases. Exact CAIP echoing is also
+    accepted defensively. No fuzzy or cross-chain normalization is allowed.
+    """
+    expected = str(requirement_network or "")
+    actual = str(response_network or "")
+    if not expected or not actual:
+        return False
+    if actual == expected:
+        return True
+    return _CDP_NETWORK_ALIASES.get(expected) == actual
+
+
 def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> dict:
     """Submit one bounded settlement attempt and classify the result truthfully."""
     if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
@@ -195,7 +215,7 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
     error_message = data.get("errorMessage", data.get("error_message"))
 
     if success is True:
-        if network != payment_requirements.get("network"):
+        if not _network_matches(payment_requirements.get("network"), network):
             return {"outcome": "ambiguous", "code": "settlement_network_mismatch", "detail": None}
         if not isinstance(transaction, str) or not _EVM_TRANSACTION.fullmatch(transaction):
             return {"outcome": "ambiguous", "code": "settlement_transaction_invalid", "detail": None}
@@ -217,7 +237,7 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
         if (
             isinstance(transaction, str)
             and _EVM_TRANSACTION.fullmatch(transaction)
-            and network == payment_requirements.get("network")
+            and _network_matches(payment_requirements.get("network"), network)
         ):
             return {
                 "outcome": "pending",
