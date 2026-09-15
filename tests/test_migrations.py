@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 
 
+EXPECTED_HEAD = "0015_x402_exact_upfront_v1"
+
+
 def _alembic(root, database_url, *args):
     env = dict(os.environ, DATABASE_URL=database_url)
     subprocess.run(
@@ -141,7 +144,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
             if index[2] == 1
         }
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {
         "agents",
         "machine_entries",
@@ -159,6 +162,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
         "learning_opportunity_candidates",
         "package5_participation_assessments",
         "package5_vuo_proofs",
+        "route_intelligence_purchases",
     } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
@@ -203,7 +207,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
             )
         }
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {
         "live_utility_sources",
         "live_utility_observations",
@@ -219,6 +223,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
         "learning_opportunity_candidates",
         "package5_participation_assessments",
         "package5_vuo_proofs",
+        "route_intelligence_purchases",
     } <= tables
 
 
@@ -264,7 +269,7 @@ def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='migration-agent'"
         ).fetchone()
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert "FOREIGN KEY(agent_id)" in checkpoint_sql
     assert ("agent_id", "subject_key") in unique_columns
     assert agent == ("migration-agent",)
@@ -315,7 +320,7 @@ def test_existing_0007_database_upgrades_to_action_outcome_evidence(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3-sentinel'"
         ).fetchone()
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {"action_runs", "action_attempts", "action_outcomes", "action_verifications"} <= tables
     assert ("requester_agent_id", "idempotency_key") in unique_columns
     assert ("action_id",) in unique_columns
@@ -352,7 +357,7 @@ def test_existing_0008_database_upgrades_to_continuous_learning_v1(tmp_path):
             "SELECT external_id FROM agents WHERE external_id='package-3b-sentinel'"
         ).fetchone()
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {
         "learning_runs", "learning_source_watch_states", "agent_evidence_claims",
         "learning_opportunity_candidates",
@@ -401,7 +406,7 @@ def test_existing_0009_database_upgrades_additively_without_fake_package5_proof(
             for index in vuo_indexes if index[2] == 1
         }
 
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {"package5_participation_assessments", "package5_vuo_proofs"} <= tables
     assert assessments == vuos == 0
     assert sentinel == ("package-5-sentinel",)
@@ -447,7 +452,7 @@ def test_existing_0010_upgrades_additively_without_promoting_legacy_intent(tmp_p
         operation_foreign_keys = {
             (row[3], row[2]) for row in connection.execute("PRAGMA foreign_key_list('economic_operations')")
         }
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert {"economic_operations", "economic_transitions"} <= tables
     assert legacy == ("untrusted-string", "created")
     assert operations == transitions == 0
@@ -495,7 +500,7 @@ def test_existing_0011_upgrades_additively_to_ambassador_pilot(tmp_path):
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in target_indexes if index[2] == 1
         }
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert set(counts) <= tables
     assert all(value == 0 for value in counts.values())
     assert sentinel == ("package-5d-sentinel",)
@@ -539,7 +544,7 @@ def test_existing_0012_upgrades_additively_to_ambassador_operator_control(tmp_pa
             tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index[1]}')").fetchall())
             for index in indexes if index[2] == 1
         }
-    assert revision == "0014_conversation_intel_v1"
+    assert revision == EXPECTED_HEAD
     assert "ambassador_operator_actions" in tables
     assert sentinel == ("package-5e-sentinel",)
     assert audits == 0

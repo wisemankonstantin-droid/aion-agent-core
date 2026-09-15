@@ -25,7 +25,7 @@ os.environ["AION_JOIN_RATE_PER_MINUTE"] = "500"
 os.environ["AION_PUBLIC_URL"] = "https://aion.example"
 
 from app.db import Base, SessionLocal, engine  # noqa: E402
-from app import models, conversation_models  # noqa: E402,F401
+from app import models, conversation_models, payment_models  # noqa: E402,F401
 from app.conversation_models import ConversationEvidence, ConversationIntelligence  # noqa: E402
 
 if not POSTGRES_GATE:
@@ -33,7 +33,7 @@ if not POSTGRES_GATE:
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL)"))
         connection.execute(text("DELETE FROM alembic_version"))
-        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0014_conversation_intel_v1')"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0015_x402_exact_upfront_v1')"))
 
 
 @pytest.fixture(autouse=True)

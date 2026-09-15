@@ -190,7 +190,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0014_conversation_intel_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0015_x402_exact_upfront_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -298,7 +298,7 @@ def test_alembic_revision_ids_fit_version_table_storage():
     revisions = list(ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})
     assert all(len(revision.revision) <= 32 for revision in revisions)
-    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0014_conversation_intel_v1"]
+    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0015_x402_exact_upfront_v1"]
 
 
 def test_package5d_is_one_bounded_operator_gated_distribution_boundary():
@@ -395,7 +395,7 @@ def test_commercial_router_is_authenticated_read_only_and_fail_closed():
     assert "install_commercial_router(app)" in a2a
     assert "codex/commercial-router-v1" in workflow
     assert "codex/commercial-launch-readiness-v1" in workflow
-    assert "0015" not in " ".join(migration_names)
+    assert "0015_x402_exact_upfront_v1.py" in migration_names
 
 
 def test_package5_has_one_shared_read_model_and_no_public_classification_write():

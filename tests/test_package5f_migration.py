@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-LATEST_REVISION = "0014_conversation_intel_v1"
+LATEST_REVISION = "0015_x402_exact_upfront_v1"
 
 
 def _alembic(root: Path, database_url: str, *args: str) -> None:
