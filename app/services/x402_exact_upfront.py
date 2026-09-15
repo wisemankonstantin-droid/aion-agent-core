@@ -150,12 +150,14 @@ def exact_payment_requirements() -> dict:
 
 
 def bound_exact_payment_requirements(purchase_id: str, prepared_result_digest: str) -> dict:
-    """Bind one otherwise fungible exact payment offer to one frozen AION result.
+    """Add a server-enforced frozen-result identity to the x402 envelope.
 
-    x402 v2 clients echo the selected PaymentRequirements in
-    ``PaymentPayload.accepted``. The additional values live in scheme-specific
-    ``extra`` and are not secrets. They stop AION from accidentally applying a
-    still-valid payment authorization to a later snapshot of the same request.
+    x402 v2 clients echo selected PaymentRequirements in
+    ``PaymentPayload.accepted``. The AION values are non-secret scheme-specific
+    metadata that let the resource server reject an envelope for the wrong
+    prepared snapshot. They do not change the EIP-3009 cryptographic statement:
+    that signature still authorizes only the token transfer fields defined by
+    EIP-3009. Transfer-identity replay prevention is enforced separately.
     """
     normalized_purchase_id = str(purchase_id or "").lower()
     normalized_digest = str(prepared_result_digest or "").lower()
@@ -242,6 +244,7 @@ def exact_upfront_readiness() -> dict:
             "no_hidden_fx": True,
             "raw_payment_signature_persisted": False,
             "permit2_not_in_launch_scope": True,
-            "prepared_result_binding_is_echoed_in_payment_requirements": True,
+            "server_enforces_envelope_purchase_and_result_binding": True,
+            "eip3009_signature_does_not_sign_aion_purchase_metadata": True,
         },
     }
