@@ -124,7 +124,7 @@ def test_real_money_gate_blocks_before_credentials_or_network(monkeypatch):
     assert network_calls == []
 
 
-def test_settlement_uses_fixed_endpoint_and_exactly_one_http_attempt(monkeypatch):
+def test_settlement_uses_fixed_endpoint_one_attempt_and_documented_base_alias(monkeypatch):
     _, secret = _ed25519_secret()
     monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
     monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
@@ -138,7 +138,9 @@ def test_settlement_uses_fixed_endpoint_and_exactly_one_http_attempt(monkeypatch
             {
                 "success": True,
                 "transaction": "0x" + "4" * 64,
-                "network": "eip155:8453",
+                # CDP's settle response schema documents the short alias even
+                # though v2 PaymentRequirements use CAIP-2 eip155:8453.
+                "network": "base",
                 "payer": "0x" + "3" * 40,
                 "amount": "1250000",
             },
@@ -147,6 +149,7 @@ def test_settlement_uses_fixed_endpoint_and_exactly_one_http_attempt(monkeypatch
     monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", fake_fetch)
     result = settle_exact_upfront(_payload(), _requirements())
     assert result["outcome"] == "settled"
+    assert result["network"] == "base"
     assert result["transaction"] == "0x" + "4" * 64
     assert len(calls) == 1
     method, url, body, headers, policy = calls[0]
@@ -157,6 +160,33 @@ def test_settlement_uses_fixed_endpoint_and_exactly_one_http_attempt(monkeypatch
     assert body["paymentPayload"] == _payload()
     assert body["paymentRequirements"] == _requirements()
     assert headers["Authorization"].startswith("Bearer ")
+
+
+def test_success_network_alias_is_bounded_and_cross_chain_mismatch_is_ambiguous(monkeypatch):
+    _, secret = _ed25519_secret()
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+
+    def wrong_network(method, url, *, payload, headers, policy):
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": True,
+                "transaction": "0x" + "4" * 64,
+                "network": "base-sepolia",
+                "payer": "0x" + "3" * 40,
+                "amount": "1250000",
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", wrong_network)
+    result = settle_exact_upfront(_payload(), _requirements())
+    assert result == {
+        "outcome": "ambiguous",
+        "code": "settlement_network_mismatch",
+        "detail": None,
+    }
 
 
 def test_server_or_transport_failure_is_ambiguous_and_never_retried(monkeypatch):
@@ -191,7 +221,7 @@ def test_settlement_pending_requires_transaction_and_matching_network(monkeypatc
                 "errorReason": "settlement_pending",
                 "errorMessage": "broadcast confirmation unknown",
                 "transaction": "0x" + "5" * 64,
-                "network": "eip155:8453",
+                "network": "base",
                 "payer": "0x" + "3" * 40,
             },
         )
@@ -208,7 +238,7 @@ def test_settlement_pending_requires_transaction_and_matching_network(monkeypatc
                 "success": False,
                 "errorReason": "settlement_pending",
                 "transaction": "not-a-transaction",
-                "network": "eip155:8453",
+                "network": "base",
             },
         )
 
