@@ -35,6 +35,16 @@ _CDP_NETWORK_ALIASES = {
     "eip155:8453": "base",
     "eip155:84532": "base-sepolia",
 }
+# CDP documents confirmation timeout and node-failure settlement reasons. A
+# confirmation timeout with a valid transaction is pending, not a rejection;
+# node failure is ambiguous because the transport/node can fail after broadcast.
+_CDP_PENDING_REASONS = {
+    "settlement_pending",  # defensive compatibility with older facilitator responses
+    "settle_exact_evm_transaction_confirmation_timed_out",
+}
+_CDP_AMBIGUOUS_REASONS = {
+    "settle_exact_node_failure",
+}
 
 
 class FacilitatorSettlementError(Exception):
@@ -158,6 +168,71 @@ def _network_matches(requirement_network: object, response_network: object) -> b
     return _CDP_NETWORK_ALIASES.get(expected) == actual
 
 
+def _validated_pending_evidence(
+    *,
+    code: str,
+    transaction: object,
+    network: object,
+    payer: object,
+    error_message: object,
+    data: dict,
+    payment_requirements: dict,
+) -> dict:
+    if (
+        isinstance(transaction, str)
+        and _EVM_TRANSACTION.fullmatch(transaction)
+        and _network_matches(payment_requirements.get("network"), network)
+    ):
+        return {
+            "outcome": "pending",
+            "code": code,
+            "transaction": transaction.lower(),
+            "network": network,
+            "payer": payer.lower()
+            if isinstance(payer, str) and _EVM_ADDRESS.fullmatch(payer)
+            else None,
+            "detail": _safe_detail(error_message),
+            "response": data,
+        }
+    return {
+        "outcome": "ambiguous",
+        "code": code + "_evidence_invalid",
+        "detail": _safe_detail(error_message),
+        "response": data,
+    }
+
+
+def _ambiguous_with_optional_evidence(
+    *,
+    code: str,
+    transaction: object,
+    network: object,
+    payer: object,
+    error_message: object,
+    data: dict,
+    payment_requirements: dict,
+) -> dict:
+    result = {
+        "outcome": "ambiguous",
+        "code": code,
+        "detail": _safe_detail(error_message),
+        "response": data,
+    }
+    if (
+        isinstance(transaction, str)
+        and _EVM_TRANSACTION.fullmatch(transaction)
+        and _network_matches(payment_requirements.get("network"), network)
+    ):
+        result["transaction"] = transaction.lower()
+        result["network"] = network
+        result["payer"] = (
+            payer.lower()
+            if isinstance(payer, str) and _EVM_ADDRESS.fullmatch(payer)
+            else None
+        )
+    return result
+
+
 def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> dict:
     """Submit one bounded settlement attempt and classify the result truthfully."""
     if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
@@ -233,26 +308,27 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
             "response": data,
         }
 
-    if success is False and error_reason == "settlement_pending":
-        if (
-            isinstance(transaction, str)
-            and _EVM_TRANSACTION.fullmatch(transaction)
-            and _network_matches(payment_requirements.get("network"), network)
-        ):
-            return {
-                "outcome": "pending",
-                "code": "settlement_pending",
-                "transaction": transaction.lower(),
-                "network": network,
-                "payer": payer.lower() if isinstance(payer, str) and _EVM_ADDRESS.fullmatch(payer) else None,
-                "detail": _safe_detail(error_message),
-                "response": data,
-            }
-        return {
-            "outcome": "ambiguous",
-            "code": "settlement_pending_evidence_invalid",
-            "detail": None,
-        }
+    if success is False and error_reason in _CDP_PENDING_REASONS:
+        return _validated_pending_evidence(
+            code=str(error_reason),
+            transaction=transaction,
+            network=network,
+            payer=payer,
+            error_message=error_message,
+            data=data,
+            payment_requirements=payment_requirements,
+        )
+
+    if success is False and error_reason in _CDP_AMBIGUOUS_REASONS:
+        return _ambiguous_with_optional_evidence(
+            code=str(error_reason),
+            transaction=transaction,
+            network=network,
+            payer=payer,
+            error_message=error_message,
+            data=data,
+            payment_requirements=payment_requirements,
+        )
 
     if success is False:
         return {
