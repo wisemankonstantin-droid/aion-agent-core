@@ -100,11 +100,15 @@ def test_cdp_jwt_is_short_lived_request_bound_and_cryptographically_valid(monkey
         "nonce": "fixture-nonce",
         "typ": "JWT",
     }
-    assert claims["iss"] == "cdp"
-    assert claims["sub"] == "organizations/test/apiKeys/key"
-    assert claims["nbf"] == 1_800_000_000
-    assert claims["exp"] == 1_800_000_120
-    assert claims["uris"] == ["POST api.cdp.coinbase.com/platform/v2/x402/settle"]
+    assert claims == {
+        "iss": "cdp",
+        "sub": "organizations/test/apiKeys/key",
+        "nbf": 1_800_000_000,
+        "exp": 1_800_000_120,
+        "uri": "POST api.cdp.coinbase.com/platform/v2/x402/settle",
+    }
+    assert "uris" not in claims
+    assert "aud" not in claims
 
 
 def test_real_money_gate_blocks_before_credentials_or_network(monkeypatch):
