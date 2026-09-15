@@ -16,7 +16,7 @@ import re
 import uuid
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,9 +25,9 @@ from .cdp_x402_facilitator import FacilitatorSettlementError, settle_exact_upfro
 from .paid_route_intelligence import ROUTE_INTELLIGENCE_SKU, configured_route_intelligence_plan
 from .x402_exact_upfront import (
     ExactUpfrontError,
+    bound_exact_payment_requirements,
     build_exact_payment_required,
     configured_exact_upfront_offer,
-    exact_payment_requirements,
 )
 
 
@@ -37,6 +37,10 @@ _ALLOWED_REQUEST_KEYS = {"need", "candidate_identifier"}
 _SIGNATURE = re.compile(r"^0x[0-9a-fA-F]{130}$")
 _ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _NONCE = re.compile(r"^0x[0-9a-fA-F]{64}$")
+_PURCHASE_ID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+_RESULT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class RouteIntelligencePurchaseError(Exception):
@@ -106,31 +110,12 @@ def _latest_for_request(db: Session, request_digest: str) -> RouteIntelligencePu
     )
 
 
-def _active_prepared_for_request(
-    db: Session,
-    request_digest: str,
-    requirements_digest: str,
-    now: datetime,
-) -> list[RouteIntelligencePurchase]:
-    rows = list(
-        db.scalars(
-            select(RouteIntelligencePurchase)
-            .where(
-                RouteIntelligencePurchase.request_digest == request_digest,
-                RouteIntelligencePurchase.state == "prepared",
-            )
-            .order_by(
-                RouteIntelligencePurchase.prepared_at.desc(),
-                RouteIntelligencePurchase.id.desc(),
-            )
-        ).all()
+def _by_purchase_id(db: Session, purchase_id: str) -> RouteIntelligencePurchase | None:
+    return db.scalar(
+        select(RouteIntelligencePurchase).where(
+            RouteIntelligencePurchase.purchase_id == purchase_id
+        )
     )
-    return [
-        row
-        for row in rows
-        if row.payment_requirements_digest == requirements_digest
-        and _aware(row.expires_at) > now
-    ]
 
 
 def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligencePurchase:
@@ -152,10 +137,6 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
             "x402_exact_upfront_not_configured",
             "Exact upfront payment offer is not fully configured",
         )
-    try:
-        requirements = exact_payment_requirements()
-    except ExactUpfrontError as exc:
-        raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
 
     from .commercial_router import plan_commercial_route
 
@@ -168,8 +149,14 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
         )
 
     result_digest = _digest(prepared_result)
+    purchase_id = str(uuid.uuid4())
+    try:
+        requirements = bound_exact_payment_requirements(purchase_id, result_digest)
+    except ExactUpfrontError as exc:
+        raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+
     row = RouteIntelligencePurchase(
-        purchase_id=str(uuid.uuid4()),
+        purchase_id=purchase_id,
         product_sku=ROUTE_INTELLIGENCE_SKU,
         request_digest=request_digest,
         request_evidence=request_evidence,
@@ -195,13 +182,17 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
 
 
 def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
-    required = build_exact_payment_required()
-    if _digest(required["accepts"][0]) != row.payment_requirements_digest:
+    try:
+        requirements = bound_exact_payment_requirements(row.purchase_id, row.result_digest)
+    except ExactUpfrontError as exc:
+        raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+    if _digest(requirements) != row.payment_requirements_digest:
         raise RouteIntelligencePurchaseError(
             409,
             "payment_requirement_changed",
             "Payment requirements changed after the result was prepared; request a fresh preparation",
         )
+    required = build_exact_payment_required(requirements)
     return {
         "purchase_id": row.purchase_id,
         "product_sku": row.product_sku,
@@ -220,33 +211,73 @@ def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
     }
 
 
-def _decode_payment_payload(header_value: str, requirements: dict) -> tuple[dict, str]:
+def _decode_payment_envelope(header_value: str) -> dict:
     if not isinstance(header_value, str) or not header_value:
         raise RouteIntelligencePurchaseError(402, "payment_required", "PAYMENT-SIGNATURE is required")
     if len(header_value.encode("utf-8")) > MAX_PAYMENT_SIGNATURE_HEADER_BYTES:
-        raise RouteIntelligencePurchaseError(400, "payment_signature_too_large", "PAYMENT-SIGNATURE exceeds the bounded limit")
+        raise RouteIntelligencePurchaseError(
+            400, "payment_signature_too_large", "PAYMENT-SIGNATURE exceeds the bounded limit"
+        )
     try:
         raw = base64.b64decode(header_value, validate=True)
         if len(raw) > MAX_PAYMENT_SIGNATURE_HEADER_BYTES:
             raise ValueError
         data = json.loads(raw.decode("utf-8"))
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as exc:
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "PAYMENT-SIGNATURE is malformed") from exc
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "PAYMENT-SIGNATURE is malformed"
+        ) from exc
     if not isinstance(data, dict) or data.get("x402Version") != 2:
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "x402Version 2 is required")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "x402Version 2 is required"
+        )
+    return data
+
+
+def _payment_binding(data: dict) -> tuple[str, str]:
+    accepted = data.get("accepted")
+    extra = accepted.get("extra") if isinstance(accepted, dict) else None
+    purchase_id = extra.get("aionPurchaseId") if isinstance(extra, dict) else None
+    result_digest = extra.get("aionPreparedResultDigest") if isinstance(extra, dict) else None
+    if not isinstance(purchase_id, str) or not _PURCHASE_ID.fullmatch(purchase_id.lower()):
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_preparation_binding_missing",
+            "Signed payment does not identify a canonical prepared purchase",
+        )
+    if not isinstance(result_digest, str) or not _RESULT_DIGEST.fullmatch(result_digest.lower()):
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_preparation_binding_missing",
+            "Signed payment does not identify the prepared result digest",
+        )
+    return purchase_id.lower(), result_digest.lower()
+
+
+def _validate_payment_payload(data: dict, requirements: dict) -> str:
     if data.get("accepted") != requirements:
-        raise RouteIntelligencePurchaseError(409, "payment_requirement_mismatch", "Signed payment does not match the prepared requirement")
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_requirement_mismatch",
+            "Signed payment does not match the prepared requirement",
+        )
     scheme_payload = data.get("payload")
     if not isinstance(scheme_payload, dict) or set(scheme_payload) != {"signature", "authorization"}:
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "EIP-3009 payment payload is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "EIP-3009 payment payload is malformed"
+        )
     signature = scheme_payload.get("signature")
     authorization = scheme_payload.get("authorization")
     if not isinstance(signature, str) or not _SIGNATURE.fullmatch(signature):
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "EIP-3009 signature is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "EIP-3009 signature is malformed"
+        )
     if not isinstance(authorization, dict) or set(authorization) != {
         "from", "to", "value", "validAfter", "validBefore", "nonce"
     }:
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "EIP-3009 authorization is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "EIP-3009 authorization is malformed"
+        )
     payer = authorization.get("from")
     to = authorization.get("to")
     value = authorization.get("value")
@@ -254,19 +285,29 @@ def _decode_payment_payload(header_value: str, requirements: dict) -> tuple[dict
     valid_after = authorization.get("validAfter")
     valid_before = authorization.get("validBefore")
     if not isinstance(payer, str) or not _ADDRESS.fullmatch(payer):
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "Payer address is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "Payer address is malformed"
+        )
     if not isinstance(to, str) or not _ADDRESS.fullmatch(to) or to.lower() != str(requirements["payTo"]).lower():
-        raise RouteIntelligencePurchaseError(409, "payment_recipient_mismatch", "Payment recipient does not match the prepared requirement")
+        raise RouteIntelligencePurchaseError(
+            409, "payment_recipient_mismatch", "Payment recipient does not match the prepared requirement"
+        )
     if str(value) != str(requirements["amount"]):
-        raise RouteIntelligencePurchaseError(409, "payment_amount_mismatch", "Payment amount does not match the prepared requirement")
+        raise RouteIntelligencePurchaseError(
+            409, "payment_amount_mismatch", "Payment amount does not match the prepared requirement"
+        )
     if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "Payment nonce is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "Payment nonce is malformed"
+        )
     if not str(valid_after).isdigit() or not str(valid_before).isdigit() or int(valid_before) <= int(valid_after):
-        raise RouteIntelligencePurchaseError(400, "malformed_payment_signature", "Payment validity window is malformed")
+        raise RouteIntelligencePurchaseError(
+            400, "malformed_payment_signature", "Payment validity window is malformed"
+        )
 
     # Digest the signed transfer identity, not merely the wrapper JSON. This
     # prevents the same EIP-3009 authorization from being repackaged with a
-    # different resource wrapper to fund another AION result.
+    # different prepared-result binding to fund another AION result.
     identity = {
         "network": requirements["network"],
         "asset": str(requirements["asset"]).lower(),
@@ -281,7 +322,7 @@ def _decode_payment_payload(header_value: str, requirements: dict) -> tuple[dict
             "nonce": nonce.lower(),
         },
     }
-    return data, _digest(identity)
+    return _digest(identity)
 
 
 def _existing_by_payment_digest(db: Session, digest: str) -> RouteIntelligencePurchase | None:
@@ -316,7 +357,8 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
             "payment_is_real_settlement_only_when_state_entitled": True,
             "purchase_is_not_package5_vuo_or_adoption": True,
             "result_was_prepared_before_settlement": True,
-            "ambiguous_concurrent_preparations_fail_closed_before_settlement": True,
+            "payment_requirements_bound_to_purchase_and_result_digest": True,
+            "concurrent_claim_is_committed_before_facilitator_contact": True,
         },
     }
 
@@ -325,20 +367,46 @@ def settle_and_release(db: Session, payload: object, payment_signature: str) -> 
     request, request_evidence = _validated_request(payload)
     _ = request
     request_digest = _digest(request_evidence)
+
+    payment_payload = _decode_payment_envelope(payment_signature)
+    purchase_id, bound_result_digest = _payment_binding(payment_payload)
+    row = _by_purchase_id(db, purchase_id)
+    if row is None:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_preparation_unknown",
+            "Signed payment references an unknown prepared purchase",
+        )
+    if row.request_digest != request_digest:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_request_binding_mismatch",
+            "Signed payment is bound to a different purchase request",
+        )
+    if row.result_digest != bound_result_digest:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_result_binding_mismatch",
+            "Signed payment is bound to a different prepared result",
+        )
+
     try:
-        requirements = exact_payment_requirements()
+        requirements = bound_exact_payment_requirements(row.purchase_id, row.result_digest)
     except ExactUpfrontError as exc:
         raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
-    requirements_digest = _digest(requirements)
-    payment_payload, payment_digest = _decode_payment_payload(payment_signature, requirements)
+    if row.payment_requirements_digest != _digest(requirements):
+        raise RouteIntelligencePurchaseError(
+            409, "payment_requirement_changed", "Payment requirements changed after preparation"
+        )
 
+    payment_digest = _validate_payment_payload(payment_payload, requirements)
     existing_payment = _existing_by_payment_digest(db, payment_digest)
     if existing_payment is not None:
-        if existing_payment.request_digest != request_digest:
+        if existing_payment.purchase_id != row.purchase_id:
             raise RouteIntelligencePurchaseError(
                 409,
                 "payment_replay_conflict",
-                "This signed payment identity is already bound to a different prepared request",
+                "This signed payment identity is already bound to a different prepared purchase",
             )
         if existing_payment.state == "entitled":
             return _entitlement(existing_payment, idempotent_replay=True)
@@ -349,56 +417,73 @@ def settle_and_release(db: Session, payload: object, payment_signature: str) -> 
         )
 
     now = _now()
-    active = _active_prepared_for_request(
-        db,
-        request_digest,
-        requirements_digest,
-        now,
-    )
-    if active:
-        result_digests = {row.result_digest for row in active}
-        if len(result_digests) > 1:
-            raise RouteIntelligencePurchaseError(
-                409,
-                "ambiguous_preparation_binding",
-                "Multiple different active preparations exist for this request; settlement is blocked before facilitator contact",
-            )
-        row = active[0]
-    else:
-        row = _latest_for_request(db, request_digest)
-        if row is None:
-            raise RouteIntelligencePurchaseError(
-                409, "payment_without_preparation", "Request a fresh 402 preparation before submitting payment"
-            )
-        if row.state != "prepared":
-            raise RouteIntelligencePurchaseError(
-                409, "preparation_already_claimed", "The latest prepared result is already claimed"
-            )
-        if _aware(row.expires_at) <= now:
-            raise RouteIntelligencePurchaseError(
-                409, "preparation_expired", "Prepared result expired; request a fresh 402 preparation"
-            )
+    if row.state != "prepared":
         raise RouteIntelligencePurchaseError(
-            409, "payment_requirement_changed", "Payment requirements changed after preparation"
+            409, "preparation_already_claimed", "The prepared result is already claimed"
+        )
+    if _aware(row.expires_at) <= now:
+        raise RouteIntelligencePurchaseError(
+            409, "preparation_expired", "Prepared result expired; request a fresh preparation"
         )
 
-    row.payment_payload_digest = payment_digest
-    row.state = "settlement_claimed"
-    row.updated_at = _now()
-    db.add(row)
+    # Claim atomically before any facilitator contact. A conditional UPDATE is
+    # portable across SQLite/PostgreSQL and prevents two concurrent signed
+    # requests from both reaching the money-moving seam for the same snapshot.
     try:
+        claimed = db.execute(
+            update(RouteIntelligencePurchase)
+            .where(
+                RouteIntelligencePurchase.id == row.id,
+                RouteIntelligencePurchase.state == "prepared",
+                RouteIntelligencePurchase.payment_payload_digest.is_(None),
+            )
+            .values(
+                payment_payload_digest=payment_digest,
+                state="settlement_claimed",
+                updated_at=now,
+            )
+        )
+        if claimed.rowcount != 1:
+            db.rollback()
+            fresh = _by_purchase_id(db, row.purchase_id)
+            if fresh is not None and fresh.payment_payload_digest == payment_digest:
+                if fresh.state == "entitled":
+                    return _entitlement(fresh, idempotent_replay=True)
+                raise RouteIntelligencePurchaseError(
+                    409,
+                    "payment_settlement_not_retryable",
+                    "This signed payment was already claimed; automatic settlement retry is disabled",
+                )
+            raise RouteIntelligencePurchaseError(
+                409,
+                "preparation_already_claimed",
+                "The prepared result was concurrently claimed before settlement",
+            )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         collision = _existing_by_payment_digest(db, payment_digest)
-        if collision is not None and collision.request_digest != request_digest:
+        if collision is not None:
+            if collision.purchase_id != row.purchase_id:
+                raise RouteIntelligencePurchaseError(
+                    409, "payment_replay_conflict", "Signed payment is already bound elsewhere"
+                ) from exc
+            if collision.state == "entitled":
+                return _entitlement(collision, idempotent_replay=True)
             raise RouteIntelligencePurchaseError(
-                409, "payment_replay_conflict", "Signed payment is already bound elsewhere"
+                409,
+                "payment_settlement_not_retryable",
+                "This signed payment was already claimed; automatic settlement retry is disabled",
             ) from exc
         raise RouteIntelligencePurchaseError(
             409, "payment_claim_conflict", "Concurrent payment claim conflict"
         ) from exc
-    db.refresh(row)
+
+    row = _by_purchase_id(db, row.purchase_id)
+    if row is None or row.state != "settlement_claimed" or row.payment_payload_digest != payment_digest:
+        raise RouteIntelligencePurchaseError(
+            409, "payment_claim_conflict", "Persisted payment claim could not be verified"
+        )
 
     try:
         settlement = settle_exact_upfront(payment_payload, requirements)
