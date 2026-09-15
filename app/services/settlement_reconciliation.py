@@ -1,11 +1,14 @@
 """Fail-closed recovery for uncertain x402 exact/upfront settlement.
 
 Reconciliation never accepts or re-submits PAYMENT-SIGNATURE and never calls the
-facilitator settle endpoint.  It reads a fixed allowlisted Base JSON-RPC endpoint
+facilitator settle endpoint. It reads a fixed allowlisted Base JSON-RPC endpoint
 and only promotes an uncertain purchase to entitlement after a finalized receipt
-proves the exact configured ERC-20 Transfer(asset, payer, payTo, atomicAmount).
-Unknown evidence remains pending/ambiguous; a finalized reverted transaction is a
-definite failure.  The status surface never releases the prepared result.
+proves one exact configured ERC-20 Transfer(asset, payer, payTo, atomicAmount).
+Unknown evidence remains pending/ambiguous; a finalized reverted transaction or a
+finalized successful transaction with no qualifying exact transfer is a definite
+failure. Multiple qualifying transfers remain ambiguous rather than being treated
+as either entitlement or definite failure. The status surface never releases the
+prepared result.
 """
 from __future__ import annotations
 
@@ -169,23 +172,23 @@ def _topic_address(value: object) -> str | None:
     return "0x" + body[-40:].lower()
 
 
-def _transfer_evidence(row: RouteIntelligencePurchase, receipt: dict) -> dict | None:
+def _matching_transfers(row: RouteIntelligencePurchase, receipt: dict) -> list[dict]:
     logs = receipt.get("logs")
     if not isinstance(logs, list):
-        return None
+        return []
     expected_asset = str(row.asset or "").lower()
     expected_to = str(row.pay_to or "").lower()
     expected_payer = str(row.payer or "").lower() or None
     if not _ADDRESS.fullmatch(expected_asset) or not _ADDRESS.fullmatch(expected_to):
-        return None
+        return []
     if expected_payer is not None and not _ADDRESS.fullmatch(expected_payer):
-        return None
+        return []
     try:
         expected_amount = int(str(row.atomic_amount))
     except ValueError:
-        return None
+        return []
     if expected_amount <= 0:
-        return None
+        return []
 
     matches = []
     for item in logs:
@@ -204,10 +207,7 @@ def _transfer_evidence(row: RouteIntelligencePurchase, receipt: dict) -> dict | 
         if expected_payer is not None and payer != expected_payer:
             continue
         matches.append({"payer": payer, "log_index": item.get("logIndex")})
-
-    if len(matches) != 1:
-        return None
-    return matches[0]
+    return matches
 
 
 def _resolve_finalized_chain_evidence(row: RouteIntelligencePurchase) -> dict:
@@ -275,13 +275,19 @@ def _resolve_finalized_chain_evidence(row: RouteIntelligencePurchase) -> dict:
     if status != "0x1":
         return {"outcome": "unresolved", "code": "receipt_status_invalid"}
 
-    transfer = _transfer_evidence(row, receipt)
-    if transfer is None:
+    transfers = _matching_transfers(row, receipt)
+    if len(transfers) == 0:
         return {
             "outcome": "failed",
             "code": "reconciliation_exact_transfer_not_proven",
             "evidence": {**base_evidence, "receipt_status": status},
         }
+    if len(transfers) > 1:
+        return {
+            "outcome": "unresolved",
+            "code": "multiple_exact_transfers_ambiguous",
+        }
+    transfer = transfers[0]
     return {
         "outcome": "settled",
         "evidence": {
