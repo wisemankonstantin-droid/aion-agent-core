@@ -106,6 +106,33 @@ def _latest_for_request(db: Session, request_digest: str) -> RouteIntelligencePu
     )
 
 
+def _active_prepared_for_request(
+    db: Session,
+    request_digest: str,
+    requirements_digest: str,
+    now: datetime,
+) -> list[RouteIntelligencePurchase]:
+    rows = list(
+        db.scalars(
+            select(RouteIntelligencePurchase)
+            .where(
+                RouteIntelligencePurchase.request_digest == request_digest,
+                RouteIntelligencePurchase.state == "prepared",
+            )
+            .order_by(
+                RouteIntelligencePurchase.prepared_at.desc(),
+                RouteIntelligencePurchase.id.desc(),
+            )
+        ).all()
+    )
+    return [
+        row
+        for row in rows
+        if row.payment_requirements_digest == requirements_digest
+        and _aware(row.expires_at) > now
+    ]
+
+
 def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligencePurchase:
     request, request_evidence = _validated_request(payload)
     request_digest = _digest(request_evidence)
@@ -289,6 +316,7 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
             "payment_is_real_settlement_only_when_state_entitled": True,
             "purchase_is_not_package5_vuo_or_adoption": True,
             "result_was_prepared_before_settlement": True,
+            "ambiguous_concurrent_preparations_fail_closed_before_settlement": True,
         },
     }
 
@@ -301,6 +329,7 @@ def settle_and_release(db: Session, payload: object, payment_signature: str) -> 
         requirements = exact_payment_requirements()
     except ExactUpfrontError as exc:
         raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+    requirements_digest = _digest(requirements)
     payment_payload, payment_digest = _decode_payment_payload(payment_signature, requirements)
 
     existing_payment = _existing_by_payment_digest(db, payment_digest)
@@ -319,20 +348,36 @@ def settle_and_release(db: Session, payload: object, payment_signature: str) -> 
             "This signed payment was already claimed; automatic settlement retry is disabled",
         )
 
-    row = _latest_for_request(db, request_digest)
-    if row is None:
-        raise RouteIntelligencePurchaseError(
-            409, "payment_without_preparation", "Request a fresh 402 preparation before submitting payment"
-        )
-    if row.state != "prepared":
-        raise RouteIntelligencePurchaseError(
-            409, "preparation_already_claimed", "The latest prepared result is already claimed"
-        )
-    if _aware(row.expires_at) <= _now():
-        raise RouteIntelligencePurchaseError(
-            409, "preparation_expired", "Prepared result expired; request a fresh 402 preparation"
-        )
-    if row.payment_requirements_digest != _digest(requirements):
+    now = _now()
+    active = _active_prepared_for_request(
+        db,
+        request_digest,
+        requirements_digest,
+        now,
+    )
+    if active:
+        result_digests = {row.result_digest for row in active}
+        if len(result_digests) > 1:
+            raise RouteIntelligencePurchaseError(
+                409,
+                "ambiguous_preparation_binding",
+                "Multiple different active preparations exist for this request; settlement is blocked before facilitator contact",
+            )
+        row = active[0]
+    else:
+        row = _latest_for_request(db, request_digest)
+        if row is None:
+            raise RouteIntelligencePurchaseError(
+                409, "payment_without_preparation", "Request a fresh 402 preparation before submitting payment"
+            )
+        if row.state != "prepared":
+            raise RouteIntelligencePurchaseError(
+                409, "preparation_already_claimed", "The latest prepared result is already claimed"
+            )
+        if _aware(row.expires_at) <= now:
+            raise RouteIntelligencePurchaseError(
+                409, "preparation_expired", "Prepared result expired; request a fresh 402 preparation"
+            )
         raise RouteIntelligencePurchaseError(
             409, "payment_requirement_changed", "Payment requirements changed after preparation"
         )
