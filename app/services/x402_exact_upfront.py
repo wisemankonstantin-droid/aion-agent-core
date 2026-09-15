@@ -41,6 +41,10 @@ _EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _ASSET_CODE = re.compile(r"^[A-Z][A-Z0-9]{2,15}$")
 _TOKEN_NAME = re.compile(r"^[A-Za-z0-9 ._-]{1,64}$")
 _TOKEN_VERSION = re.compile(r"^[A-Za-z0-9._-]{1,16}$")
+_PURCHASE_ID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+_RESULT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ExactUpfrontError(Exception):
@@ -145,8 +149,33 @@ def exact_payment_requirements() -> dict:
     }
 
 
-def build_exact_payment_required() -> dict:
+def bound_exact_payment_requirements(purchase_id: str, prepared_result_digest: str) -> dict:
+    """Bind one otherwise fungible exact payment offer to one frozen AION result.
+
+    x402 v2 clients echo the selected PaymentRequirements in
+    ``PaymentPayload.accepted``. The additional values live in scheme-specific
+    ``extra`` and are not secrets. They stop AION from accidentally applying a
+    still-valid payment authorization to a later snapshot of the same request.
+    """
+    normalized_purchase_id = str(purchase_id or "").lower()
+    normalized_digest = str(prepared_result_digest or "").lower()
+    if not _PURCHASE_ID.fullmatch(normalized_purchase_id):
+        raise ExactUpfrontError("invalid_purchase_binding", "Purchase ID is not a canonical UUID")
+    if not _RESULT_DIGEST.fullmatch(normalized_digest):
+        raise ExactUpfrontError(
+            "invalid_purchase_binding", "Prepared result digest is not a canonical sha256 digest"
+        )
     requirements = exact_payment_requirements()
+    requirements["extra"] = {
+        **requirements["extra"],
+        "aionPurchaseId": normalized_purchase_id,
+        "aionPreparedResultDigest": normalized_digest,
+    }
+    return requirements
+
+
+def build_exact_payment_required(requirements: dict | None = None) -> dict:
+    requirements = exact_payment_requirements() if requirements is None else requirements
     resource_url = (
         canonical_public_origin().rstrip("/")
         + "/commercial/route-intelligence/purchase"
@@ -213,5 +242,6 @@ def exact_upfront_readiness() -> dict:
             "no_hidden_fx": True,
             "raw_payment_signature_persisted": False,
             "permit2_not_in_launch_scope": True,
+            "prepared_result_binding_is_echoed_in_payment_requirements": True,
         },
     }
