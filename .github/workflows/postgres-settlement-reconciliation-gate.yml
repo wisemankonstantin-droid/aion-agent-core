@@ -4,6 +4,18 @@ on:
   push:
     branches:
       - launch/settlement-reconciliation-closeout
+      - main
+    paths:
+      - "app/payment_models.py"
+      - "app/services/cdp_x402_facilitator.py"
+      - "app/services/commercial_payment_routes.py"
+      - "app/services/route_intelligence_purchase.py"
+      - "app/services/settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation_ambiguity.py"
+      - "tests/test_x402_preparation_race.py"
+      - "tests/test_x402_exact_upfront.py"
+      - ".github/workflows/postgres-settlement-reconciliation-gate.yml"
   pull_request:
     paths:
       - "app/payment_models.py"
@@ -12,6 +24,7 @@ on:
       - "app/services/route_intelligence_purchase.py"
       - "app/services/settlement_reconciliation.py"
       - "tests/test_x402_settlement_reconciliation.py"
+      - "tests/test_x402_settlement_reconciliation_ambiguity.py"
       - "tests/test_x402_preparation_race.py"
       - "tests/test_x402_exact_upfront.py"
       - ".github/workflows/postgres-settlement-reconciliation-gate.yml"
@@ -57,6 +70,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_x402_settlement_reconciliation.py
+          tests/test_x402_settlement_reconciliation_ambiguity.py
           tests/test_x402_preparation_race.py
           tests/test_x402_exact_upfront.py
           tests/test_cdp_x402_facilitator.py
