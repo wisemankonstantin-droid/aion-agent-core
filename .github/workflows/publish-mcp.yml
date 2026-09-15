@@ -26,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_release_sha }}
+      - name: Verify exact publication source SHA
+        env:
+          AION_EXPECTED_RELEASE_SHA: ${{ inputs.expected_release_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$AION_EXPECTED_RELEASE_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
