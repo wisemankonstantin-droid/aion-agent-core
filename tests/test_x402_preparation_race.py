@@ -1,10 +1,12 @@
-"""Regression proofs for exact/upfront preparation binding.
+"""Regression proofs for exact/upfront preparation and settlement-claim binding.
 
 No test contacts a facilitator or moves money.
 """
 
 import base64
 import json
+import os
+import threading
 from datetime import timedelta
 import uuid
 
@@ -295,3 +297,84 @@ def test_expired_payment_binding_cannot_slide_to_newer_snapshot(monkeypatch):
         )
         assert newer.state == "prepared"
         assert newer.payment_payload_digest is None
+
+
+@pytest.mark.skipif(
+    os.getenv("AION_POSTGRES_GATE") != "1",
+    reason="requires the disposable PostgreSQL release-gate database",
+)
+def test_postgres_parallel_same_payment_claim_contacts_facilitator_once(monkeypatch):
+    """Two independent DB sessions cannot both reach the money-moving seam."""
+    _configure(monkeypatch)
+    monkeypatch.setattr(
+        commercial_router,
+        "plan_commercial_route",
+        lambda db, *, requester_agent_id, payload: _route_result("parallel"),
+    )
+    prepared = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+    )
+    assert prepared.status_code == 402
+    body = prepared.json()
+    signature = _payment_header(body["purchase_id"], body["prepared_result_digest"], signature_byte="c")
+
+    original_validate = route_intelligence_purchase._validate_payment_payload
+    before_claim = threading.Barrier(2)
+    calls = []
+    calls_lock = threading.Lock()
+
+    def synchronized_validate(data, requirements):
+        digest = original_validate(data, requirements)
+        before_claim.wait(timeout=5)
+        return digest
+
+    def settle(payload, requirements):
+        with calls_lock:
+            calls.append(requirements["extra"]["aionPurchaseId"])
+        return _settled()
+
+    monkeypatch.setattr(route_intelligence_purchase, "_validate_payment_payload", synchronized_validate)
+    monkeypatch.setattr(route_intelligence_purchase, "settle_exact_upfront", settle)
+
+    outcomes = []
+    outcome_lock = threading.Lock()
+
+    def worker():
+        with SessionLocal() as db:
+            try:
+                value = route_intelligence_purchase.settle_and_release(
+                    db, {"need": "research"}, signature
+                )
+                outcome = ("ok", value["state"], value["idempotent_replay"])
+            except route_intelligence_purchase.RouteIntelligencePurchaseError as exc:
+                outcome = ("error", exc.code, None)
+        with outcome_lock:
+            outcomes.append(outcome)
+
+    threads = [threading.Thread(target=worker), threading.Thread(target=worker)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert all(not thread.is_alive() for thread in threads)
+
+    assert calls == [body["purchase_id"]]
+    assert len(outcomes) == 2
+    assert any(outcome[0] == "ok" and outcome[1] == "entitled" for outcome in outcomes)
+    assert all(
+        outcome[0] == "ok"
+        or outcome[1] in {"payment_settlement_not_retryable", "payment_claim_conflict"}
+        for outcome in outcomes
+    )
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(RouteIntelligencePurchase).where(
+                RouteIntelligencePurchase.purchase_id == body["purchase_id"]
+            )
+        )
+        assert row is not None
+        assert row.state == "entitled"
+        assert row.payment_payload_digest is not None
+        assert row.transaction_id == "0x" + "4" * 64
