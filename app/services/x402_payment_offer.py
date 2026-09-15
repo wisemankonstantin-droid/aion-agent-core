@@ -216,6 +216,7 @@ def payment_offer_readiness() -> dict:
             "payment_signature_is_not_reserve_until_verified_and_authorized": True,
             "stablecoin_is_not_silently_treated_as_fiat": True,
             "asset_code_is_distinct_from_token_domain_name": True,
+            "wire_fee_ceiling_bounded_by_economic_kernel_allowance": True,
             "no_fx_assumption": True,
         },
     }
