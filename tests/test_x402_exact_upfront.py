@@ -22,8 +22,8 @@ from app.services.paid_route_intelligence import (
 )
 from app.services.x402_exact_upfront import (
     EXACT_UPFRONT_ENABLE_ENV,
+    bound_exact_payment_requirements,
     build_exact_payment_required,
-    exact_payment_requirements,
     exact_upfront_readiness,
 )
 from app.services.x402_payment_offer import (
@@ -134,8 +134,27 @@ def _mock_plan(monkeypatch):
     return calls
 
 
-def _payment_header(*, need="research", signature_byte="a"):
-    requirements = exact_payment_requirements()
+def _latest_preparation() -> RouteIntelligencePurchase:
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(RouteIntelligencePurchase)
+            .order_by(RouteIntelligencePurchase.prepared_at.desc(), RouteIntelligencePurchase.id.desc())
+            .limit(1)
+        )
+        assert row is not None
+        # Detach only the scalar values used below before the session closes.
+        row.purchase_id = str(row.purchase_id)
+        row.result_digest = str(row.result_digest)
+        db.expunge(row)
+        return row
+
+
+def _payment_header(*, signature_byte="a", purchase_id=None, result_digest=None):
+    if purchase_id is None or result_digest is None:
+        row = _latest_preparation()
+        purchase_id = row.purchase_id
+        result_digest = row.result_digest
+    requirements = bound_exact_payment_requirements(purchase_id, result_digest)
     payload = {
         "x402Version": 2,
         "resource": {
@@ -241,7 +260,10 @@ def test_unpaid_request_prepares_but_does_not_reveal_result_or_create_membership
     assert body["prepared_result_digest"].startswith("sha256:")
     assert "PAYMENT-REQUIRED" in response.headers
     required = json.loads(base64.b64decode(response.headers["PAYMENT-REQUIRED"]))
-    assert required["accepts"][0]["extra"]["paymentFlow"] == "upfront"
+    accepted = required["accepts"][0]
+    assert accepted["extra"]["paymentFlow"] == "upfront"
+    assert accepted["extra"]["aionPurchaseId"] == body["purchase_id"]
+    assert accepted["extra"]["aionPreparedResultDigest"] == body["prepared_result_digest"]
     assert calls == [(0, "research")]
     with SessionLocal() as db:
         row = db.scalar(select(RouteIntelligencePurchase))
@@ -311,10 +333,10 @@ def test_same_payment_identity_cannot_fund_a_different_need(monkeypatch):
     monkeypatch.setattr(
         route_intelligence_purchase, "settle_exact_upfront", lambda payload, requirements: _settled()
     )
-    signature = _payment_header()
     assert client.post(
         "/commercial/route-intelligence/purchase", json={"need": "research"}
     ).status_code == 402
+    signature = _payment_header()
     assert client.post(
         "/commercial/route-intelligence/purchase",
         json={"need": "research"},
@@ -330,7 +352,7 @@ def test_same_payment_identity_cannot_fund_a_different_need(monkeypatch):
         headers={"PAYMENT-SIGNATURE": signature},
     )
     assert conflict.status_code == 409
-    assert conflict.json()["code"] == "payment_replay_conflict"
+    assert conflict.json()["code"] == "payment_request_binding_mismatch"
     assert conflict.json()["result_released"] is False
 
 
