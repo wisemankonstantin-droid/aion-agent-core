@@ -299,6 +299,24 @@ def _resolve_finalized_chain_evidence(row: RouteIntelligencePurchase) -> dict:
     }
 
 
+def _lock_current_purchase(
+    db: Session, row: RouteIntelligencePurchase
+) -> RouteIntelligencePurchase:
+    """Serialize only the durable transition after external evidence is resolved."""
+    locked = db.scalar(
+        select(RouteIntelligencePurchase)
+        .where(RouteIntelligencePurchase.id == row.id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
+    if locked is None:
+        db.rollback()
+        raise SettlementReconciliationError(
+            409, "reconciliation_state_conflict", "Purchase changed during reconciliation"
+        )
+    return locked
+
+
 def reconcile_purchase(db: Session, purchase_id: str) -> dict:
     """Reconcile durable chain evidence without any second settlement attempt."""
     row = _purchase(db, purchase_id)
@@ -316,6 +334,7 @@ def reconcile_purchase(db: Session, purchase_id: str) -> dict:
             },
         }
 
+    original_transaction = row.transaction_id
     resolved = _resolve_finalized_chain_evidence(row)
     if resolved["outcome"] == "unresolved":
         return {
@@ -325,6 +344,23 @@ def reconcile_purchase(db: Session, purchase_id: str) -> dict:
                 "code": resolved["code"],
             },
         }
+
+    row = _lock_current_purchase(db, row)
+    if row.state in {"entitled", "settlement_failed"}:
+        response = {
+            **purchase_status_data(row),
+            "reconciliation": {"outcome": "terminal", "idempotent": True},
+        }
+        db.commit()
+        return response
+    if (
+        row.state not in {"settlement_pending", "settlement_ambiguous"}
+        or row.transaction_id != original_transaction
+    ):
+        db.rollback()
+        raise SettlementReconciliationError(
+            409, "reconciliation_state_conflict", "Purchase changed during reconciliation"
+        )
 
     evidence = resolved["evidence"]
     now = _now()
@@ -361,10 +397,15 @@ def reconcile_purchase(db: Session, purchase_id: str) -> dict:
                 RouteIntelligencePurchase.state.in_(
                     ["settlement_pending", "settlement_ambiguous"]
                 ),
-                RouteIntelligencePurchase.transaction_id == row.transaction_id,
+                RouteIntelligencePurchase.transaction_id == original_transaction,
             )
             .values(**values)
         )
+        if changed.rowcount != 1:
+            db.rollback()
+            raise SettlementReconciliationError(
+                409, "reconciliation_state_conflict", "Purchase changed during reconciliation"
+            )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -375,18 +416,10 @@ def reconcile_purchase(db: Session, purchase_id: str) -> dict:
         ) from exc
 
     fresh = _purchase(db, row.purchase_id)
-    if changed.rowcount not in {0, 1}:
-        raise SettlementReconciliationError(
-            409, "reconciliation_state_conflict", "Reconciliation state conflict"
-        )
-    if changed.rowcount == 0 and fresh.state not in {"entitled", "settlement_failed"}:
-        raise SettlementReconciliationError(
-            409, "reconciliation_state_conflict", "Purchase changed during reconciliation"
-        )
     return {
         **purchase_status_data(fresh),
         "reconciliation": {
             "outcome": "settled" if fresh.state == "entitled" else "failed",
-            "idempotent": changed.rowcount == 0,
+            "idempotent": False,
         },
     }
