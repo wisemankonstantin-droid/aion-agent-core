@@ -379,6 +379,90 @@ class ActionVerification(Base):
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+class OfficialDataExecution(Base):
+    """Durable evidence for the first bounded real external-supply capability."""
+
+    __tablename__ = "official_data_executions"
+    __table_args__ = (
+        UniqueConstraint(
+            "requester_agent_id",
+            "idempotency_key",
+            name="uq_official_data_execution_requester_idempotency",
+        ),
+        UniqueConstraint("execution_id", name="uq_official_data_execution_id"),
+        Index(
+            "ix_official_data_execution_requester_created",
+            "requester_agent_id",
+            "created_at",
+        ),
+        CheckConstraint(
+            "capability = 'world_bank.population.latest'",
+            name="ck_official_data_execution_capability",
+        ),
+        CheckConstraint(
+            "provider_identifier = 'world_bank_wdi'",
+            name="ck_official_data_execution_provider",
+        ),
+        CheckConstraint(
+            "provider_maximum_cost = '0' AND customer_price = '0' AND currency = 'USD'",
+            name="ck_official_data_execution_zero_cost",
+        ),
+        CheckConstraint(
+            "state IN ('claimed', 'completed', 'failed')",
+            name="ck_official_data_execution_state",
+        ),
+        CheckConstraint(
+            "verification_state IN ('not_performed', 'verified', 'failed')",
+            name="ck_official_data_execution_verification_state",
+        ),
+        CheckConstraint(
+            "outbound_attempts >= 0 AND outbound_attempts <= 1",
+            name="ck_official_data_execution_attempts",
+        ),
+        CheckConstraint(
+            "state != 'completed' OR (capability_verified = true AND "
+            "verification_state = 'verified' AND response_digest IS NOT NULL "
+            "AND normalized_result IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_official_data_execution_completed_evidence",
+        ),
+        CheckConstraint(
+            "useful_outcome = false OR (state = 'completed' AND capability_verified = true "
+            "AND usefulness_evidence IS NOT NULL AND acknowledged_at IS NOT NULL)",
+            name="ck_official_data_execution_useful_evidence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    execution_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    capability: Mapped[str] = mapped_column(String(120), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    provider_identifier: Mapped[str] = mapped_column(String(120), nullable=False)
+    provider_endpoint: Mapped[str] = mapped_column(String(1000), nullable=False)
+    commercial_rights_state: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider_maximum_cost: Mapped[str] = mapped_column(String(48), nullable=False)
+    customer_price: Mapped[str] = mapped_column(String(48), nullable=False)
+    currency: Mapped[str] = mapped_column(String(16), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    failure_class: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    outbound_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    normalized_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    verification_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    verification_method: Mapped[str] = mapped_column(String(120), nullable=False)
+    capability_verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    useful_outcome: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    usefulness_evidence: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class LearningRun(Base):
     __tablename__ = "learning_runs"
     __table_args__ = (

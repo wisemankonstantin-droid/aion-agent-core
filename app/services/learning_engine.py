@@ -43,6 +43,7 @@ CIRCUIT_COOLDOWN_SECONDS = 15 * 60
 SOURCE_CLAIM_SECONDS = 60
 MAX_AGENT_EVIDENCE_PROCESSING = 100
 MAX_ACTION_SIGNALS_PROCESSING = 200
+MAX_COMMERCIAL_EXECUTION_EVIDENCE_PROCESSING = 200
 MAX_OPPORTUNITIES_RECOMPUTED = 20
 MAX_DURABLE_OPPORTUNITIES = 100
 MAX_SUPPORTING_REFERENCES = 20
@@ -346,6 +347,39 @@ def _serialize_candidate(row: models.LearningOpportunityCandidate) -> dict:
         "margin_feasibility": row.margin_feasibility or "unknown",
         "last_evaluated_at": _utc(row.last_evaluated_at).isoformat(),
         "decision_support_only": True,
+    }
+
+
+def commercial_execution_evidence_summary(db) -> dict:
+    """Summarize bounded server-verified execution evidence without creating demand truth."""
+
+    rows = list(
+        db.scalars(
+            select(models.OfficialDataExecution)
+            .order_by(
+                models.OfficialDataExecution.created_at.desc(),
+                models.OfficialDataExecution.id.desc(),
+            )
+            .limit(MAX_COMMERCIAL_EXECUTION_EVIDENCE_PROCESSING)
+        )
+    )
+    failures = Counter(
+        row.failure_class for row in rows if row.state == "failed" and row.failure_class
+    )
+    return {
+        "processed_count": len(rows),
+        "processed_limit": MAX_COMMERCIAL_EXECUTION_EVIDENCE_PROCESSING,
+        "verified_execution_count": sum(
+            row.state == "completed" and row.capability_verified for row in rows
+        ),
+        "failed_execution_count": sum(row.state == "failed" for row in rows),
+        "provider_failure_count": sum(row.state == "failed" for row in rows),
+        "usefulness_confirmed_count": sum(row.useful_outcome for row in rows),
+        "failure_class_breakdown": dict(sorted(failures.items())),
+        "provider_identifiers": sorted({row.provider_identifier for row in rows}),
+        "market_demand_claimed": False,
+        "independent_use_established": False,
+        "routing_effect": "bounded_evidence_only_no_autonomous_policy_change",
     }
 
 
@@ -750,6 +784,7 @@ def run_learning_cycle(
             )
         ) or 0
         action_signals_processed = min(action_signals_processed, MAX_ACTION_SIGNALS_PROCESSING)
+        commercial_execution_evidence = commercial_execution_evidence_summary(db)
     summary = {
         "run_id": run_id,
         "trigger": trigger,
@@ -786,6 +821,7 @@ def run_learning_cycle(
         "agent_evidence_processed": evidence_processed,
         "demand_signals_processed": action_signals_processed + evidence_processed,
         "demand_signals_processed_limit": MAX_ACTION_SIGNALS_PROCESSING + MAX_AGENT_EVIDENCE_PROCESSING,
+        "commercial_execution_evidence": commercial_execution_evidence,
         "opportunity_candidates_created_or_updated": len(opportunities),
         "opportunity_candidates": opportunities,
         "warnings": [

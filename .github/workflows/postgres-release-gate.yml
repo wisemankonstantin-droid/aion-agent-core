@@ -60,16 +60,16 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/aion_gate
         run: |
-          python -c "from app.db import engine; from sqlalchemy import text; from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config('alembic.ini')).get_heads()==['0015_x402_exact_upfront_v1']; print(engine.connect().execute(text('select version()')).scalar())"
+          python -c "from app.db import engine; from sqlalchemy import text; from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config('alembic.ini')).get_heads()==['0016_official_data_execution_v1']; print(engine.connect().execute(text('select version()')).scalar())"
           python -m alembic upgrade 0008_action_outcome_evidence
           python -m alembic upgrade head
           python -m alembic upgrade head
-          python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_fresh')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_fresh python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_package4_legacy')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -m alembic upgrade 0004_reputation_idempotency
@@ -77,7 +77,7 @@ jobs:
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -m alembic upgrade head
           AION_POSTGRES_GATE=1 DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python scripts/postgres_0004_release_proof.py verify
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package4_legacy python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_package5_0009')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5_0009 python -m alembic upgrade 0009_continuous_learning_v1
@@ -97,25 +97,25 @@ jobs:
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -m alembic upgrade 0011_economic_kernel_v1
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5d_0011 python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_package5e_0012')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -m alembic upgrade 0012_ambassador_pilot_v1
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5e_0012 python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_package5f_0013')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -m alembic upgrade 0013_ambassador_control_v1
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -c "from app.db import engine; from sqlalchemy import text; assert engine.connect().execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_package5f_0013 python -m alembic check
           python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect().execution_options(isolation_level='AUTOCOMMIT'); c.execute(text('CREATE DATABASE aion_x402_0014')); c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -m alembic upgrade 0014_conversation_intel_v1
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -m alembic upgrade head
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -m alembic upgrade head
-          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect(); assert c.execute(text('select version_num from alembic_version')).scalar() == '0015_x402_exact_upfront_v1'; assert c.execute(text(\"select count(*) from route_intelligence_purchases\")).scalar() == 0; c.close()"
+          DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -c "from app.db import engine; from sqlalchemy import text; c=engine.connect(); assert c.execute(text('select version_num from alembic_version')).scalar() == '0016_official_data_execution_v1'; assert c.execute(text(\"select count(*) from route_intelligence_purchases\")).scalar() == 0; assert c.execute(text(\"select count(*) from official_data_executions\")).scalar() == 0; c.close()"
           DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/aion_x402_0014 python -m alembic check
       - name: PostgreSQL application and real concurrency suite
         env:

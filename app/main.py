@@ -42,6 +42,14 @@ from .services.commercial_router import (
     CommercialRoutePlanRequest,
     plan_commercial_route,
 )
+from .services.official_data_execution import (
+    OfficialDataExecutionError,
+    PopulationExecutionRequest,
+    PopulationUsefulnessAcknowledgement,
+    acknowledge_population_usefulness,
+    execute_population_lookup,
+    get_population_execution,
+)
 from .services.ambassador import (
     AmbassadorError,
     create_campaign,
@@ -84,7 +92,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/commercial/executions/world-bank-population", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
@@ -100,7 +108,11 @@ class _BoundMachineRequestBody:
         if path == "/commercial/routes/plan":
             maximum_bytes = MAX_COMMERCIAL_ROUTE_BODY_BYTES
             limit_description = "Commercial route request body exceeds 16 KiB"
-        elif path in self._PATHS or path.startswith("/ops/ambassador/"):
+        elif (
+            path in self._PATHS
+            or path.startswith("/ops/ambassador/")
+            or path.startswith("/commercial/executions/")
+        ):
             maximum_bytes = MAX_MACHINE_REQUEST_BYTES
             limit_description = "Machine request body exceeds 64 KiB"
         else:
@@ -230,6 +242,7 @@ def root():
         "external_discovery": "/discover/external?q=web_research",
         "verified_callability_action": "POST /actions/verify-callability",
         "commercial_route_planning": "POST /commercial/routes/plan or MCP plan_commercial_route",
+        "real_external_execution": "POST /commercial/executions/world-bank-population",
         "package5_proof": "GET /proof/package-5",
         "health": "/health",
         "join_rate_limit_per_minute": configured_join_limit(),
@@ -439,8 +452,9 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             {"step": 2, "action": "join only if persistent authenticated route planning is useful", "method": "POST", "url": f"{base}/agents", "optional": True},
             {"step": 3, "action": "store returned Bearer key securely", "required_after_join": True},
             {"step": 4, "action": "plan a bounded commercial route", "method": "POST", "url": f"{base}/commercial/routes/plan", "planning_only": True},
-            {"step": 5, "action": "freshly verify the current endpoint before any separately authorized future execution", "url": f"{base}/actions/verify-callability"},
-            {"step": 6, "action": "optional marketplace publishing", "offer": f"{base}/offers", "need": f"{base}/needs"},
+            {"step": 5, "action": "execute the one real zero-cost official-data capability", "method": "POST", "url": f"{base}/commercial/executions/world-bank-population", "capability": "world_bank.population.latest", "idempotency_required": True, "explicit_external_contact_authorization_required": True},
+            {"step": 6, "action": "freshly verify a discovered A2A endpoint before any separately authorized future execution", "url": f"{base}/actions/verify-callability"},
+            {"step": 7, "action": "optional marketplace publishing", "offer": f"{base}/offers", "need": f"{base}/needs"},
         ],
         "a2a_path": {
             "endpoint": f"{base}/a2a/v1",
@@ -509,6 +523,71 @@ def action_status(action_id: str, agent=Depends(require_agent)):
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
         ) from exc
+
+
+def _raise_official_data(exc: OfficialDataExecutionError):
+    raise HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": exc.message},
+    ) from exc
+
+
+@app.post("/commercial/executions/world-bank-population")
+def execute_world_bank_population(
+    payload: PopulationExecutionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    agent=Depends(require_agent),
+    db: Session = Depends(get_db),
+):
+    """Execute one fixed, zero-price, official-data capability."""
+
+    try:
+        data = execute_population_lookup(
+            db,
+            requester_agent_id=agent.id,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+        return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+    except OfficialDataExecutionError as exc:
+        _raise_official_data(exc)
+
+
+@app.get("/commercial/executions/{execution_id}")
+def official_data_execution_status(
+    execution_id: str,
+    agent=Depends(require_participation_reader),
+    db: Session = Depends(get_db),
+):
+    try:
+        data = get_population_execution(
+            db, requester_agent_id=agent.id, execution_id=execution_id
+        )
+        return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+    except OfficialDataExecutionError as exc:
+        _raise_official_data(exc)
+
+
+@app.post("/commercial/executions/{execution_id}/acknowledge")
+def acknowledge_official_data_execution(
+    execution_id: str,
+    payload: PopulationUsefulnessAcknowledgement,
+    agent=Depends(require_agent),
+    db: Session = Depends(get_db),
+):
+    try:
+        data = acknowledge_population_usefulness(
+            db,
+            requester_agent_id=agent.id,
+            execution_id=execution_id,
+            payload=payload,
+        )
+        mark_useful_action(agent)
+        db.add(agent)
+        db.commit()
+        return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+    except OfficialDataExecutionError as exc:
+        _raise_official_data(exc)
 
 
 @app.post("/learning/evidence")

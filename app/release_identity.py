@@ -6,7 +6,7 @@ import os
 import re
 
 
-EXPECTED_SCHEMA_REVISION = "0015_x402_exact_upfront_v1"
+EXPECTED_SCHEMA_REVISION = "0016_official_data_execution_v1"
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
 

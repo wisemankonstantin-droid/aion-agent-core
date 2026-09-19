@@ -56,6 +56,23 @@ This file exists to prevent AION from overstating what the release proves.
   reviewed post-deploy request-log interval contained no `/ops/ambassador/...`
   requests; that observation does not cover all time.
 
+## Official-data execution
+- The repository candidate supports exactly one executable external capability:
+  `world_bank.population.latest` through the official World Bank WDI API. It is
+  not generic provider execution, arbitrary HTTP access, an A2A task executor,
+  or evidence that other customer needs can be fulfilled.
+- Provider cost and customer price are fixed at zero. A successful execution is
+  not a paid VUO, payment, settlement, revenue or positive-margin proof.
+- Schema/source verification establishes that the normalized population result
+  matches the requested country and WDI indicator. Requester usefulness is a
+  separate authenticated acknowledgement, not independent third-party proof.
+- The route has one qualified provider and no fallback. Its learning summary is
+  bounded decision support and does not establish independent demand or permit
+  autonomous routing-policy changes. Structured API intake is not represented
+  as a human conversation or Ambassador response.
+- Local tests and a controlled external call do not prove production deployment,
+  independent use, repeat use, or current production database readiness.
+
 ## Package 5 proof V1
 - Participation assessment is a guarded operator process, not automatic owner
   discovery, KYC or a public self-classification API.

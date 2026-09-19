@@ -65,6 +65,7 @@ class FixtureAdapter:
 def clean_learning_state():
     def clean():
         with SessionLocal.begin() as db:
+            db.execute(delete(models.OfficialDataExecution))
             db.execute(delete(models.LearningOpportunityCandidate))
             db.execute(delete(models.LearningRun))
             db.execute(delete(models.AgentEvidenceClaim))
@@ -168,6 +169,8 @@ def test_cycle_watches_only_selected_configured_sources_and_rejects_arbitrary_ur
     result = learning_engine.run_learning_cycle(NOW, {"trigger": "operator"}, adapters=(first, second))
     assert [row["source_id"] for row in result["source_results"]] == list(learning_engine.WATCHED_SOURCE_IDS)
     assert first.calls == second.calls == 1
+    assert result["commercial_execution_evidence"]["processed_count"] == 0
+    assert result["commercial_execution_evidence"]["market_demand_claimed"] is False
     with pytest.raises(ValueError, match="configured Tier-1"):
         learning_engine.run_learning_cycle(NOW, {"trigger": "demand", "source_ids": ["https://attacker.invalid/"]}, adapters=(first,))
 

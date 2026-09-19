@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-EXPECTED_HEAD = "0015_x402_exact_upfront_v1"
+EXPECTED_HEAD = "0016_official_data_execution_v1"
 
 
 def _alembic(root, database_url, *args):

@@ -72,7 +72,10 @@
   0013_ambassador_control_v1` migration and successful application startup.
   Package 4's
   separately verified historical revision was `0009_continuous_learning_v1`.
-- **Repository Alembic head:** `0014_conversation_intel_v1`.
+- **Repository main Alembic head at the 2026-09-19 commercial-convergence task
+  start:** `0015_x402_exact_upfront_v1`. The current repository-only candidate
+  branch advances the head to `0016_official_data_execution_v1`; production
+  remains at `0014_conversation_intel_v1` until a separately authorized release.
 - **Production recovery:** the Package 4 Neon manual recovery snapshot was
   restored on a separate rehearsal branch and integrity-checked. Canonical
   evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
@@ -465,13 +468,10 @@ economic authority remain fail-closed. Package 6A's controlled `$10` customer
 price, `$5.5` expected variable cost and `$6` maximum-spend values are policy
 fixtures, not observed market price or provider-cost evidence.
 
-The bounded launch-readiness sequence is to expose this existing planning path
-consistently across machine discovery, REST and MCP, then require a separate
-Human Gate for deployment, proceed to bounded registry/pilot contact, learn
-from real demand, and only then add the quote/payment adapter actually required
-by evidence. Trusted Quote, migration `0015`, real provider execution,
-settlement/payment activation and Package 6B remain separate future work and
-are not part of this readiness change.
+The later repository main includes migration `0015_x402_exact_upfront_v1` and a
+bounded exact-upfront x402 purchase seam for AION-owned Route Intelligence.
+Real-money execution remains hard-disabled; repository code and tests do not
+prove production configuration, payment, settlement, revenue or paid VUO.
 
 Commercial Launch Readiness V1 local validation on the uncommitted candidate
 tree completed with 564 tests passed and 22 disposable-PostgreSQL-only tests
@@ -482,6 +482,62 @@ workflow/manifest parsing, fresh SQLite migration through the sole
 checks also passed. Exact PostgreSQL 18 behavior remains subject to the
 candidate SHA's pre-production release gate; no local or production PostgreSQL
 result is invented here.
+
+## Commercial convergence official-data supply candidate — repository only
+
+The 2026-09-19 task started from clean GitHub `main` at
+`85908f8f8c8effe76fc5a439fae3ac428fc8834f`. A bounded live registry sample
+found reachable declarations but no no-credential A2A 1.0 provider eligible
+for the existing executor. The candidate branch therefore adds one deliberately
+narrow Tier-D/manually-qualified external capability instead of a marketplace:
+authenticated `world_bank.population.latest` execution through the official
+World Bank World Development Indicators API.
+
+The path performs a fixed-host, one-attempt, DNS-pinned HTTPS GET; accepts only
+a two-letter country code; normalizes and verifies the WDI source, indicator,
+country, year, nonnegative integer value and dataset freshness; records a
+response digest and normalized result; and requires a separate authenticated
+requester acknowledgement before reporting a requester-confirmed useful
+outcome. Provider maximum cost and customer price are both exactly `0 USD`.
+Before any execution claim or outbound provider call, the path evaluates its
+trusted zero-cost plan through the Package 6A economic kernel and fails closed
+when policy denies execution. This keeps the provider route, maximum spend,
+verification allowance and VUO-cost assumptions explicit and machine-visible.
+Commercial rights are recorded as CC BY 4.0 with attribution, using the public
+WDI dataset catalog entry. Migration `0016_official_data_execution_v1` adds the
+minimal durable idempotency, execution, verification, cost and usefulness
+evidence row.
+
+The response keeps structured raw intake, deterministic AION interpretation,
+the executable requirement and the verified result separate. Latest-available
+freshness is explicit and never presented as a current-year observation.
+Transport, TLS, DNS, timeout, HTTP, malformed/schema and no-value failures are
+kept distinct where the bounded transport can establish them; the sole-provider
+route states that no fallback provider exists. Package 3B's bounded learning
+summary consumes verified execution, failure and usefulness counts as decision
+support only: it does not manufacture market demand or autonomously change
+routing policy. Package 5F remains the bounded conversation path for actual
+Ambassador responses; no conversation is invented for this structured API
+intake.
+
+Fresh candidate verification after these connections completed with 650 tests
+passed and 23 PostgreSQL-only tests skipped. The focused executor, learning,
+Conversation Intelligence, router, economic-kernel, paid-route readiness,
+migration and source-integrity set passed 189 tests.
+At `2026-09-19T20:51:43Z`, one final zero-cost call through the candidate's
+exact DNS-pinned transport and `mrv=1` endpoint returned HTTP 200 in one
+attempt. It verified the U.S. 2025 population `341784857`, dataset update
+`2026-07-13`, and response digest
+`sha256:24eae3b423ccc9775c1b6388ecf4d6b2eaae67e5d562f7c6aae70b7127df47b2`.
+The exact PostgreSQL migration/application gate remains pending CI for the
+eventual immutable candidate SHA; this local result is not PostgreSQL evidence.
+
+This candidate does not activate money, invoke a paid provider, prove an
+independent customer, establish a paid VUO, settle funds, establish positive
+CM/VUO, deploy production, or change production schema/configuration. The
+generic A2A Commercial Router remains planning-only and fail-closed. The new
+path proves only one fixed external API capability and is intentionally not a
+general URL fetcher, crawler or arbitrary action surface.
 
 ## Pre-Package-3 audit-correction validation
 

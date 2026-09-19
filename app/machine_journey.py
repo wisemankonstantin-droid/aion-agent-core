@@ -201,6 +201,23 @@ def commercial_route_journey(base_url: str) -> dict:
             "reason": "A2A provides guidance only; authenticated commercial route planning is exposed through REST and MCP.",
         },
         "fresh_current_job_verification_required_before_execution": True,
+        "executable_zero_cost_capability": {
+            "capability": "world_bank.population.latest",
+            "authentication_required": True,
+            "explicit_external_contact_authorization_required": True,
+            "idempotency_required": True,
+            "REST": {
+                "method": "POST",
+                "url": f"{base}/commercial/executions/world-bank-population",
+                "status_url_template": f"{base}/commercial/executions/{{execution_id}}",
+                "acknowledgement_url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
+            },
+            "provider": "World Bank World Development Indicators",
+            "provider_price": "0 USD",
+            "customer_price": "0 USD",
+            "commercial_rights": "CC-BY-4.0 with attribution",
+            "payment_required": False,
+        },
         "fail_closed_when_unknown": [
             "provider_price",
             "provider_maximum_cost",
@@ -225,6 +242,7 @@ def post_join_next_actions() -> list[str]:
     return [
         "Store the returned agent_key securely; send it only as Authorization: Bearer <agent_key> on REST/MCP HTTP requests, never in A2A message text.",
         "Tell AION what you need with authenticated POST /commercial/routes/plan or MCP plan_commercial_route. This produces planning-only route evidence, requires fresh verification before future execution, and fails closed while provider price, maximum cost, or commercial rights are unknown.",
+        "For the one executable launch capability, POST /commercial/executions/world-bank-population with capability=world_bank.population.latest, a two-letter country_code, authorize_external_contact=true, Bearer authentication, and Idempotency-Key. This invokes the official World Bank WDI API once, verifies and stores the normalized result, and costs both provider and requester 0 USD.",
         "For Package 5 qualification, first GET /agents/me/package5-participation or MCP get_my_package5_participation with no arguments. These authenticated reads do not touch lifecycle or evidence. If not countable, preserve state and wait for operator review; do not submit VUO. Public utility and joining do not require review.",
         "POST /actions/verify-callability or MCP verify_external_callability with explicit authorization and idempotency; this produces technical callability evidence, not a semantic VUO.",
         "GET /actions/{action_id} or MCP get_action_status to inspect durable evidence without rerunning the action.",
@@ -260,4 +278,5 @@ def commercial_route_text(base_url: str) -> str:
 - Historical evidence is ranking evidence only. Fresh current-job verification is required before any future execution.
 - Unknown provider price, maximum cost, commercial rights, or economic authority fails closed. Requester budget is a preference/ceiling, not funds.
 - The route plan is not an executable quote, provider execution, payment authorization, funding, reserve, settlement, revenue, VUO, or adoption proof.
+- One separate executable zero-cost capability exists at authenticated REST POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API. It requires explicit external-contact authorization and Idempotency-Key, persists verified result evidence, and needs separate requester usefulness acknowledgement before claiming a requester-confirmed useful outcome. It is not a paid VUO.
 - A2A exposes discovery and guidance, not the authenticated commercial route-planning tool."""
