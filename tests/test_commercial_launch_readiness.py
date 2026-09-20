@@ -191,25 +191,29 @@ def test_machine_surfaces_lead_with_truthful_commercial_route_guidance():
     first_contact = client.get("/first-contact").json()
     route = onboarding["commercial_route_planning"]
     assert route == manifest["commercial_route_planning"] == first_contact["commercial_route_planning"]
-    assert route["planning_only"] is True
-    assert route["MCP"]["tool"] == "plan_commercial_route"
-    assert route["A2A"]["available"] is False
-    assert route["fresh_current_job_verification_required_before_execution"] is True
+    assert route["human_participant_required"] is False
+    assert route["route_planning"]["planning_only"] is True
+    assert route["route_planning"]["MCP"]["tool"] == "plan_commercial_route"
+    assert route["A2A"]["credentialed_execution"] is False
+    executable = route["executable_zero_cost_capability"]
+    assert executable["MCP"]["execute_tool"] == "execute_world_bank_population"
+    assert executable["machine_vuo_on_verified_completion"] is True
+    assert executable["human_usefulness_acknowledgement_required"] is False
     assert route["truth_boundaries"]["requester_budget_is_preference_not_funds"] is True
     for path in ("/skill.md", "/llms.txt"):
         text = client.get(path).text
         assert "plan_commercial_route" in text
-        assert "planning-only" in text
-        assert "A2A exposes discovery and guidance, not the authenticated commercial route-planning tool" in text
+        assert "execute_world_bank_population" in text
+        assert "A2A stays credential-free" in text
 
 
 def test_agent_card_advertises_cross_interface_planning_without_false_a2a_execution():
     card = client.get("/.well-known/agent-card.json").json()
     skill = {item["id"]: item for item in card["skills"]}["aion_commercial_route_planning"]
     assert "REST/MCP" in skill["description"]
-    assert "A2A provides guidance only" in skill["description"]
-    assert "does not execute the route" in skill["description"]
-    assert "verified route planning" in card["description"]
+    assert "current World Bank execution capability" in skill["description"]
+    assert "A2A remains credential-free" in skill["description"]
+    assert "agent-native" in card["description"]
 
 
 def test_ambassador_invitation_is_demand_first_but_keeps_all_truth_boundaries():

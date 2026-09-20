@@ -64,12 +64,14 @@ This file exists to prevent AION from overstating what the release proves.
 - Provider cost and customer price are fixed at zero. A successful execution is
   not a paid VUO, payment, settlement, revenue or positive-margin proof.
 - Schema/source verification establishes that the normalized population result
-  matches the requested country and WDI indicator. Requester usefulness is a
-  separate authenticated acknowledgement, not independent third-party proof.
+  satisfies the fixed machine request contract for the requested country, WDI
+  indicator and latest-available semantics. Successful verification establishes
+  a non-paid machine VUO directly; no separate human/requester usefulness
+  acknowledgement is required.
 - The route has one qualified provider and no fallback. Its learning summary is
-  bounded decision support and does not establish independent demand or permit
-  autonomous routing-policy changes. Structured API intake is not represented
-  as a human conversation or Ambassador response.
+  bounded decision support and does not autonomously change routing policy.
+  Structured authenticated machine intake is first-class; human conversation
+  and Ambassador response are not launch requirements.
 - Local tests and a controlled external call do not prove production deployment,
   independent use, repeat use, or current production database readiness.
 

@@ -1,3 +1,34 @@
+# 2026-09-20 AGENT-ONLY COMMERCIAL CORE CORRECTION
+
+Current merged repository baseline before this correction:
+`main = 3cb9d3232adb433154947f8af5e7d8205dc51b3c`.
+
+Current correction branch:
+`codex/agent-only-commercial-core-v1`.
+
+The active product invariant is agent-only runtime economics:
+
+`AI AGENT -> MACHINE REQUEST -> ROUTE/SUPPLY -> EXECUTION -> MACHINE-VERIFIED
+CONTRACT SATISFACTION -> VUO -> PAYMENT/SETTLEMENT -> REPEAT`.
+
+Human/design-partner response, operator participation classification, and
+separate requester usefulness acknowledgement are not launch-critical
+transitions. Legacy Package 5 and Ambassador evidence remains historical /
+optional analytics, not runtime authority.
+
+The World Bank fixed capability now treats a verified completed request as the
+non-paid machine VUO. The obsolete
+`/commercial/executions/{execution_id}/acknowledge` gate is removed from the
+active runtime. REST and MCP are authenticated execution surfaces; A2A remains
+credential-free for discovery/onboarding.
+
+Production has NOT been changed by this correction. The last verified Render
+production deploy remains commit `18afa934fdddef2a0489874c5ac2446fcf947475`
+with AutoDeploy OFF; production deployment/migration remains a separate owner
+Human Gate.
+
+---
+
 # Project checkpoint — 2026-09-13
 
 ## Current production state
