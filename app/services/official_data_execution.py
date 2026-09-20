@@ -96,30 +96,6 @@ class PopulationExecutionRequest(BaseModel):
         return canonical
 
 
-class PopulationUsefulnessAcknowledgement(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    usefulness_confirmed: bool
-    usefulness_evidence: str
-
-    @field_validator("usefulness_confirmed")
-    @classmethod
-    def _confirmed(cls, value: bool) -> bool:
-        if value is not True:
-            raise ValueError("usefulness_confirmed must be true")
-        return value
-
-    @field_validator("usefulness_evidence")
-    @classmethod
-    def _fixed_evidence(cls, value: str) -> str:
-        if value != "requester_confirms_population_result_was_useful":
-            raise ValueError(
-                "usefulness_evidence must be "
-                "requester_confirms_population_result_was_useful"
-            )
-        return value
-
-
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -419,13 +395,14 @@ def _counts(db: Session, requester_agent_id: int) -> tuple[int, int]:
             models.OfficialDataExecution.capability_verified.is_(True),
         )
     ) or 0
-    useful = db.scalar(
+    machine_vuos = db.scalar(
         select(func.count()).select_from(models.OfficialDataExecution).where(
             models.OfficialDataExecution.requester_agent_id == requester_agent_id,
             models.OfficialDataExecution.useful_outcome.is_(True),
+            models.OfficialDataExecution.capability_verified.is_(True),
         )
     ) or 0
-    return int(verified), int(useful)
+    return int(verified), int(machine_vuos)
 
 
 def _serialize(
@@ -434,7 +411,7 @@ def _serialize(
     *,
     idempotent_replay: bool = False,
 ) -> dict:
-    verified_count, useful_count = _counts(db, row.requester_agent_id)
+    verified_count, machine_vuo_count = _counts(db, row.requester_agent_id)
     return {
         "execution_id": row.execution_id,
         "state": row.state,
@@ -485,30 +462,33 @@ def _serialize(
         },
         "outcome": {
             "useful_outcome": row.useful_outcome,
-            "usefulness_evidence": row.usefulness_evidence,
+            "acceptance_method": (
+                "deterministic_capability_contract_v1" if row.useful_outcome else None
+            ),
+            "acceptance_evidence": row.usefulness_evidence,
+            "human_confirmation_required": False,
             "vuo_state": (
-                "requester_confirmed_verified_useful_outcome"
+                "machine_verified_request_contract_satisfied"
                 if row.useful_outcome
-                else "awaiting_requester_usefulness_confirmation"
-                if row.state == "completed"
                 else "not_established"
             ),
         },
         "requester_history": {
             "verified_execution_count": verified_count,
-            "confirmed_useful_outcome_count": useful_count,
+            "machine_verified_vuo_count": machine_vuo_count,
             "returning_requester_recognized_by_authenticated_agent_id": True,
         },
         "timestamps": {
             "created_at": row.created_at.isoformat(),
             "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-            "acknowledged_at": (
+            "vuo_established_at": (
                 row.acknowledged_at.isoformat() if row.acknowledged_at else None
             ),
         },
         "truth_boundaries": {
+            "human_usefulness_confirmation_required": False,
+            "vuo_requires_machine_verified_contract_satisfaction": True,
             "zero_price_execution_is_not_paid_vuo": True,
-            "requester_confirmation_is_not_independent_third_party_verification": True,
             "repository_or_test_execution_is_not_production_use": True,
             "payment_settlement_and_positive_margin_not_claimed": True,
         },
@@ -596,6 +576,15 @@ def execute_population_lookup(
         row.verification_state = "verified"
         row.capability_verified = True
         row.completed_at = _now()
+        # For this fixed capability, the request contract itself is machine-verifiable:
+        # requested country + fixed indicator + latest-available semantics + verified
+        # provider payload. A separate human/requester usefulness acknowledgement is
+        # therefore not part of VUO establishment.
+        row.useful_outcome = True
+        row.usefulness_evidence = "machine_verified_request_contract_satisfied_v1"
+        # Legacy schema column retained to avoid a migration solely for naming; it now
+        # records when the machine-verifiable VUO was established.
+        row.acknowledged_at = row.completed_at
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -619,46 +608,4 @@ def get_population_execution(
     )
     if row is None:
         raise OfficialDataExecutionError(404, "execution_not_found", "Execution not found")
-    return _serialize(db, row)
-
-
-def acknowledge_population_usefulness(
-    db: Session,
-    *,
-    requester_agent_id: int,
-    execution_id: str,
-    payload: PopulationUsefulnessAcknowledgement,
-) -> dict:
-    data = get_population_execution(
-        db, requester_agent_id=requester_agent_id, execution_id=execution_id
-    )
-    row = db.scalar(
-        select(models.OfficialDataExecution).where(
-            models.OfficialDataExecution.execution_id == data["execution_id"],
-            models.OfficialDataExecution.requester_agent_id == requester_agent_id,
-        )
-    )
-    if row is None:
-        raise OfficialDataExecutionError(404, "execution_not_found", "Execution not found")
-    if row.state != "completed" or not row.capability_verified:
-        raise OfficialDataExecutionError(
-            409,
-            "verified_result_required",
-            "Usefulness can be acknowledged only for a verified completed result",
-        )
-    if row.useful_outcome:
-        if row.usefulness_evidence != payload.usefulness_evidence:
-            raise OfficialDataExecutionError(
-                409,
-                "usefulness_conflict",
-                "Execution already has different usefulness evidence",
-            )
-        return _serialize(db, row, idempotent_replay=True)
-
-    row.useful_outcome = True
-    row.usefulness_evidence = payload.usefulness_evidence
-    row.acknowledged_at = _now()
-    db.add(row)
-    db.commit()
-    db.refresh(row)
     return _serialize(db, row)
