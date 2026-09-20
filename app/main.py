@@ -45,8 +45,6 @@ from .services.commercial_router import (
 from .services.official_data_execution import (
     OfficialDataExecutionError,
     PopulationExecutionRequest,
-    PopulationUsefulnessAcknowledgement,
-    acknowledge_population_usefulness,
     execute_population_lookup,
     get_population_execution,
 )
@@ -476,6 +474,8 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             "tools/call join_aion only if persistent identity is useful",
             "send returned key as Authorization: Bearer <agent_key>",
             "tools/call plan_commercial_route with a bounded need; planning only",
+            "tools/call execute_world_bank_population for the current executable zero-price capability; successful machine verification establishes the VUO without human acknowledgement",
+            "tools/call get_world_bank_execution to read durable execution/result evidence",
             "fresh current-job verification remains required before any future execution",
         ],
         "cold_start": {
@@ -548,6 +548,10 @@ def execute_world_bank_population(
             payload=payload,
             idempotency_key=idempotency_key,
         )
+        if data.get("outcome", {}).get("vuo_state") == "machine_verified_request_contract_satisfied":
+            mark_useful_action(agent)
+            db.add(agent)
+            db.commit()
         return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
     except OfficialDataExecutionError as exc:
         _raise_official_data(exc)
@@ -563,28 +567,6 @@ def official_data_execution_status(
         data = get_population_execution(
             db, requester_agent_id=agent.id, execution_id=execution_id
         )
-        return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
-    except OfficialDataExecutionError as exc:
-        _raise_official_data(exc)
-
-
-@app.post("/commercial/executions/{execution_id}/acknowledge")
-def acknowledge_official_data_execution(
-    execution_id: str,
-    payload: PopulationUsefulnessAcknowledgement,
-    agent=Depends(require_agent),
-    db: Session = Depends(get_db),
-):
-    try:
-        data = acknowledge_population_usefulness(
-            db,
-            requester_agent_id=agent.id,
-            execution_id=execution_id,
-            payload=payload,
-        )
-        mark_useful_action(agent)
-        db.add(agent)
-        db.commit()
         return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
     except OfficialDataExecutionError as exc:
         _raise_official_data(exc)
@@ -1402,6 +1384,30 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "execute_world_bank_population",
+        "description": "Authenticated agent-native execution of world_bank.population.latest through the official World Bank WDI API. Zero provider/customer price. A verified completed result satisfies the fixed machine request contract and establishes a non-paid VUO without human usefulness acknowledgement.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["country_code", "authorize_external_contact", "idempotency_key"],
+            "properties": {
+                "country_code": {"type": "string", "minLength": 2, "maxLength": 2},
+                "authorize_external_contact": {"type": "boolean", "const": True},
+                "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}
+            },
+            "additionalProperties": False
+        },
+    },
+    {
+        "name": "get_world_bank_execution",
+        "description": "Return the authenticated requesting agent's durable World Bank execution, verification, machine-VUO and economic evidence without rerunning the provider call.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["execution_id"],
+            "properties": {"execution_id": {"type": "string", "format": "uuid"}},
+            "additionalProperties": False
+        },
+    },
+    {
         "name": "verify_external_callability",
         "description": "Authenticated, explicitly authorized, fixed nonce challenge to one safely discovered public no-credential A2A 1.0 endpoint. Success is technical callability evidence, not by itself a semantic VUO.",
         "inputSchema": {
@@ -1742,6 +1748,45 @@ async def mcp_gateway(
             payload = CommercialRoutePlanRequest.model_validate(args)
             data = plan_commercial_route(
                 db, requester_agent_id=mcp_agent.id, payload=payload
+            )
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data,
+                "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
+
+        elif name == "execute_world_bank_population":
+            mcp_agent = authenticate_agent(authorization, db)
+            execution_args = dict(args)
+            idempotency_key = execution_args.pop("idempotency_key", None)
+            payload = PopulationExecutionRequest.model_validate({
+                "capability": "world_bank.population.latest",
+                **execution_args,
+            })
+            data = execute_population_lookup(
+                db,
+                requester_agent_id=mcp_agent.id,
+                payload=payload,
+                idempotency_key=idempotency_key,
+            )
+            if data.get("outcome", {}).get("vuo_state") == "machine_verified_request_contract_satisfied":
+                mark_useful_action(mcp_agent)
+                db.add(mcp_agent)
+                db.commit()
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data,
+                "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
+
+        elif name == "get_world_bank_execution":
+            mcp_agent = authenticate_participation_reader(authorization, db)
+            if set(args) != {"execution_id"}:
+                raise ValueError("exactly execution_id is required")
+            data = get_population_execution(
+                db,
+                requester_agent_id=mcp_agent.id,
+                execution_id=str(args["execution_id"]),
             )
             return JSONResponse(_mcp_result(rpc_id, {
                 "content": [{"type": "text", "text": json.dumps(data)}],
