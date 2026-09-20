@@ -34,10 +34,11 @@ checks = {
     "migration_0013_ambassador_control_v1": (root / "alembic/versions/0013_ambassador_control_v1.py").exists(),
     "migration_0014_conversation_intel_v1": (root / "alembic/versions/0014_conversation_intel_v1.py").exists(),
     "migration_0015_x402_exact_upfront_v1": (root / "alembic/versions/0015_x402_exact_upfront_v1.py").exists(),
+    "migration_0016_official_data_execution_v1": (root / "alembic/versions/0016_official_data_execution_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "repository_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0015_x402_exact_upfront_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0016_official_data_execution_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),

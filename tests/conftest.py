@@ -33,7 +33,7 @@ if not POSTGRES_GATE:
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL)"))
         connection.execute(text("DELETE FROM alembic_version"))
-        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0015_x402_exact_upfront_v1')"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0016_official_data_execution_v1')"))
 
 
 @pytest.fixture(autouse=True)
