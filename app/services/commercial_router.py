@@ -258,11 +258,12 @@ def plan_commercial_route(
                 ),
             },
             {
-                "action": "real_payment_human_gate",
+                "action": "owner_control_plane_payment_enablement",
                 "required": True,
                 "note": (
-                    "Real-money activation remains a separate Human Gate even after "
-                    "an executable quote exists."
+                    "AION owner enablement is required before a real-money rail is globally "
+                    "activated. After enablement, ordinary agent payment/settlement must not "
+                    "require a human in the customer transaction loop."
                 ),
             },
         ]
