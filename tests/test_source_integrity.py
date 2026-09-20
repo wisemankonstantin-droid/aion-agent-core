@@ -254,8 +254,9 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
 
     assert "verified_outcome_journey" in main_source
     assert "verified_outcome_journey" in a2a_source
-    assert "No credential-bearing A2A Package 3 action adapter exists" in journey_source
-    assert "No credential-bearing A2A Package 5 write adapter exists" in journey_source
+    assert "never place credentials in A2A message text" in journey_source
+    assert "operator_participation_review_required" in journey_source
+    assert '"human_usefulness_confirmation_required": False' in journey_source
     assert '"available": False' in journey_source
     assert 'action == "verify_external_callability"' not in a2a_source
     assert 'action == "submit_package5_vuo"' not in a2a_source
