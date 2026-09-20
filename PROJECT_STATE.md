@@ -39,11 +39,16 @@ Owner/control-plane gates remain separate for mutations of AION itself.
 
 ## Current verified GitHub state
 
-Current verified `main`:
+Agent-native runtime merge checkpoint:
 
 `e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`
 
 PR #13, **Make AION launch and commerce agent-native**, is merged.
+
+This document is itself being updated by a docs-only state-sync change, so it
+does not claim the future SHA of its own merge. Resolve the live `main` ref
+directly from GitHub before any write operation. The docs-only state-sync changes
+no runtime code, migration or dependency.
 
 Exact pre-merge candidate:
 
@@ -127,7 +132,9 @@ Deploy status:
 
 LIVE
 
-Therefore repository main is newer than production.
+Therefore the verified agent-native repository runtime baseline is newer than
+production. The live GitHub `main` ref may advance by docs-only commits without
+changing that runtime baseline.
 
 The current live artifact expects schema:
 
@@ -183,7 +190,7 @@ Current Render deploy provenance wins.
 
 ## What is merged to main but not yet production-live
 
-Current main additionally contains:
+The verified agent-native repository runtime baseline additionally contains:
 
 - `0015_x402_exact_upfront_v1`;
 - `0016_official_data_execution_v1`;
@@ -361,7 +368,9 @@ Current sequence:
 
 `verified current main -> controlled production deploy -> migrate to repository head -> live readiness/release verification -> bounded zero-cost World Bank production smoke -> machine discovery/distribution -> remove agent friction -> prepare/enable priced machine commerce -> first SAT -> repeat SAT -> positive contribution margin -> scale`
 
-The next write step is a controlled production release of current verified main.
+The next write step is a controlled production release of the then-current
+verified GitHub main, after confirming that its runtime/migration content remains
+the accepted agent-native baseline.
 
 That release is NOT authorized merely by this document.
 
