@@ -1,8 +1,12 @@
 # AION permanent operating directive
 
-## Mission and product proof
+## Agent-native authority
 
-AION must become a production-ready, agent-native ecosystem. The product is proven only when an independent external agent can discover AION, understand its protocol, connect, obtain useful value, interact safely, preserve its identity and return later for new value.
+`AION_AGENT_NATIVE_LAUNCH_LAW.md` is the canonical launch and customer-loop law. If older AION wording makes a human reply, operator review, human usefulness acknowledgement or ceremonial proof a prerequisite for normal agent utility or commerce, the agent-native launch law wins.
+
+## Mission and launch
+
+AION must become a production-ready, agent-native ecosystem in which an external AI agent can discover AION, understand machine-readable capabilities, connect, request value, receive a machine-verifiable result, pay when required, and return without a human in the customer loop.
 
 The core product loop is:
 
@@ -23,18 +27,13 @@ while higher-cost or higher-value services may be paid.
 not automatically create membership; only explicit join creates membership.
 Discovery, first-contact reads and onboarding are not independent adoption.
 
-The first milestone is **10 independent external agents that performed a useful action and later returned**. A registration, page view, request, synthetic probe, duplicated identity or operator-controlled agent does not satisfy this milestone.
+The primary launch objective is an autonomous machine transaction loop, not a pre-launch proof quota.
 
-The North Star metric is **VUO — Verified Useful Outcome**: a real useful
-outcome delivered to an independent external agent and verified with explicit
-evidence. Registrations, traffic, API calls, synthetic probes and test agents
-are not VUOs. Supporting measures include VUO per week, agents with a VUO,
-repeat VUO rate, cost per VUO, paid VUO rate, revenue per VUO and, where
-measurable, gross margin per VUO.
+The core commercial event is a **Settled Agent Transaction (SAT)**: an external authenticated logical agent requests a capability, AION completes the machine-verifiable result contract, and any required payment is actually settled before protected result release. Zero-price successful executions remain useful product telemetry but are not revenue.
 
-Package 3's next killer proof is one narrow real capability path from request to
-verified outcome. New secondary features must wait until this core loop is
-demonstrated with clean outcome and return evidence.
+Primary measures are successful agent executions, SATs, repeat SATs, retained paying agents, real revenue, variable cost and contribution margin. Historical VUO/Package 5 metrics may remain for compatibility and analysis, but they do not gate launch, distribution, execution or machine commerce.
+
+The immediate killer path is one narrow real capability from machine request to executable result, followed by machine-readable pricing/payment where appropriate. New secondary features wait only when they distract from that autonomous transaction loop.
 
 ## Live Utility Engine direction
 
@@ -58,8 +57,7 @@ necessary; it must never silently receive verified or callable semantics.
 Prioritize small slices that advance `recommendation -> safe action -> verified
 result`. Do not turn AION into a static document warehouse, generic search or
 news product, indiscriminate scraper, stale RAG dump, unverified directory or
-tool list without compatibility. Do not scale acquisition before independent
-useful action and voluntary return are demonstrated.
+tool list without compatibility. Scale distribution in bounded machine-first steps as soon as the production capability is safe and executable. Do not wait for human interviews, human replies, operator classification or a voluntary-return ceremony before making AION discoverable to agents.
 
 ## Data and learning governance
 
@@ -84,13 +82,7 @@ Permanent rules:
 - every collector, watcher, refresher and verifier has bounded request,
   retry, concurrency, byte, time, storage and cost behavior.
 
-Automatic data and knowledge updates may operate inside reviewed bounded
-policies. Uncontrolled production code self-modification is prohibited. AION
-may eventually prepare an idea, specification, branch or patch, tests, red-team
-evidence and CI result for human/HQ review, but it must not autonomously merge
-core code, deploy, change production security policy, migrate production data,
-alter production secrets or configuration, activate payments, or perform
-destructive infrastructure actions.
+Automatic data and knowledge updates may operate inside reviewed bounded policies. Uncontrolled production code self-modification is prohibited. AION may prepare an idea, specification, branch or patch, tests, red-team results and CI evidence autonomously. Owner/control-plane authorization remains required for governed mutations such as merge where configured, production deploy, production security policy, production migration, secrets/configuration, global real-money activation and destructive infrastructure. These control-plane gates must never become customer-flow dependencies.
 
 ## Source, protocols and architecture
 
@@ -119,9 +111,9 @@ destructive infrastructure actions.
   invoke an unknown agent. Successful invocation or outcome evidence requires
   a separately authorized action boundary; a text request for harmless behavior
   is not a security boundary.
-- Product metrics use unique independent external agents. Keep raw traffic and raw database rows visible, label estimates, exclude AION-operated and test identities, and never convert unknown traffic into adoption.
-- Never fabricate, round up or selectively present growth. Synthetic agents and probes validate software; they do not establish market growth, activation or retention.
-- Do not scale acquisition until independent activation and return have been demonstrated. Optimize the real path from discovery to useful result before distribution volume.
+- Product metrics use authenticated logical agents and durable transaction/execution records. Keep raw traffic and raw database rows visible, label estimates, and exclude AION-operated, duplicate and synthetic/test identities from commercial counts.
+- Never fabricate, round up or selectively present growth, settlement or revenue. Synthetic agents and probes validate software only.
+- Distribution is machine-first and may scale in bounded steps once the capability is production-safe. Optimize the path from discovery to executable result and payment rather than waiting for manual adoption certification.
 - Anti-abuse controls protect reputation, payments, metrics, infrastructure and
   rewards from Sybil activity, self-dealing, duplicate economic events,
   malicious traffic and other abuse. They must not treat legitimate agents as
@@ -171,7 +163,7 @@ Work is Done only when:
 8. the branch is pushed for review when authorized;
 9. no unverified product or growth claim is presented as fact.
 
-Passing synthetic tests proves implementation behavior only. It does not prove independent adoption, useful external outcomes or retention.
+Passing synthetic tests proves implementation behavior only. It does not prove real settlement, revenue or repeat external use. Those are observed from production transaction records, not from a human certification process.
 
 **ZERO KNOWN DEFECTS AT PACKAGE CLOSE.** A package is not Done while a known,
 reproducible security, concurrency, database-correctness, regression, logic,
@@ -179,7 +171,7 @@ documentation or invariant defect remains. A documented, deliberate
 current-scope limitation is acceptable; a broken promised invariant is not.
 The normal package gate is:
 
-`implement -> targeted tests -> full tests -> Codex red team -> CI -> PostgreSQL gate when relevant -> HQ independent review -> corrective fixes -> revalidation -> Done`
+`implement -> targeted tests -> full tests -> red team -> CI -> PostgreSQL gate when relevant -> corrective fixes -> revalidation -> owner control-plane gate only where required -> Done`
 
 ## Economic constitution
 
@@ -222,9 +214,7 @@ require prices of approximately $1.67, $2.50 and $4.00 respectively.
 Pricing and routing use total expected variable cost, including provider/tool,
 external-agent, inference, search, browser/compute, verification, network,
 storage, payment, expected failed-attempt, bounded retry and applicable
-fraud/chargeback exposure. They reason about expected **cost per Verified Useful
-Outcome**, not merely cost per attempt. **CM/VUO** means contribution margin per
-Verified Useful Outcome. Do not fabricate VUO, revenue, cost or margin evidence.
+fraud/chargeback exposure. They reason about expected cost per successful machine execution and, for paid utility, per Settled Agent Transaction, not merely cost per attempt. Track contribution margin per SAT and per product. Do not fabricate settlement, revenue, cost or margin.
 
 Paid provider/source use requires compatible commercial-use, resale,
 redistribution, caching and retention rights. Paid access alone is not a right
@@ -253,15 +243,9 @@ misrepresented as universal AION product requirements.
 AION is a neutral cross-platform utility, compatibility, trust, routing and
 verified-outcome layer for agents. It does not aim to replace large agent
 runtimes or cloud platforms, and it is not another generic MCP or A2A registry.
-Protocols are infrastructure; verified useful outcomes are the value.
+Protocols are infrastructure; completed machine utility and settled agent commerce are the value.
 
-AION's durable moat must emerge from real usage: verified outcome and
-reliability history, a cross-platform compatibility graph, trust evidence,
-economic routing and distribution. Source code and protocol endpoints alone are
-not a moat, and data must never be invented to simulate one. Mature reputation
-should be contextual to agent, capability, protocol, evidence, recency and
-verified outcomes rather than reduced to one global number. Do not overbuild
-reputation before real outcomes exist.
+AION's durable moat must emerge from real usage: execution and reliability history, settled transaction history, a cross-platform compatibility graph, machine-verifiable provenance, economic routing and distribution. Source code and protocol endpoints alone are not a moat, and data must never be invented to simulate one. Mature reputation should be contextual to agent, capability, protocol, recency, execution quality and settled economic history rather than reduced to one global number. Do not overbuild reputation before real transactions exist.
 
 ## Decision discipline
 
