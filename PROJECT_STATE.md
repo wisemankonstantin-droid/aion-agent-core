@@ -529,8 +529,11 @@ exact DNS-pinned transport and `mrv=1` endpoint returned HTTP 200 in one
 attempt. It verified the U.S. 2025 population `341784857`, dataset update
 `2026-07-13`, and response digest
 `sha256:24eae3b423ccc9775c1b6388ecf4d6b2eaae67e5d562f7c6aae70b7127df47b2`.
-The exact PostgreSQL migration/application gate remains pending CI for the
-eventual immutable candidate SHA; this local result is not PostgreSQL evidence.
+The exact PostgreSQL 18 pre-production release gate completed successfully for
+candidate SHA `910beca60fda6984a00bee19694f80e858499d0d` in GitHub Actions run
+`35469173115`, including fresh/upgrade migrations, the PostgreSQL application
+and real-concurrency suite, and startup/readiness. This is pre-production CI
+evidence, not production deployment or production-database evidence.
 
 This candidate does not activate money, invoke a paid provider, prove an
 independent customer, establish a paid VUO, settle funds, establish positive
