@@ -1,3 +1,40 @@
+# AGENT-ONLY COMMERCIAL SEQUENCE AMENDMENT — 2026-09-20
+
+This is an amendment to the existing roadmap, not a new roadmap. It supersedes
+older sequencing that makes Ambassador outreach, human/design-partner response,
+operator participation classification, requester usefulness acknowledgement,
+or a human buyer a prerequisite for launch.
+
+Current primary sequence:
+
+```
+AGENT-NATIVE PRODUCTION SURFACE
+-> MACHINE DISCOVERY / ONBOARDING
+-> AUTHENTICATED MACHINE REQUEST
+-> ROUTE / SUPPLY
+-> EXECUTION
+-> MACHINE-VERIFIED CONTRACT SATISFACTION
+-> VUO
+-> MACHINE PAYMENT AUTHORIZATION / RESERVE
+-> REAL SETTLEMENT
+-> REPEAT PAID VUO
+-> POSITIVE CM/VUO
+-> SCALE AGENT LIQUIDITY
+```
+
+Package 5 / Ambassador / Conversation Intelligence infrastructure remains
+available where useful, but it is legacy/optional support and is not the
+commercial critical path.
+
+The immediate product objective is not to obtain human feedback. It is to make
+the complete agent-to-agent economic loop executable and machine-readable.
+
+A human is not required to be requester, buyer, usefulness approver, design
+partner, or per-transaction payment approver. Owner Human Gates remain only for
+protected control-plane actions and real-money rail activation/risk changes.
+
+---
+
 # AION master delivery roadmap
 
 ## Authority and interpretation

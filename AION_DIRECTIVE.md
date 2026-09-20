@@ -1,3 +1,56 @@
+# AGENT-ONLY RUNTIME AMENDMENT — 2026-09-20
+
+This amendment supersedes any older AION_DIRECTIVE instruction that makes a
+human participant, operator review, design-partner response, manual usefulness
+acknowledgement, or manually proven independent buyer a prerequisite for
+runtime utility, commercial execution, VUO establishment, revenue, or scaling.
+
+AION is an ecosystem for AI agents and machine principals.
+
+Primary runtime loop:
+
+```
+AGENT DISCOVERS AION
+-> MACHINE-READABLE REQUEST
+-> AUTHENTICATED MACHINE AUTHORITY
+-> ELIGIBLE SUPPLY
+-> ROUTE / QUOTE
+-> MACHINE PAYMENT AUTHORIZATION / RESERVE WHERE REQUIRED
+-> EXECUTE
+-> MACHINE-VERIFY REQUEST CONTRACT
+-> VUO
+-> SETTLE
+-> RECEIPT
+-> RETURN / REPEAT
+-> CM/VUO
+-> SCALE
+```
+
+For deterministic capabilities, VUO means that the authenticated request's
+declared or fixed acceptance contract is satisfied by capability-specific
+machine-verifiable evidence. A separate human usefulness attestation is not
+required.
+
+For capabilities with subjective success criteria, the requesting agent must
+provide or agree to machine-checkable acceptance criteria or a verifier before
+execution. Human feedback may be optional research, never a launch gate.
+
+Legacy Package 5 participation classification, Ambassador outreach, operator
+review, and requester-attestation proof remain historical or optional analytics.
+They do not control the current commercial runtime.
+
+Human intervention is control-plane only: production deploy/rollback,
+production database/config/secrets/AutoDeploy changes, destructive
+infrastructure actions, and owner authorization to activate or materially
+expand real-money rails/risk limits. Once a rail and limits are activated,
+transactions inside deterministic authorized bounds are designed to execute
+without per-transaction human approval.
+
+Evidence exists to secure execution, verify contract satisfaction, settle
+money, learn and audit. Evidence collection is not a substitute for shipping.
+
+---
+
 # AION permanent operating directive
 
 ## Mission and product proof
