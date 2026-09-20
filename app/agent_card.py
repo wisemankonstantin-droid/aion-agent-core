@@ -70,6 +70,20 @@ def get_agent_card(base_url: str):
                 "examples": ['{"action":"onboarding"}'],
             },
             {
+                "id": "aion_paid_route_intelligence",
+                "name": "AION paid Route Intelligence",
+                "description": (
+                    "Machine-readable x402 v2 exact/upfront purchase path for AION-owned "
+                    "Verified Route Intelligence. Check public payment readiness first; "
+                    "purchase remains fail-closed until owner-controlled activation is live."
+                ),
+                "tags": ["aion", "route-intelligence", "x402", "payment", "settlement"],
+                "examples": [
+                    f"GET {base_url}/commercial/route-intelligence/payment-readiness",
+                    f"POST {base_url}/commercial/route-intelligence/purchase",
+                ],
+            },
+            {
                 "id": "discover_aion_agents",
                 "name": "Discover AION agents",
                 "description": "Discover current AION members by declared capability.",
