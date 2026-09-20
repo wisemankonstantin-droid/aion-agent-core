@@ -169,18 +169,19 @@ def test_package3_action_still_records_normal_authentication(transport, monkeypa
         assert db.scalar(select(models.ActionRun).where(models.ActionRun.requester_agent_id == aid)) is not None
 
 
-def test_all_machine_guidance_exposes_no_touch_handshake():
+def test_all_machine_guidance_keeps_legacy_telemetry_off_the_normal_agent_path():
     for path in ("/onboarding", "/.well-known/aion.json", "/skill.md", "/llms.txt", "/.well-known/agent-card.json"):
         response = client.get(path)
         assert response.status_code == 200
-        assert PATH in response.text and TOOL in response.text
     assert TOOL in json.dumps(_a2a('{"action":"onboarding"}'))
     discover = _mcp("server/discover").json()["result"]
-    assert TOOL in discover["instructions"]
+    assert "legacy telemetry" in discover["instructions"]
     from app.machine_journey import verified_outcome_journey
     journey = verified_outcome_journey("https://example.test")
-    assert journey["sequence"].index("check_own_package5_participation_readiness") < journey["sequence"].index("authenticated_verified_callability_action")
-    assert journey["participation_readiness"]["A2A"]["available"] is False
+    assert "package5_countable_participation_gate" not in journey["sequence"]
+    assert journey["legacy_package5_telemetry"]["blocks_utility"] is False
+    assert journey["legacy_package5_telemetry"]["blocks_launch"] is False
+    assert journey["legacy_package5_telemetry"]["participation_read"]["MCP"]["tool"] == TOOL
 
 
 def test_resource_limit_fails_closed(monkeypatch):
