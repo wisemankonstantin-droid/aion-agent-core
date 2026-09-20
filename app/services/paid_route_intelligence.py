@@ -11,6 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 import os
 
+from . import economic_kernel
 from .economic_kernel import (
     STANDARD_TARGET_MARGIN_BPS,
     TRUSTED_PRODUCT_PROFILES,
