@@ -270,13 +270,13 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 `audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
 
 The accepted delivery sequence and current package status are defined in
-`AION_MASTER_DELIVERY_ROADMAP.md`. Packages 3 and 3B are HQ-accepted, merged and
-production-released through Package 4. Package 5 engineering is merged and
-live, while independent commercial proof remains legitimately zero. Package
-5B and Package 5C are merged and live. Package 6A is present in production
-ancestry as disabled Economic Execution Kernel infrastructure, and Package 5D
-and Package 5E are accepted, merged, deployed and live. All real-money adapters
-remain disabled and Package 6B has not started. Package 5E deployment does not
-prove outreach or commercial success. Live
+`AION_MASTER_DELIVERY_ROADMAP.md`. Packages 3 and 3B are historically accepted, merged and production-released
+through Package 4. Package 5 engineering is merged and live; its historical
+proof counters are legacy telemetry and do not gate launch. Package 5B and
+Package 5C are merged and live. Package 6A is present in production ancestry as
+disabled Economic Execution Kernel infrastructure, and Package 5D and Package
+5E are accepted, merged, deployed and live. Real-money adapters remain disabled,
+so real settlement/revenue is still zero until an owner-enabled rail and an
+actual agent payment occur. Human outreach status is not a launch criterion. Live
 merge/main and deployment status must still be verified directly. Each package
 remains subject to the criticality ordering and release gates above.
