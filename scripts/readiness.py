@@ -61,7 +61,8 @@ checks = {
     "package_6a_economic_kernel": (
         '@app.post("/economic/preflight")' in main
         and '"name": "economic_preflight"' in main
-        and "REAL_MONEY_EXECUTION_ENABLED = False" in economic_kernel
+        and 'REAL_MONEY_ENABLE_ENV = "AION_REAL_MONEY_EXECUTION_ENABLED"' in economic_kernel
+        and "REAL_MONEY_EXECUTION_ENABLED = configured_real_money_execution_enabled()" in economic_kernel
         and "MINIMUM_MARGIN_BPS = 4_000" in economic_kernel
         and "parent_economic_operation_id" in models
     ),

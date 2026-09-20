@@ -105,6 +105,18 @@ def _assert_truthful_journey(journey: dict) -> None:
     payment = journey["machine_payment_when_required"]
     assert payment["human_customer_approval_required_by_aion"] is False
     assert payment["owner_control_plane_enablement_may_be_required"] is True
+    priced = payment["priced_route_intelligence"]
+    assert priced["product_sku"] == "aion.verified.route_intelligence.v1"
+    assert priced["membership_required"] is False
+    assert priced["protocol"] == "x402"
+    assert priced["scheme"] == "exact"
+    assert priced["payment_flow"] == "upfront"
+    assert priced["readiness"]["url"].endswith("/commercial/route-intelligence/payment-readiness")
+    assert priced["readiness"]["must_report_launch_ready"] is True
+    assert priced["purchase"]["url"].endswith("/commercial/route-intelligence/purchase")
+    assert priced["purchase"]["payment_requirement_header"] == "PAYMENT-REQUIRED"
+    assert priced["purchase"]["payment_submission_header"] == "PAYMENT-SIGNATURE"
+    assert priced["result_release_before_settlement"] is False
 
     legacy = journey["legacy_package5_telemetry"]
     assert legacy["blocks_utility"] is False
@@ -175,6 +187,14 @@ def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
     assert planning_step["optional"] is True
     assert planning_step["required_before_direct_execution"] is False
     assert execution_step["route_plan_required"] is False
+    readiness_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/route-intelligence/payment-readiness"))
+    purchase_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/route-intelligence/purchase"))
+    assert readiness_step["membership_required"] is False
+    assert readiness_step["proceed_only_when"] == "launch_ready=true"
+    assert purchase_step["membership_required"] is False
+    assert purchase_step["payment_protocol"] == "x402-v2-exact-upfront"
+    assert purchase_step["payment_required_header"] == "PAYMENT-REQUIRED"
+    assert purchase_step["payment_submission_header"] == "PAYMENT-SIGNATURE"
     assert root["verified_callability_action"] == "POST /actions/verify-callability"
     assert root["package5_proof"] == "GET /proof/package-5"
     assert _agent_count() == before_agents
@@ -192,6 +212,36 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     assert "Package 5 participation/VUO endpoints are legacy telemetry" in guidance["description"]
     assert "verify_external_callability" not in skills
     assert "submit_package5_vuo" not in skills
+    assert "aion_paid_route_intelligence" not in skills
+    serialized_skills = json.dumps(card["skills"]).lower()
+    assert "route-intelligence/payment-readiness" not in serialized_skills
+    assert "route-intelligence/purchase" not in serialized_skills
+    assert "mark-paid" not in serialized_skills
+    assert "settlement" not in serialized_skills
+
+    route_guidance = skills["aion_commercial_route_planning"]
+    assert "a2a provides guidance only" in route_guidance["description"].lower()
+    assert route_guidance["examples"] == ['{"action":"onboarding"}']
+
+    onboarding = client.get("/onboarding").json()
+    priced = onboarding["verified_outcome_journey"]["machine_payment_when_required"][
+        "priced_route_intelligence"
+    ]
+    assert priced["readiness"]["url"].endswith(
+        "/commercial/route-intelligence/payment-readiness"
+    )
+    assert priced["purchase"]["url"].endswith(
+        "/commercial/route-intelligence/purchase"
+    )
+
+    ard_entry = client.get("/.well-known/ard.json").json()["entries"][0]
+    assert "PaidRouteIntelligence" in ard_entry["capabilities"]
+    assert ard_entry["metadata"]["routeIntelligencePaymentReadiness"].endswith(
+        "/commercial/route-intelligence/payment-readiness"
+    )
+    assert ard_entry["metadata"]["routeIntelligencePurchase"].endswith(
+        "/commercial/route-intelligence/purchase"
+    )
     assert guidance["examples"] == ['{"action":"onboarding"}']
 
 
@@ -221,6 +271,9 @@ def test_skill_and_llms_are_complete_consistent_and_contain_no_real_credential()
         assert "operator review" in document.lower()
         assert "do not wait" in document.lower() or "not" in document.lower()
         assert "Human usefulness acknowledgement is optional feedback" in document
+        assert "PAYMENT-REQUIRED" in document
+        assert "route-intelligence/payment-readiness" in document
+        assert "route-intelligence/purchase" in document
         assert "agent authorization, settlement and protected result release" in document
         assert not re.search(r"aion_[A-Za-z0-9_-]{20,}", document)
 
@@ -234,7 +287,9 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
     assert "POST /commercial/executions/world-bank-population" in rest_actions
     assert "No Package 5 operator review is required" in rest_actions
     assert "POST /actions/verify-callability" in rest_actions
-    assert "machine-readable payment requirements" in rest_actions
+    assert "payment-readiness" in rest_actions
+    assert "PAYMENT-REQUIRED" in rest_actions
+    assert "PAYMENT-SIGNATURE" in rest_actions
     assert "never in A2A message text" in rest_actions
 
     mcp = _mcp(

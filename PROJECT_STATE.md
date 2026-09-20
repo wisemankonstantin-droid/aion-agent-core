@@ -37,168 +37,138 @@ Normal external-agent utility does not depend on:
 
 Owner/control-plane gates remain separate for mutations of AION itself.
 
-## Current verified GitHub state
+## Current verified GitHub and production state
 
-Agent-native runtime merge checkpoint:
+Current verified GitHub `main`:
 
-`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`
+`094077fb4f4d853714764c73a2890b157da7141d`
 
-PR #13, **Make AION launch and commerce agent-native**, is merged.
+PR #14 state-sync is merged.
 
-This document is itself being updated by a docs-only state-sync change, so it
-does not claim the future SHA of its own merge. Resolve the live `main` ref
-directly from GitHub before any write operation. The docs-only state-sync changes
-no runtime code, migration or dependency.
+Post-merge exact-main AION CI run #345 succeeded with locked install,
+dependency integrity, secret scan, full pytest, readiness, migration smoke and
+official MCP/A2A interoperability.
 
-Exact pre-merge candidate:
-
-`f3bc436de3dde30e18235597e5e71c179ae6e8ec`
-
-Exact-candidate validation:
-
-- AION CI push run #329: success;
-- AION CI PR run #330: success;
-- PostgreSQL pre-production release gate #68: success;
-- PostgreSQL gate included fresh/upgrade migrations, application/concurrency,
-  startup and readiness.
-
-The candidate tree and merge-main tree are identical.
-
-Post-merge exact-main AION CI:
-
-- run #331;
-- exact SHA `e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`;
-- success;
-- locked install, dependency integrity, secret scan, full pytest, readiness,
-  migration smoke and MCP/A2A interoperability passed.
-
-Repository Alembic head:
+Repository Alembic head and release identity:
 
 `0016_official_data_execution_v1`
 
-Current release identity expects:
+Production service:
 
-`0016_official_data_execution_v1`
+- Render service: `aion-agent-core-live`;
+- service ID: `srv-daei9gpt0dsc73abhs10`;
+- workspace: `tea-daehtv2d0e5s738ir540`;
+- URL: `https://aion-agent-core-live.onrender.com`;
+- region: Frankfurt;
+- branch: `main`;
+- AutoDeploy: OFF;
+- service not suspended.
 
-## Current verified production state
+Controlled production deploy:
 
-Render service:
+`dep-dao02e3tqb8s73dd9gc0`
 
-`aion-agent-core-live`
+Live production application commit:
 
-Service ID:
+`094077fb4f4d853714764c73a2890b157da7141d`
 
-`srv-daei9gpt0dsc73abhs10`
+Deploy completed LIVE on 2026-09-20.
 
-Workspace:
+Render build logs verify checkout of the exact approved SHA and successful
+locked dependency installation.
 
-`tea-daehtv2d0e5s738ir540`
-
-URL:
-
-`https://aion-agent-core-live.onrender.com`
-
-Region:
-
-Frankfurt
-
-Branch:
-
-`main`
-
-AutoDeploy:
-
-OFF
-
-Service is not suspended.
-
-Build command:
-
-`python -m pip install --require-hashes -r requirements.txt`
-
-Start command:
+Startup logs verify the configured command:
 
 `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-Current verified live deploy:
-
-`dep-daju1vdg1s2s73c6gtp0`
-
-Current verified live application commit:
-
-`18afa934fdddef2a0489874c5ac2446fcf947475`
-
-Deploy status:
-
-LIVE
-
-Therefore the verified agent-native repository runtime baseline is newer than
-production. The live GitHub `main` ref may advance by docs-only commits without
-changing that runtime baseline.
-
-The current live artifact expects schema:
-
-`0014_conversation_intel_v1`
-
-Repository migration chain after that revision is linear:
+and the exact production upgrades:
 
 `0014_conversation_intel_v1 -> 0015_x402_exact_upfront_v1 -> 0016_official_data_execution_v1`
 
-Both upgrades are additive on upgrade: each creates its new table/indexes and
-does not drop existing production tables or columns.
+followed by successful application startup.
 
-Production database verification on 2026-09-20 resolved the prepared Neon
-production project:
+Direct Neon read-only verification after deploy reports:
 
-- Neon project: `AION Production Free`;
-- project ID: `floral-cloud-01727932`;
-- region: `aws-eu-central-1`;
-- PostgreSQL: 18;
-- default branch: `main` / `br-orange-mountain-b259usgb`;
-- database: `neondb`;
-- read-only query `SELECT version_num FROM alembic_version;` returned
-  `0014_conversation_intel_v1`.
+`0016_official_data_execution_v1`
 
-This matches the schema expected by the currently deployed application artifact.
+for project `AION Production Free`, PostgreSQL 18, default branch `main`,
+database `neondb`.
 
-The Render-native SQL connector separately failed to establish its required
-SSL/TLS session against the visible Render PostgreSQL inventory instance; that
-connector failure does not override the successful direct Neon revision read.
+No Render production configuration, AutoDeploy setting or production secret was
+changed. Real-money activation remains disabled.
 
-Render does not expose the current DATABASE_URL value through the available
-read-only service metadata, so this checkpoint does not print or infer secret
-connection material. Reverify association only through a safe non-secret
-mechanism if needed before deployment.
+### Exact live machine gate
 
-## What is production-live
+A post-deploy live gate against the public production URL passed for exact
+release SHA `094077fb4f4d853714764c73a2890b157da7141d` and schema
+`0016_official_data_execution_v1`.
 
-The verified live ancestry includes the established AION foundation and the
-pre-`0015` application line, including:
+It verified the established public REST/A2A/MCP machine surfaces without
+creating membership, economic operations, payment intents, provider contact,
+learning evidence or legacy VUO writes.
 
-- core REST/MCP/A2A foundation;
-- live utility and compatibility;
-- safe action/callability foundation;
-- continuous learning foundation;
-- historical Package 5 compatibility/proof surfaces;
-- Economic Execution Kernel V1 with real-money behavior disabled;
-- Ambassador infrastructure;
-- Conversation Intelligence V1;
-- Commercial Router code present in the live commit ancestry where applicable.
+### Authorized zero-cost World Bank production smoke
 
-Do not infer a capability is live merely because it exists in current main.
-Current Render deploy provenance wins.
+One bounded authenticated production execution completed successfully:
 
-## What is merged to main but not yet production-live
+- capability: `world_bank.population.latest`;
+- execution ID: `cc441763-2202-4102-bd18-76ba926dfa61`;
+- country: US / United States;
+- provider: World Bank WDI;
+- provider HTTP status: 200;
+- observation year: 2025;
+- population: 341,784,857;
+- provider dataset last updated: 2026-07-13;
+- provider cost: 0 USD;
+- customer price: 0 USD;
+- verification state: verified;
+- machine completion: `machine_verified_result_delivered`;
+- human usefulness acknowledgement required: no;
+- optional usefulness feedback recorded: no.
 
-The verified agent-native repository runtime baseline additionally contains:
+The durable production row confirms one outbound attempt, completed state,
+verified capability, zero price/cost and no acknowledgement.
 
-- `0015_x402_exact_upfront_v1`;
-- `0016_official_data_execution_v1`;
-- direct authenticated `world_bank.population.latest` execution;
-- machine-verifiable World Bank result/provenance/freshness handling;
-- PR #13 agent-native machine journey and compatibility correction.
+`route_intelligence_purchases` remained at zero rows during this smoke, so no
+paid purchase or settlement was created.
 
-These require a separately authorized production release.
+## Current payment-readiness work
+
+Production x402 exact/upfront purchase infrastructure is now schema-live but
+remains fail-closed for real money.
+
+Current main still has the global economic execution gate disabled in code.
+The active bounded branch
+`codex/package-6b-real-money-control-gate-v1` is preparing an explicit
+owner-controlled environment gate:
+
+`AION_REAL_MONEY_EXECUTION_ENABLED=1`
+
+Missing, malformed or loosely truthy values remain disabled. This branch does
+not set production environment variables, does not activate x402, does not
+contact a facilitator, does not move money and does not create settlement.
+
+The bounded PR #15 correction keeps paid Route Intelligence discoverable
+through onboarding, the shared machine journey, ARD/AI Catalog, REST and
+OpenAPI while removing its purchase/settlement skill from the public A2A Agent
+Card. A2A remains guidance/discovery-only for this protected commercial path;
+it does not advertise payment, purchase, mark-paid or settlement mutation.
+The repository readiness check also recognizes the explicit fail-closed owner
+gate instead of requiring the superseded hardcoded-disabled assignment.
+
+Local validation for this bounded correction:
+
+- focused A2A/payment/discovery/source-integrity matrix: 77 passed;
+- final full locked-environment suite: 653 passed, 23 PostgreSQL-only tests
+  skipped locally;
+- dependency integrity, 188-file secret scan, compileall, workflow YAML,
+  readiness and fresh SQLite migration to `0016_official_data_execution_v1`
+  passed; and
+- official MCP 2026-07-28 and A2A 1.0 interoperability passed against an
+  isolated local HTTPS server and disposable database.
+
+Independent exact-SHA AION CI and PostgreSQL release-gate evidence is required
+before this branch is merge-ready.
 
 ## World Bank executable path
 
@@ -270,7 +240,9 @@ a launch dependency.
 
 Package 6A infrastructure exists with deterministic economic controls.
 
-Real-money behavior remains disabled.
+Real-money behavior remains disabled in production. The current bounded
+Package 6B control-gate branch only makes activation explicit and fail-closed;
+it does not activate money.
 
 ### Commercial Router
 
@@ -366,22 +338,16 @@ They are not normal customer-flow gates.
 
 Current sequence:
 
-`verified current main -> controlled production deploy -> migrate to repository head -> live readiness/release verification -> bounded zero-cost World Bank production smoke -> machine discovery/distribution -> remove agent friction -> prepare/enable priced machine commerce -> first SAT -> repeat SAT -> positive contribution margin -> scale`
+`production-live agent utility -> machine discovery/distribution -> explicit fail-closed payment activation control -> owner gate for real-money activation -> first SAT -> repeat SAT -> positive contribution margin -> scale`
 
-The next write step is a controlled production release of the then-current
-verified GitHub main, after confirming that its runtime/migration content remains
-the accepted agent-native baseline.
+The zero-cost executable agent path is production-live and verified.
 
-That release is NOT authorized merely by this document.
+The next bounded engineering step is to finish and validate the explicit
+owner-controlled real-money activation gate without enabling it.
 
-Before deploy:
-
-1. reverify GitHub main is still the intended tested SHA;
-2. reverify Render service and AutoDeploy OFF;
-3. reverify live deploy provenance;
-4. resolve production DB association/revision if safely possible;
-5. preserve current production configuration/secrets;
-6. keep real-money activation disabled unless separately authorized.
+After that branch is ready, merge remains an owner gate. Any production
+configuration/secrets change, deploy containing payment activation behavior, or
+real-money activation remains a separate owner/control-plane Human Gate.
 
 ## Continuous execution rule
 

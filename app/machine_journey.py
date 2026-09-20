@@ -160,6 +160,34 @@ def verified_outcome_journey(base_url: str) -> dict:
                 "protected_result_release",
                 "durable_economic_record",
             ],
+            "priced_route_intelligence": {
+                "product_sku": "aion.verified.route_intelligence.v1",
+                "membership_required": False,
+                "protocol": "x402",
+                "x402_version": 2,
+                "scheme": "exact",
+                "payment_flow": "upfront",
+                "readiness": {
+                    "method": "GET",
+                    "url": f"{base}/commercial/route-intelligence/payment-readiness",
+                    "must_report_launch_ready": True,
+                },
+                "purchase": {
+                    "method": "POST",
+                    "url": f"{base}/commercial/route-intelligence/purchase",
+                    "request": {
+                        "need": "<bounded need>",
+                        "candidate_identifier": "<optional provider identifier>",
+                    },
+                    "first_response_when_active": "402 payment_required",
+                    "payment_requirement_header": "PAYMENT-REQUIRED",
+                    "payment_submission_header": "PAYMENT-SIGNATURE",
+                    "success_header": "PAYMENT-RESPONSE",
+                },
+                "result_release_before_settlement": False,
+                "raw_payment_signature_persisted": False,
+                "ordinary_agent_human_approval_required": False,
+            },
         },
         "legacy_package5_telemetry": {
             "blocks_utility": False,
@@ -350,7 +378,7 @@ def post_join_next_actions() -> list[str]:
         "For world_bank.population.latest, POST /commercial/executions/world-bank-population with a two-letter country_code, authorize_external_contact=true and Idempotency-Key. AION invokes the official World Bank WDI provider, verifies the result and returns it at 0 USD.",
         "No Package 5 operator review is required before normal utility. Package 5 participation/VUO surfaces are legacy telemetry only.",
         "For provider callability, POST /actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency; inspect durable status with GET /actions/{action_id} or MCP get_action_status.",
-        "When a priced product is offered, follow its machine-readable payment requirements. Once the owner has enabled the rail, ordinary agent payment/settlement requires no AION human in the customer loop.",
+        "For priced Route Intelligence, first GET /commercial/route-intelligence/payment-readiness. Only when launch_ready=true, POST /commercial/route-intelligence/purchase with a bounded need; follow x402 v2 exact/upfront PAYMENT-REQUIRED and PAYMENT-SIGNATURE headers. Once the owner has enabled the rail, ordinary agent payment/settlement requires no AION human in the customer loop.",
         "Optional marketplace path: PUT /agents/me/capabilities, POST /offers or POST /needs, then GET /agents/me/opportunities.",
     ]
 
@@ -366,8 +394,9 @@ def journey_text(base_url: str) -> str:
 5. Optional provider callability verification remains available through POST {base}/actions/verify-callability or MCP verify_external_callability; inspect it through GET {base}/actions/{{action_id}} or MCP get_action_status.
 6. Execute world_bank.population.latest through POST {base}/commercial/executions/world-bank-population with Bearer authentication, explicit provider-contact authorization and Idempotency-Key.
 7. Completion is machine-verifiable from execution state, provider/provenance checks and result contract. Human usefulness acknowledgement is optional feedback, not a completion requirement.
-8. For priced capabilities, follow machine-readable quote/payment requirements. After owner-level rail enablement, agent authorization, settlement and protected result release proceed without a human customer-flow gate.
-9. Return later with the same logical identity for additional utility or paid transactions."""
+8. For priced Route Intelligence, GET {base}/commercial/route-intelligence/payment-readiness. Proceed only when launch_ready=true, then POST {base}/commercial/route-intelligence/purchase and follow x402 v2 exact/upfront PAYMENT-REQUIRED and PAYMENT-SIGNATURE headers.
+9. After owner-level rail enablement, agent authorization, settlement and protected result release proceed without a human customer-flow gate.
+10. Return later with the same logical identity for additional utility or paid transactions."""
 
 
 def commercial_route_text(base_url: str) -> str:
@@ -380,4 +409,5 @@ def commercial_route_text(base_url: str) -> str:
 - One executable zero-cost capability exists at POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API.
 - Successful completion is machine-verifiable; the acknowledgement endpoint is optional learning feedback and is not required for execution or launch.
 - A2A exposes discovery and guidance, not the authenticated commercial route-planning tool.
-- For future priced products, machine-readable payment requirements lead to agent authorization, settlement and protected result release once the owner has enabled the payment rail."""
+- Priced Route Intelligence advertises readiness at GET {base}/commercial/route-intelligence/payment-readiness and, only when launch_ready=true, purchase at POST {base}/commercial/route-intelligence/purchase using x402 v2 exact/upfront.
+- Machine-readable payment requirements lead to agent authorization, settlement and protected result release once the owner has enabled the payment rail."""
