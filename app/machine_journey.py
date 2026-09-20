@@ -164,7 +164,9 @@ def verified_outcome_journey(base_url: str) -> dict:
         "legacy_package5_telemetry": {
             "blocks_utility": False,
             "blocks_launch": False,
+            "blocks_execution": False,
             "blocks_payment": False,
+            "blocks_settlement": False,
             "participation_read": {
                 "REST": {"method": "GET", "url": f"{base}/agents/me/package5-participation"},
                 "MCP": {"url": f"{base}/mcp", "tool": "get_my_package5_participation"},
@@ -174,6 +176,92 @@ def verified_outcome_journey(base_url: str) -> dict:
                 "MCP": {"url": f"{base}/mcp", "tool": "get_package5_proof"},
             },
         },
+        "participation_readiness": {
+            "legacy_telemetry_only": True,
+            "blocks_normal_utility": False,
+            "blocks_execution": False,
+            "blocks_settlement": False,
+            "authentication_required": True,
+            "read_only": True,
+            "touches_lifecycle": False,
+            "creates_evidence": False,
+            "self_scoped": True,
+            "REST": {"method": "GET", "url": f"{base}/agents/me/package5-participation", "query_parameters": {}},
+            "MCP": {"url": f"{base}/mcp", "tool": "get_my_package5_participation", "arguments": {}},
+            "A2A": {"available": False, "reason": "Use REST/MCP Authorization header, never A2A message text."},
+            "if_not_ready": (
+                "For legacy Package 5 qualification only, preserve credential/evidence while "
+                "historical operator review remains incomplete. Ordinary agent utility and "
+                "execution continue without operator review."
+            ),
+            "if_ready": "Legacy Package 5 participation telemetry is countable at read time.",
+            "review_required_for_public_utility_or_join": False,
+        },
+        "package5_countable_participation_gate": {
+            "legacy_telemetry_only": True,
+            "blocks_normal_utility": False,
+            "blocks_execution": False,
+            "blocks_launch": False,
+            "blocks_payment": False,
+            "required_for_qualifying_vuo_at_submission": True,
+            "required_classification": "independent_external_countable",
+            "evidence_authority": "operator_reviewed_evidence",
+            "public_self_promotion_available": False,
+            "public_assessment_write_surface_available": False,
+            "late_reclassification_upgrades_prior_noncountable_candidate": False,
+            "guidance": (
+                "This gate applies only to legacy Package 5 VUO qualification. It does not "
+                "authorize or deny ordinary utility, launch, execution, payment or settlement."
+            ),
+        },
+        "requester_usefulness_acknowledgement": {
+            "legacy_telemetry_only": True,
+            "required_for_machine_completion": False,
+            "authentication_required": True,
+            "separate_from_action_execution": True,
+            "qualifying_participation_required_at_submission": True,
+            "late_reclassification_does_not_upgrade_prior_noncountable_candidate": True,
+            "REST": {
+                "method": "POST",
+                "url": f"{base}/proof/package-5/vuos",
+                "idempotency_header": "Idempotency-Key",
+                "body": {
+                    "action_id": "<action_id>",
+                    "goal_kind": "verify_external_agent_callability",
+                    "product_goal": "find_verify_invoke_external_a2a_agent",
+                    "delivered_outcome": "verified_external_agent_callability",
+                    "usefulness_confirmed": True,
+                    "usefulness_evidence": "requester_confirms_goal_was_useful",
+                },
+            },
+            "MCP": {"available": False, "reason": "Legacy acknowledgement uses authenticated REST."},
+            "A2A": {"available": False, "reason": "Never send Bearer credentials in A2A message text."},
+            "evidence_kind": "authenticated_requester_confirmed",
+            "independent_third_party_verification": False,
+        },
+        "package5_proof": {
+            "legacy_telemetry_only": True,
+            "authentication_required": False,
+            "read_only": True,
+            "creates_participation_or_vuo_evidence": False,
+            "REST": {"method": "GET", "url": f"{base}/proof/package-5"},
+            "MCP": {"url": f"{base}/mcp", "tool": "get_package5_proof"},
+        },
+        "qualifying_return": {
+            "legacy_telemetry_only": True,
+            "required_for_normal_repeat_use": False,
+            "minimum_seconds_after_qualifying_vuo": RETURN_THRESHOLD_SECONDS,
+            "requires": "a later new meaningful authenticated action for the same canonical logical identity",
+            "does_not_qualify": [
+                "health",
+                "readiness",
+                "status",
+                "telemetry",
+                "documentation reads",
+                "proof reads",
+                "replayed action",
+            ],
+        },
         "truth_boundaries": {
             "joining_is_optional": True,
             "only_explicit_join_creates_membership": True,
@@ -182,6 +270,12 @@ def verified_outcome_journey(base_url: str) -> dict:
             "human_usefulness_ack_is_not_completion_gate": True,
             "legacy_vuo_is_not_launch_gate": True,
             "tests_are_not_settlement_or_revenue": True,
+            "callability_alone_is_not_vuo": True,
+            "countable_participation_required_at_vuo_submission": True,
+            "late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate": True,
+            "requester_confirmation_is_not_independent_third_party_verification": True,
+            "public_reads_do_not_create_package5_evidence": True,
+            "tests_and_fixtures_are_not_commercial_proof": True,
         },
     }
 
@@ -205,6 +299,7 @@ def commercial_route_journey(base_url: str) -> dict:
             "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
             "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
             "fresh_current_job_verification_required_before_execution": True,
+            "required_before_direct_execution": False,
         },
         "executable_zero_cost_capability": {
             "capability": "world_bank.population.latest",
@@ -216,6 +311,7 @@ def commercial_route_journey(base_url: str) -> dict:
                 "url": f"{base}/commercial/executions/world-bank-population",
                 "status_url_template": f"{base}/commercial/executions/{{execution_id}}",
                 "optional_feedback_url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
+                "acknowledgement_url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
             },
             "provider": "World Bank World Development Indicators",
             "provider_price": "0 USD",
@@ -238,6 +334,10 @@ def commercial_route_journey(base_url: str) -> dict:
             "planning_does_not_contact_provider_interaction_endpoint": True,
             "planning_does_not_contact_payment_rail": True,
             "legacy_vuo_not_required_for_execution": True,
+            "route_plan_is_not_revenue_vuo_or_adoption_proof": True,
+            "provider_interaction_endpoint_is_not_contacted": True,
+            "payment_rail_is_not_contacted": True,
+            "route_plan_is_not_persisted": True,
         },
     }
 

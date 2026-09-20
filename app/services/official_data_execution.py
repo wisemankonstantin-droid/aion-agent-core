@@ -500,6 +500,17 @@ def _serialize(
                 if row.state == "completed"
                 else "not_established"
             ),
+            # Compatibility aliases retain the pre-agent-native response contract.
+            # They describe optional legacy feedback, not execution completion.
+            "useful_outcome": row.useful_outcome,
+            "usefulness_evidence": row.usefulness_evidence,
+            "vuo_state": (
+                "requester_confirmed_verified_useful_outcome"
+                if row.useful_outcome
+                else "optional_feedback_not_recorded"
+                if row.state == "completed"
+                else "not_established"
+            ),
         },
         "requester_history": {
             "verified_execution_count": verified_count,
@@ -517,6 +528,8 @@ def _serialize(
             "zero_price_execution_is_not_revenue_or_settlement": True,
             "machine_verified_completion_does_not_require_human_acknowledgement": True,
             "requester_feedback_is_optional_learning_input": True,
+            "zero_price_execution_is_not_paid_vuo": True,
+            "requester_confirmation_is_not_independent_third_party_verification": True,
             "repository_or_test_execution_is_not_production_use": True,
             "payment_settlement_and_positive_margin_not_claimed": True,
         },

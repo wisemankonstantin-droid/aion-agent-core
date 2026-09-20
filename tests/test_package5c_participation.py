@@ -50,6 +50,14 @@ def test_classes_and_rest_mcp_parity_without_writes(classification):
     assert data["assessment_id"] is not None if classification else data["assessment_id"] is None
     assert data["operator_review_incomplete"] == (classification in (None, "independent_external_candidate"))
     assert data["state"] in ("participation_ready", "excluded", "review_incomplete")
+    assert data["legacy_telemetry_only"] is True
+    assert data["blocks_normal_utility"] is False
+    assert data["blocks_execution"] is False
+    assert data["blocks_payment"] is False
+    assert data["blocks_settlement"] is False
+    if data["operator_review_incomplete"]:
+        assert "legacy Package 5 qualification only" in data["next_action"]
+        assert "ordinary agent utility and execution continue without operator review" in data["next_action"]
     for _ in range(3):
         assert rest(key).json() == data
         rpc = mcp(key)

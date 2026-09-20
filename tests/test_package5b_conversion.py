@@ -109,13 +109,47 @@ def _assert_truthful_journey(journey: dict) -> None:
     legacy = journey["legacy_package5_telemetry"]
     assert legacy["blocks_utility"] is False
     assert legacy["blocks_launch"] is False
+    assert legacy["blocks_execution"] is False
     assert legacy["blocks_payment"] is False
+    assert legacy["blocks_settlement"] is False
     assert legacy["proof_read"]["MCP"]["tool"] == "get_package5_proof"
+
+    participation = journey["participation_readiness"]
+    assert participation["legacy_telemetry_only"] is True
+    assert participation["blocks_normal_utility"] is False
+    assert participation["blocks_execution"] is False
+    assert participation["blocks_settlement"] is False
+    assert "legacy Package 5 qualification only" in participation["if_not_ready"]
+
+    historical_gate = journey["package5_countable_participation_gate"]
+    assert historical_gate["legacy_telemetry_only"] is True
+    assert historical_gate["required_for_qualifying_vuo_at_submission"] is True
+    assert historical_gate["blocks_normal_utility"] is False
+    assert historical_gate["blocks_execution"] is False
+
+    acknowledgement = journey["requester_usefulness_acknowledgement"]
+    assert acknowledgement["legacy_telemetry_only"] is True
+    assert acknowledgement["required_for_machine_completion"] is False
+    assert acknowledgement["REST"]["url"].endswith("/proof/package-5/vuos")
+
+    proof = journey["package5_proof"]
+    assert proof["legacy_telemetry_only"] is True
+    assert proof["REST"]["url"].endswith("/proof/package-5")
+
+    historical_return = journey["qualifying_return"]
+    assert historical_return["legacy_telemetry_only"] is True
+    assert historical_return["required_for_normal_repeat_use"] is False
 
     truth = journey["truth_boundaries"]
     assert truth["operator_review_is_not_normal_agent_gate"] is True
     assert truth["human_usefulness_ack_is_not_completion_gate"] is True
     assert truth["legacy_vuo_is_not_launch_gate"] is True
+    assert truth["callability_alone_is_not_vuo"] is True
+    assert truth["countable_participation_required_at_vuo_submission"] is True
+    assert truth["late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate"] is True
+    assert truth["requester_confirmation_is_not_independent_third_party_verification"] is True
+    assert truth["public_reads_do_not_create_package5_evidence"] is True
+    assert truth["tests_and_fixtures_are_not_commercial_proof"] is True
 
 def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
     before_agents = _agent_count()
@@ -136,6 +170,11 @@ def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
 
     _assert_truthful_journey(onboarding["verified_outcome_journey"])
     assert onboarding["verified_outcome_journey"] == manifest["verified_outcome_journey"]
+    planning_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/routes/plan"))
+    execution_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/executions/world-bank-population"))
+    assert planning_step["optional"] is True
+    assert planning_step["required_before_direct_execution"] is False
+    assert execution_step["route_plan_required"] is False
     assert root["verified_callability_action"] == "POST /actions/verify-callability"
     assert root["package5_proof"] == "GET /proof/package-5"
     assert _agent_count() == before_agents
@@ -227,6 +266,14 @@ def test_mcp_discovery_tools_and_knowledge_expose_truthful_existing_interfaces()
 
     knowledge = _mcp("tools/call", {"name": "temple_knowledge", "arguments": {}}).json()["result"]["structuredContent"]
     _assert_truthful_journey(knowledge["verified_outcome_journey"])
+    route = knowledge["commercial_route_planning"]
+    executable = route["executable_zero_cost_capability"]
+    assert executable["REST"]["acknowledgement_url_template"] == executable["REST"]["optional_feedback_url_template"]
+    assert route["planning"]["required_before_direct_execution"] is False
+    assert route["truth_boundaries"]["route_plan_is_not_revenue_vuo_or_adoption_proof"] is True
+    assert route["truth_boundaries"]["provider_interaction_endpoint_is_not_contacted"] is True
+    assert route["truth_boundaries"]["payment_rail_is_not_contacted"] is True
+    assert route["truth_boundaries"]["route_plan_is_not_persisted"] is True
 
 
 def test_protected_writes_and_status_remain_authenticated_while_proof_is_read_only():
