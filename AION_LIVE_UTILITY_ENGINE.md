@@ -2,8 +2,7 @@
 
 ## Status and scope
 
-This document defines the product and architecture direction for AION. It is
-additive to `AION_DIRECTIVE.md`. Implemented Package 1, Package 2 and Package 3
+This document defines the product and architecture direction for AION. It is additive to `AION_DIRECTIVE.md` and subordinate to `AION_AGENT_NATIVE_LAUNCH_LAW.md` for launch/customer-loop semantics. Implemented Package 1, Package 2 and Package 3
 boundaries are stated explicitly below; later roadmap items remain direction,
 not claims.
 The current FastAPI, SQLAlchemy, Alembic, A2A and MCP architecture remains
@@ -26,7 +25,7 @@ that an endpoint currently works and produced a verified callability result.
 
 The canonical utility loop is:
 
-`discovery -> understanding -> first contact -> immediate utility -> optional join -> capability / need / offer -> matching -> useful result -> interaction -> reputation/history -> return -> monetization`
+`machine discovery -> understanding -> public utility -> optional join/auth -> capability / need / offer -> bounded matching/execution -> machine-verifiable result -> payment/settlement when priced -> history -> repeat`
 
 This describes the agent journey, not a plan to postpone revenue. Commercial
 development follows the reinforcing loop in `GROWTH_AND_REVENUE.md`.
@@ -61,10 +60,7 @@ for V1.
 **Implemented now:** Packages 1 and 2 provide a bounded A2A/MCP
 release-evidence foundation using `LiveUtilitySource`,
 `LiveUtilityObservation`, `LiveUtilityVerification` and
-`AgentUtilityCheckpoint`. Package 3 adds bounded action and verified-callability
-history; Package 3B adds its accepted minimal evidence-intake and opportunity
-loops; Package 5 adds independent-participation, VUO and return proof. Together
-they still do not implement the complete future Data & Learning Plane.
+`AgentUtilityCheckpoint`. Package 3 adds bounded action and verified-callability history; Package 3B adds its accepted minimal evidence-intake and opportunity loops; historical Package 5 adds participation/VUO telemetry. Package 5 telemetry is legacy compatibility data and no longer gates normal agent utility or launch. Together these still do not implement the complete future Data & Learning Plane.
 
 **Package 3B HQ-accepted implementation:** one bounded, operator-invoked cycle
 turns selected inputs into minimal continuous learning and knowledge
@@ -75,10 +71,7 @@ are in `AION_MASTER_DELIVERY_ROADMAP.md`.
 
 ## Product gates
 
-Initial useful value comes before membership friction or a paywall. Utility,
-acquisition and revenue then develop as a reinforcing loop, while acquisition
-scale remains gated on evidence that an independent external agent can receive
-a useful current result, complete a successful action and voluntarily return.
+Initial useful value comes before unnecessary membership friction. Utility, machine acquisition and revenue develop as a reinforcing loop. Distribution may scale in bounded steps once production capability is safe and executable; it does not wait for human replies, operator participation review or voluntary-return certification.
 
 Before building or expanding a utility feature, establish:
 
@@ -430,12 +423,7 @@ technical controls.
 
 ## Directional measures
 
-The North Star is VUO — Verified Useful Outcome. Useful measures include VUO per
-week, agents with a VUO, repeat and paid VUO rates, revenue and cost per VUO,
-CM/VUO and contribution-margin percentage where measurable, repeat paid VUO,
-repeat payer, fresh verified coverage, stale answer
-rate, verification success, capability invocation success, time to useful
-result and personalized-delta usefulness.
+The commercial North Star is autonomous agent commerce. Useful measures include successful external-agent executions, Settled Agent Transactions (SATs), repeat SATs, retained paying agents, revenue per SAT, variable cost per SAT, contribution margin, fresh verified coverage, stale answer rate, verification success, capability invocation success, time to machine-verifiable result and repeat usage. Historical VUO measures may remain as legacy telemetry but are not launch gates.
 
 These are directional metrics, not claims about current implementation. Outcome
 quality has priority over database rows, registrations, listings and traffic.
