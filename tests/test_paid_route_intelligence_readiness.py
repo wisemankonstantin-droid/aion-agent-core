@@ -27,8 +27,15 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def reset_paid_route_intelligence(monkeypatch):
-    for name in (QUOTE_ENABLE_ENV, CURRENCY_ENV, PRICE_ENV, MAX_PAYMENT_FEE_ENV):
+    for name in (
+        QUOTE_ENABLE_ENV,
+        CURRENCY_ENV,
+        PRICE_ENV,
+        MAX_PAYMENT_FEE_ENV,
+        economic_kernel.REAL_MONEY_ENABLE_ENV,
+    ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", False)
     economic_kernel.TRUSTED_PRODUCT_PROFILES.pop(ROUTE_INTELLIGENCE_SKU, None)
     with SessionLocal() as db:
         db.execute(delete(models.EconomicTransition))
@@ -63,6 +70,29 @@ def _configure_quote(monkeypatch, *, currency="USDC", price="1", fee="0.1"):
     monkeypatch.setenv(CURRENCY_ENV, currency)
     monkeypatch.setenv(PRICE_ENV, price)
     monkeypatch.setenv(MAX_PAYMENT_FEE_ENV, fee)
+
+
+
+
+def test_owner_real_money_gate_is_explicit_and_fail_closed(monkeypatch):
+    monkeypatch.delenv(economic_kernel.REAL_MONEY_ENABLE_ENV, raising=False)
+    assert economic_kernel.configured_real_money_execution_enabled() is False
+
+    for value in ("", "0", "true", "TRUE", "yes", " 1", "1 "):
+        monkeypatch.setenv(economic_kernel.REAL_MONEY_ENABLE_ENV, value)
+        assert economic_kernel.configured_real_money_execution_enabled() is False
+
+    monkeypatch.setenv(economic_kernel.REAL_MONEY_ENABLE_ENV, "1")
+    assert economic_kernel.configured_real_money_execution_enabled() is True
+
+
+def test_route_readiness_reports_owner_gate_without_enabling_provider_execution(monkeypatch):
+    _configure_quote(monkeypatch, price="2", fee="0.2")
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    readiness = route_intelligence_readiness()
+    assert readiness["quote_configured"] is True
+    assert readiness["real_money_execution_enabled"] is True
+    assert readiness["provider_execution_enabled"] is False
 
 
 def test_paid_sku_is_recognized_but_unquotable_without_trusted_config():
