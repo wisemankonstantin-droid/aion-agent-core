@@ -140,17 +140,28 @@ Repository migration chain after that revision is linear:
 Both upgrades are additive on upgrade: each creates its new table/indexes and
 does not drop existing production tables or columns.
 
-The exact live database revision was not independently re-read in the current
-read-only verification. A Render read-only SQL attempt failed because the
-connector could not establish the required SSL/TLS session. Do not convert that
-tool failure into a guessed database revision.
+Production database verification on 2026-09-20 resolved the prepared Neon
+production project:
 
-A Render PostgreSQL instance named `aion-agent-db` is visible and available in
-the workspace. Inventory presence alone does not prove the web service's active
-DATABASE_URL association.
+- Neon project: `AION Production Free`;
+- project ID: `floral-cloud-01727932`;
+- region: `aws-eu-central-1`;
+- PostgreSQL: 18;
+- default branch: `main` / `br-orange-mountain-b259usgb`;
+- database: `neondb`;
+- read-only query `SELECT version_num FROM alembic_version;` returned
+  `0014_conversation_intel_v1`.
 
-Reverify production DB identity/revision before the next production write if a
-safe unambiguous method is available.
+This matches the schema expected by the currently deployed application artifact.
+
+The Render-native SQL connector separately failed to establish its required
+SSL/TLS session against the visible Render PostgreSQL inventory instance; that
+connector failure does not override the successful direct Neon revision read.
+
+Render does not expose the current DATABASE_URL value through the available
+read-only service metadata, so this checkpoint does not print or infer secret
+connection material. Reverify association only through a safe non-secret
+mechanism if needed before deployment.
 
 ## What is production-live
 
