@@ -33,13 +33,6 @@ _CLASSIFICATION_REASONS = {
     "independent_external_candidate": "independence_evidence_incomplete",
     "independent_external_countable": "operator_verified_independent_no_known_coordination",
 }
-_DEFAULT_EXTERNAL_REASON = "server_default_external_no_known_exclusion"
-_EXCLUDED_CLASSIFICATIONS = {
-    "aion_operated_internal",
-    "synthetic_probe_test",
-    "coordinated_design_partner",
-    "operator_invited_coordinated_test",
-}
 
 
 class Package5ProofError(Exception):
@@ -160,16 +153,9 @@ def _classification_for_group(
     group: dict,
     agents_by_id: dict[int, models.Agent],
 ) -> dict:
-    """Classify operational eligibility without a normal human-review dependency.
-
-    Deterministic server exclusions win. Historical operator assessments remain
-    visible for compatibility, but absence of an assessment is not a reason to
-    block an authenticated external logical agent.
-    """
     forced = _forced_exclusion(db, group, agents_by_id)
     if forced is not None:
         return forced
-
     assessment = db.scalar(
         select(models.Package5ParticipationAssessment)
         .where(models.Package5ParticipationAssessment.canonical_agent_id.in_(group["row_ids"]))
@@ -179,31 +165,41 @@ def _classification_for_group(
         )
         .limit(1)
     )
-    if assessment is not None and assessment.classification in _EXCLUDED_CLASSIFICATIONS:
+    if assessment is None:
+        trusted_peer_referral = db.scalar(
+            select(models.DistributionJoinAttribution.id).where(
+                models.DistributionJoinAttribution.agent_id.in_(group["row_ids"]),
+                models.DistributionJoinAttribution.kind == "peer_referral",
+            ).limit(1)
+        )
+        if trusted_peer_referral is not None:
+            return {
+                "classification": "independent_external_candidate",
+                "reason_code": "trusted_peer_referral_requires_operator_review",
+                "countable": False,
+                "evidence_authority": "server_verified_distribution_token",
+                "assessment_id": None,
+            }
         return {
-            "classification": assessment.classification,
-            "reason_code": assessment.reason_code,
+            "classification": "unknown_not_proven",
+            "reason_code": "no_trusted_package5_participation_assessment",
             "countable": False,
-            "evidence_authority": assessment.evidence_authority,
-            "assessment_id": assessment.id,
+            "evidence_authority": "none",
+            "assessment_id": None,
         }
-
-    if assessment is not None and assessment.classification == "independent_external_countable":
-        return {
-            "classification": "independent_external_countable",
-            "reason_code": assessment.reason_code,
-            "countable": True,
-            "evidence_authority": assessment.evidence_authority,
-            "assessment_id": assessment.id,
-        }
-
+    countable = (
+        assessment.classification == "independent_external_countable"
+        and assessment.reason_code == _CLASSIFICATION_REASONS["independent_external_countable"]
+        and assessment.evidence_authority == "operator_reviewed_evidence"
+    )
     return {
-        "classification": "independent_external_countable",
-        "reason_code": _DEFAULT_EXTERNAL_REASON,
-        "countable": True,
-        "evidence_authority": "server_default_eligibility",
-        "assessment_id": None,
+        "classification": assessment.classification,
+        "reason_code": assessment.reason_code,
+        "countable": countable,
+        "evidence_authority": assessment.evidence_authority,
+        "assessment_id": assessment.id,
     }
+
 
 def participation_readiness(db: Session, requester_agent_id: int) -> dict:
     """Self-scoped read model; no assessment, lifecycle touch or other writes."""
@@ -220,7 +216,7 @@ def participation_readiness(db: Session, requester_agent_id: int) -> dict:
         "aion_operated_internal", "synthetic_probe_test", "coordinated_design_partner",
         "operator_invited_coordinated_test",
     }
-    state = "participation_ready" if ready else "excluded" if excluded else "policy_exception"
+    state = "participation_ready" if ready else "excluded" if excluded else "review_incomplete"
     instruction = (
         "Participation gate satisfied now, not a VUO guarantee. Run an explicitly authorized "
         "verified action, inspect durable evidence, and only if genuinely useful submit the "
@@ -231,17 +227,16 @@ def participation_readiness(db: Session, requester_agent_id: int) -> dict:
         "for qualification. Public utility remains available; do not create another identity "
         "to bypass exclusion."
         if excluded else
-        "This identity is not currently eligible under a concrete server policy. "
-        "Ordinary external agents do not wait for operator review; resolve the stated "
-        "policy reason or use an allowed capability."
+        "Preserve your credential and evidence and wait for operator review; do not submit "
+        "a VUO for qualification yet. Candidate status is not countable. This read does not "
+        "request or guarantee a review; public utility and optional join do not require review."
     )
     return {
         "canonical_agent_id": group["canonical_agent_id"],
         **classification,
         "vuo_submission_ready": ready,
         "readiness_scope": "participation_only_at_read_time",
-        "operator_review_incomplete": False,
-        "operator_review_required_for_normal_utility": False,
+        "operator_review_incomplete": not ready and not excluded,
         "excluded": excluded,
         "state": state,
         "next_action": instruction,
@@ -260,7 +255,7 @@ def record_participation_assessment(
     evidence_summary: str,
     idempotency_key: str,
 ) -> dict:
-    """Record a legacy/manual exception assessment; normal agent utility does not require it."""
+    """Record an operator-reviewed assessment; this is intentionally not an HTTP API."""
 
     if classification not in _CLASSIFICATION_REASONS:
         raise Package5ProofError(422, "invalid_classification", "Unsupported participation classification")
@@ -472,8 +467,9 @@ def _serialize_vuo(db: Session, row: models.Package5VuoProof, groups: list[dict]
     }
     submission_participation_eligible = (
         row.participation_classification_at_submission == "independent_external_countable"
+        and row.participation_assessment_id is not None
         and row.participation_reason_at_submission
-        in {_CLASSIFICATION_REASONS["independent_external_countable"], _DEFAULT_EXTERNAL_REASON}
+        == _CLASSIFICATION_REASONS["independent_external_countable"]
     )
     qualifies = bool(
         row.semantic_eligible
@@ -528,8 +524,9 @@ def _qualifying_vuo_return_state(
             vuo_reasons[proof.eligibility_reason_code] += 1
         elif not (
             proof.participation_classification_at_submission == "independent_external_countable"
+            and proof.participation_assessment_id is not None
             and proof.participation_reason_at_submission
-            in {_CLASSIFICATION_REASONS["independent_external_countable"], _DEFAULT_EXTERNAL_REASON}
+            == _CLASSIFICATION_REASONS["independent_external_countable"]
         ):
             vuo_reasons["participation_not_countable_at_vuo_submission"] += 1
         elif not participation or not participation["countable"]:
@@ -739,14 +736,14 @@ def package5_proof_snapshot(db: Session) -> dict:
             "cost_per_vuo": cost_per_vuo,
         },
         "definitions": {
-            "independent": "authenticated external logical identity with no deterministic AION-operated, synthetic, duplicate or explicit exclusion marker; human review is not required by default",
-            "vuo": "legacy telemetry: eligible external identity plus a concrete callability product goal, server-verified underlying outcome, and optional authenticated requester attestation",
+            "independent": "operator-reviewed external evidence with no known AION-operated, synthetic, probe, design-partner, invited, or coordinated marker",
+            "vuo": "countable independent identity plus a concrete callability product goal, server-verified underlying outcome, and separate authenticated requester confirmation of usefulness",
             "voluntary_return": "later meaningful authenticated requester action after a qualifying VUO and threshold, with no known internal, synthetic, probe, or coordinated marker",
         },
         "limits": limits,
         "limitations": [
             "Engineering tests, fixtures, historical rows, and coordinated activity are not commercial proof.",
-            "Legacy requester usefulness attestation is optional telemetry and does not gate normal agent utility.",
+            "Requester-confirmed usefulness is not independent third-party verification.",
             "The V1 meaningful-return event is a new durable ActionRun; health, readiness, status, telemetry, and last_seen_at never qualify.",
             "No owner, model vendor, KYC, payment settlement, revenue, or production outreach is inferred.",
         ],
