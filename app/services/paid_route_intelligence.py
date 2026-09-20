@@ -122,7 +122,7 @@ def route_intelligence_readiness() -> dict:
         return {
             "product_sku": ROUTE_INTELLIGENCE_SKU,
             "quote_configured": False,
-            "real_money_execution_enabled": False,
+            "real_money_execution_enabled": bool(economic_kernel.REAL_MONEY_EXECUTION_ENABLED),
             "provider_execution_enabled": False,
             "reason": "trusted_asset_price_or_max_payment_fee_missing_or_economically_ineligible",
         }
@@ -141,7 +141,7 @@ def route_intelligence_readiness() -> dict:
         "minimum_margin_bps": evaluated["minimum_margin_bps"],
         "standard_target_margin_bps": evaluated["standard_target_margin_bps"],
         "policy_eligible": evaluated["policy_eligible"],
-        "real_money_execution_enabled": False,
+        "real_money_execution_enabled": bool(economic_kernel.REAL_MONEY_EXECUTION_ENABLED),
         "provider_execution_enabled": False,
         "commercial_rights_scope": "aion_owned_route_and_verification_intelligence_only",
         "fx_assumption_used": False,
