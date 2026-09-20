@@ -23,6 +23,10 @@ def test_ard_manifest_is_domain_anchored_and_truthful():
     assert entry["metadata"]["aionA2AEndpoint"] == f"{base}/a2a/v1"
     assert entry["metadata"]["aionMcpEndpoint"] == f"{base}/mcp"
     assert "no paid execution" in entry["metadata"]["economicBoundary"]
+    assert "PaidRouteIntelligence" in entry["capabilities"]
+    assert entry["metadata"]["routeIntelligencePaymentReadiness"] == f"{base}/commercial/route-intelligence/payment-readiness"
+    assert entry["metadata"]["routeIntelligencePurchase"] == f"{base}/commercial/route-intelligence/purchase"
+    assert entry["metadata"]["routeIntelligencePaymentProtocol"] == "x402-v2-exact-upfront"
 
 
 def test_ard_and_ai_catalog_well_known_paths_are_identical():
