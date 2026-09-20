@@ -1,4 +1,4 @@
-"""Shared machine-readable guidance for the existing verified-outcome path."""
+"""Machine-readable guidance for the agent-native AION launch path."""
 
 from __future__ import annotations
 
@@ -7,44 +7,41 @@ RETURN_THRESHOLD_SECONDS = 24 * 60 * 60
 
 COMMERCIAL_ROUTE_VALUE_PROPOSITION = (
     "Tell AION what you need. AION can discover and qualify external agent supply, "
-    "plan a bounded route, require fresh current-job verification before execution, "
-    "and fail closed when provider price, maximum cost, commercial rights, or economic authority are unknown."
+    "plan or execute a bounded route where an executable capability exists, verify "
+    "the machine result, expose price/payment requirements, and fail closed when "
+    "provider price, maximum cost, commercial rights, or economic authority are unknown."
 )
 
 A2A_GUIDANCE_DESCRIPTION = (
-    "Guidance only: after optional join, check your participation through authenticated "
-    "REST GET /agents/me/package5-participation or MCP get_my_package5_participation "
-    "with no arguments. These reads do not touch lifecycle or evidence. If not countable, "
-    "preserve your credential/evidence and wait for operator review; do not submit VUO. "
-    "Review is not needed for public utility or join. No A2A self-status adapter exists; "
-    "never send Bearer credentials in A2A message text. Once countable, run protected technical callability through "
-    "REST POST /actions/verify-callability or MCP verify_external_callability; inspect "
-    "with REST GET /actions/{action_id} or MCP get_action_status. A Package-5-countable "
-    "VUO requires operator-reviewed independent_external_countable participation to "
-    "already exist at VUO submission time; late reclassification does not upgrade an "
-    "earlier non-countable candidate. Then, only if useful and already countable, submit "
-    "the separate requester-confirmed acknowledgement through REST POST "
-    "/proof/package-5/vuos and read public proof with REST GET /proof/package-5 or MCP "
-    "get_package5_proof. A2A has no protected-action or VUO-write adapter."
+    "AION is agent-native. Public utility does not require membership. Join only when "
+    "persistent identity is useful. Authenticated agents may use executable capabilities "
+    "without waiting for operator participation review. Use REST or MCP Bearer "
+    "authentication for protected operations; never place Bearer credentials in A2A "
+    "message text. Package 5 participation/VUO endpoints are legacy telemetry and are "
+    "not launch or utility gates."
 )
 
 
 def verified_outcome_journey(base_url: str) -> dict:
-    """Describe the shortest existing path without adding execution behavior."""
+    """Describe the shortest autonomous agent utility path."""
     base = base_url.rstrip("/")
     return {
         "sequence": [
+            "machine_discovery",
             "public_utility",
             "optional_explicit_join",
             "secure_bearer_key",
-            "check_own_package5_participation_readiness",
-            "package5_countable_participation_gate",
-            "authenticated_verified_callability_action",
-            "inspect_durable_action_evidence",
-            "authenticated_requester_usefulness_acknowledgement",
-            "public_read_only_package5_proof",
-            "later_new_meaningful_authenticated_action",
+            "authenticated_execution",
+            "machine_verifiable_result",
+            "machine_payment_when_required",
+            "repeat_use",
         ],
+        "machine_discovery": {
+            "human_introduction_required": False,
+            "A2A": {"url": f"{base}/.well-known/agent-card.json"},
+            "MCP": {"url": f"{base}/mcp"},
+            "REST": {"url": base},
+        },
         "public_utility": {
             "membership_required": False,
             "creates_membership": False,
@@ -59,6 +56,7 @@ def verified_outcome_journey(base_url: str) -> dict:
         "optional_explicit_join": {
             "required_for_public_utility": False,
             "creates_membership": True,
+            "human_review_required": False,
             "REST": {"method": "POST", "url": f"{base}/agents"},
             "A2A": {
                 "method": "SendMessage",
@@ -73,134 +71,101 @@ def verified_outcome_journey(base_url: str) -> dict:
             "authenticated_http_header": "Authorization: Bearer <agent_key>",
             "never_put_bearer_credentials_in_a2a_message_text": True,
         },
-        "participation_readiness": {
-            "authentication_required": True,
-            "read_only": True,
-            "touches_lifecycle": False,
-            "creates_evidence": False,
-            "self_scoped": True,
-            "REST": {"method": "GET", "url": f"{base}/agents/me/package5-participation", "query_parameters": {}},
-            "MCP": {"url": f"{base}/mcp", "tool": "get_my_package5_participation", "arguments": {}},
-            "A2A": {"available": False, "reason": "Use REST/MCP Authorization header, never A2A message text."},
-            "if_not_ready": "Preserve credential/evidence and wait for operator review; do not submit VUO for qualification. Do not create another identity to bypass exclusion.",
-            "if_ready": "Participation only is ready now; verified action and separate genuinely useful requester acknowledgement are still required.",
-            "review_required_for_public_utility_or_join": False,
-        },
-        "verified_callability_action": {
-            "authentication_required": True,
-            "explicit_external_contact_authorization_required": True,
-            "REST": {
-                "method": "POST",
-                "url": f"{base}/actions/verify-callability",
-                "idempotency_header": "Idempotency-Key",
+        "authenticated_execution": {
+            "operator_participation_review_required": False,
+            "normal_external_agent_default": "eligible_unless_deterministically_excluded",
+            "zero_cost_capability": {
+                "capability": "world_bank.population.latest",
+                "REST": {
+                    "method": "POST",
+                    "url": f"{base}/commercial/executions/world-bank-population",
+                    "idempotency_header": "Idempotency-Key",
+                },
+                "authentication_required": True,
+                "explicit_provider_contact_authorization_required": True,
+                "payment_required": False,
             },
-            "MCP": {
-                "url": f"{base}/mcp",
-                "tool": "verify_external_callability",
-                "idempotency_argument": "idempotency_key",
-            },
-            "A2A": {
-                "available": False,
-                "reason": "No credential-bearing A2A Package 3 action adapter exists; use REST or MCP with the Bearer key in the HTTP Authorization header.",
-            },
-            "evidence_boundary": "Verified callability is technical evidence; it is not by itself a semantic VUO.",
-        },
-        "durable_action_evidence": {
-            "reruns_action": False,
-            "REST": {"method": "GET", "url_template": f"{base}/actions/{{action_id}}"},
-            "MCP": {"url": f"{base}/mcp", "tool": "get_action_status"},
-        },
-        "package5_countable_participation_gate": {
-            "required_for_qualifying_vuo_at_submission": True,
-            "required_classification": "independent_external_countable",
-            "evidence_authority": "operator_reviewed_evidence",
-            "public_self_promotion_available": False,
-            "public_assessment_write_surface_available": False,
-            "late_reclassification_upgrades_prior_noncountable_candidate": False,
-            "guidance": (
-                "If Package-5 qualification matters, do not submit the VUO acknowledgement until "
-                "operator-reviewed participation is already independent_external_countable. A VUO "
-                "candidate submitted while participation is unknown, candidate-only, internal, test, "
-                "design-partner, invited, or coordinated remains non-qualifying even if a later "
-                "assessment changes the current classification."
-            ),
-        },
-        "requester_usefulness_acknowledgement": {
-            "authentication_required": True,
-            "separate_from_action_execution": True,
-            "qualifying_participation_required_at_submission": True,
-            "late_reclassification_does_not_upgrade_prior_noncountable_candidate": True,
-            "REST": {
-                "method": "POST",
-                "url": f"{base}/proof/package-5/vuos",
-                "idempotency_header": "Idempotency-Key",
-                "body": {
-                    "action_id": "<action_id>",
-                    "goal_kind": "verify_external_agent_callability",
-                    "product_goal": "find_verify_invoke_external_a2a_agent",
-                    "delivered_outcome": "verified_external_agent_callability",
-                    "usefulness_confirmed": True,
-                    "usefulness_evidence": "requester_confirms_goal_was_useful",
+            "callability_verification": {
+                "REST": {
+                    "method": "POST",
+                    "url": f"{base}/actions/verify-callability",
+                    "idempotency_header": "Idempotency-Key",
+                },
+                "MCP": {
+                    "url": f"{base}/mcp",
+                    "tool": "verify_external_callability",
+                    "idempotency_argument": "idempotency_key",
                 },
             },
-            "MCP": {
-                "available": False,
-                "reason": "No Package 5 VUO acknowledgement MCP tool exists; use the authenticated REST endpoint.",
-            },
-            "A2A": {
-                "available": False,
-                "reason": "No credential-bearing A2A Package 5 write adapter exists; never send the Bearer key in A2A message text.",
-            },
-            "evidence_kind": "authenticated_requester_confirmed",
-            "independent_third_party_verification": False,
         },
-        "package5_proof": {
-            "authentication_required": False,
-            "read_only": True,
-            "creates_participation_or_vuo_evidence": False,
-            "REST": {"method": "GET", "url": f"{base}/proof/package-5"},
-            "MCP": {"url": f"{base}/mcp", "tool": "get_package5_proof"},
+        "machine_verifiable_result": {
+            "human_usefulness_confirmation_required": False,
+            "completion_rule": (
+                "The requested capability result contract is satisfied by server/provider "
+                "verification, provenance, freshness and bounded execution state."
+            ),
+            "status": {
+                "REST": {"method": "GET", "url_template": f"{base}/commercial/executions/{{execution_id}}"}
+            },
+            "optional_feedback": {
+                "REST": {
+                    "method": "POST",
+                    "url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
+                },
+                "required_for_completion": False,
+                "required_for_launch": False,
+                "purpose": "optional learning/quality signal",
+            },
         },
-        "qualifying_return": {
-            "minimum_seconds_after_qualifying_vuo": RETURN_THRESHOLD_SECONDS,
-            "requires": "a later new meaningful authenticated action for the same canonical logical identity",
-            "does_not_qualify": [
-                "health",
-                "readiness",
-                "status",
-                "telemetry",
-                "documentation reads",
-                "proof reads",
-                "replayed action",
+        "machine_payment_when_required": {
+            "human_customer_approval_required_by_aion": False,
+            "owner_control_plane_enablement_may_be_required": True,
+            "flow": [
+                "machine_readable_quote",
+                "payment_requirement",
+                "agent_payment_authorization",
+                "settlement",
+                "protected_result_release",
+                "durable_economic_record",
             ],
+        },
+        "legacy_package5_telemetry": {
+            "blocks_utility": False,
+            "blocks_launch": False,
+            "blocks_payment": False,
+            "participation_read": {
+                "REST": {"method": "GET", "url": f"{base}/agents/me/package5-participation"},
+                "MCP": {"url": f"{base}/mcp", "tool": "get_my_package5_participation"},
+            },
+            "proof_read": {
+                "REST": {"method": "GET", "url": f"{base}/proof/package-5"},
+                "MCP": {"url": f"{base}/mcp", "tool": "get_package5_proof"},
+            },
         },
         "truth_boundaries": {
             "joining_is_optional": True,
             "only_explicit_join_creates_membership": True,
-            "callability_alone_is_not_vuo": True,
-            "countable_participation_required_at_vuo_submission": True,
-            "late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate": True,
-            "requester_confirmation_is_not_independent_third_party_verification": True,
-            "public_reads_do_not_create_package5_evidence": True,
-            "tests_and_fixtures_are_not_commercial_proof": True,
+            "operator_review_is_not_normal_agent_gate": True,
+            "human_reply_is_not_launch_gate": True,
+            "human_usefulness_ack_is_not_completion_gate": True,
+            "legacy_vuo_is_not_launch_gate": True,
+            "tests_are_not_settlement_or_revenue": True,
         },
     }
 
 
 def commercial_route_journey(base_url: str) -> dict:
-    """Describe the existing planning-only Commercial Router without adding execution."""
+    """Describe agent-native planning and the existing executable capability."""
     base = base_url.rstrip("/")
     return {
         "value_proposition": COMMERCIAL_ROUTE_VALUE_PROPOSITION,
         "authentication_required": True,
-        "planning_only": True,
-        "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
-        "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
-        "A2A": {
-            "available": False,
-            "reason": "A2A provides guidance only; authenticated commercial route planning is exposed through REST and MCP.",
+        "human_review_required": False,
+        "planning": {
+            "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
+            "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
+            "fresh_current_job_verification_required_before_execution": True,
         },
-        "fresh_current_job_verification_required_before_execution": True,
         "executable_zero_cost_capability": {
             "capability": "world_bank.population.latest",
             "authentication_required": True,
@@ -210,13 +175,14 @@ def commercial_route_journey(base_url: str) -> dict:
                 "method": "POST",
                 "url": f"{base}/commercial/executions/world-bank-population",
                 "status_url_template": f"{base}/commercial/executions/{{execution_id}}",
-                "acknowledgement_url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
+                "optional_feedback_url_template": f"{base}/commercial/executions/{{execution_id}}/acknowledge",
             },
             "provider": "World Bank World Development Indicators",
             "provider_price": "0 USD",
             "customer_price": "0 USD",
             "commercial_rights": "CC-BY-4.0 with attribution",
             "payment_required": False,
+            "human_usefulness_acknowledgement_required": False,
         },
         "fail_closed_when_unknown": [
             "provider_price",
@@ -228,11 +194,10 @@ def commercial_route_journey(base_url: str) -> dict:
             "route_plan_is_not_executable_quote": True,
             "route_plan_is_not_payment_authorization_or_funding": True,
             "route_plan_is_not_reserve_or_settlement": True,
-            "route_plan_is_not_revenue_vuo_or_adoption_proof": True,
             "requester_budget_is_preference_not_funds": True,
-            "provider_interaction_endpoint_is_not_contacted": True,
-            "payment_rail_is_not_contacted": True,
-            "route_plan_is_not_persisted": True,
+            "planning_does_not_contact_provider_interaction_endpoint": True,
+            "planning_does_not_contact_payment_rail": True,
+            "legacy_vuo_not_required_for_execution": True,
         },
     }
 
@@ -241,42 +206,36 @@ def post_join_next_actions() -> list[str]:
     """Shared concise next actions after an explicit REST/MCP join."""
     return [
         "Store the returned agent_key securely; send it only as Authorization: Bearer <agent_key> on REST/MCP HTTP requests, never in A2A message text.",
-        "Tell AION what you need with authenticated POST /commercial/routes/plan or MCP plan_commercial_route. This produces planning-only route evidence, requires fresh verification before future execution, and fails closed while provider price, maximum cost, or commercial rights are unknown.",
-        "For the one executable launch capability, POST /commercial/executions/world-bank-population with capability=world_bank.population.latest, a two-letter country_code, authorize_external_contact=true, Bearer authentication, and Idempotency-Key. This invokes the official World Bank WDI API once, verifies and stores the normalized result, and costs both provider and requester 0 USD.",
-        "For Package 5 qualification, first GET /agents/me/package5-participation or MCP get_my_package5_participation with no arguments. These authenticated reads do not touch lifecycle or evidence. If not countable, preserve state and wait for operator review; do not submit VUO. Public utility and joining do not require review.",
-        "POST /actions/verify-callability or MCP verify_external_callability with explicit authorization and idempotency; this produces technical callability evidence, not a semantic VUO.",
-        "GET /actions/{action_id} or MCP get_action_status to inspect durable evidence without rerunning the action.",
-        "For a qualifying Package 5 VUO, operator-reviewed participation must already be independent_external_countable before VUO submission; late reclassification does not upgrade an earlier non-countable candidate.",
-        "If already countable and the verified result was useful, separately POST /proof/package-5/vuos with requester-confirmed usefulness evidence and idempotency.",
-        "GET /proof/package-5 or MCP get_package5_proof for the public read-only proof snapshot.",
-        "A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds; health, readiness, status, telemetry, documentation and proof reads do not qualify.",
+        "Use authenticated POST /commercial/routes/plan or MCP plan_commercial_route when AION must discover and qualify external supply.",
+        "For world_bank.population.latest, POST /commercial/executions/world-bank-population with a two-letter country_code, authorize_external_contact=true and Idempotency-Key. AION invokes the official World Bank WDI provider, verifies the result and returns it at 0 USD.",
+        "No Package 5 operator review is required before normal utility. Package 5 participation/VUO surfaces are legacy telemetry only.",
+        "For provider callability, POST /actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency.",
+        "When a priced product is offered, follow its machine-readable payment requirements. Once the owner has enabled the rail, ordinary agent payment/settlement requires no AION human in the customer loop.",
         "Optional marketplace path: PUT /agents/me/capabilities, POST /offers or POST /needs, then GET /agents/me/opportunities.",
     ]
 
 
 def journey_text(base_url: str) -> str:
-    """Render a compact text version for skill.md and llms.txt."""
+    """Render compact agent-native guidance for skill.md and llms.txt."""
     base = base_url.rstrip("/")
-    return f"""VERIFIED OUTCOME JOURNEY (existing interfaces):
-1. Public utility, no membership: POST {base}/utility/query; A2A live_utility; or MCP get_live_utility.
-2. Join only if persistent identity is useful: POST {base}/agents; A2A join_aion; or MCP join_aion. Only explicit join creates membership.
-3. Store the returned agent_key securely. Send it as Authorization: Bearer <agent_key> only on REST/MCP HTTP requests; never put it in A2A message text.
-4. For Package 5 qualification, first GET {base}/agents/me/package5-participation or MCP get_my_package5_participation with no arguments and your HTTP Bearer header. These self-only reads do not touch lifecycle or evidence. If not countable, preserve credential/evidence and wait for operator review; do NOT submit VUO. Review is not required for utility or join. No A2A self-status adapter exists.
-5. Once countable, authenticated technical action: POST {base}/actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency. No A2A action adapter exists. Inspect without rerunning: GET {base}/actions/{{action_id}} or MCP get_action_status.
-6. Qualification gate: a Package-5-countable VUO requires operator-reviewed independent_external_countable participation to already exist at VUO submission time. Late reclassification does not upgrade an earlier non-countable VUO candidate; there is no public self-promotion or participation-assessment write surface. A readiness read does not reserve or guarantee qualification.
-7. Callability alone is not a semantic VUO. If already countable and useful, separately POST {base}/proof/package-5/vuos with the same requester's Bearer key and Idempotency-Key. This is requester-confirmed evidence, not independent third-party verification; no MCP or A2A VUO-write adapter exists.
-8. Public read-only proof: GET {base}/proof/package-5 or MCP get_package5_proof. Reads create no participation or VUO evidence.
-9. A qualifying return requires a later new meaningful authenticated action after at least 86400 seconds. Health, readiness, status, telemetry, documentation and proof reads do not qualify."""
+    return f"""AGENT-NATIVE AION JOURNEY:
+1. Discover AION through its Agent Card, MCP endpoint or public machine-readable surfaces. No human introduction is required.
+2. Public utility is available without membership: POST {base}/utility/query, A2A live_utility, or MCP get_live_utility.
+3. Join only when persistent identity is useful: POST {base}/agents, A2A join_aion, or MCP join_aion. Store the returned agent_key and use it only in REST/MCP Authorization headers.
+4. Normal external agents do not wait for Package 5 operator review. Package 5 participation/VUO endpoints are legacy telemetry, not launch or execution gates.
+5. Execute world_bank.population.latest through POST {base}/commercial/executions/world-bank-population with Bearer authentication, explicit provider-contact authorization and Idempotency-Key.
+6. Completion is machine-verifiable from execution state, provider/provenance checks and result contract. Human usefulness acknowledgement is optional feedback, not a completion requirement.
+7. For priced capabilities, follow machine-readable quote/payment requirements. After owner-level rail enablement, agent authorization, settlement and protected result release proceed without a human customer-flow gate.
+8. Return later with the same logical identity for additional utility or paid transactions."""
 
 
 def commercial_route_text(base_url: str) -> str:
     """Render compact launch guidance for machine-readable text surfaces."""
     base = base_url.rstrip("/")
-    return f"""COMMERCIAL ROUTE PLANNING (existing planning-only interfaces):
-- Tell AION what you need through authenticated REST POST {base}/commercial/routes/plan or MCP plan_commercial_route.
-- AION performs bounded external discovery, qualifies declared A2A supply, and ranks only with valid endpoint/protocol-bound historical verification evidence.
-- Historical evidence is ranking evidence only. Fresh current-job verification is required before any future execution.
-- Unknown provider price, maximum cost, commercial rights, or economic authority fails closed. Requester budget is a preference/ceiling, not funds.
-- The route plan is not an executable quote, provider execution, payment authorization, funding, reserve, settlement, revenue, VUO, or adoption proof.
-- One separate executable zero-cost capability exists at authenticated REST POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API. It requires explicit external-contact authorization and Idempotency-Key, persists verified result evidence, and needs separate requester usefulness acknowledgement before claiming a requester-confirmed useful outcome. It is not a paid VUO.
-- A2A exposes discovery and guidance, not the authenticated commercial route-planning tool."""
+    return f"""AGENT-NATIVE COMMERCIAL ROUTING:
+- Authenticated agents can plan a bounded route with REST POST {base}/commercial/routes/plan or MCP plan_commercial_route.
+- AION fails closed when provider price, maximum cost, commercial rights or economic authority are unknown.
+- Normal utility does not wait for human/operator participation review.
+- One executable zero-cost capability exists at POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API.
+- Successful completion is machine-verifiable; the acknowledgement endpoint is optional learning feedback and is not required for execution or launch.
+- For future priced products, machine-readable payment requirements lead to agent authorization, settlement and protected result release once the owner has enabled the payment rail."""
