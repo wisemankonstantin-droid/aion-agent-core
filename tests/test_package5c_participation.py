@@ -169,18 +169,29 @@ def test_package3_action_still_records_normal_authentication(transport, monkeypa
         assert db.scalar(select(models.ActionRun).where(models.ActionRun.requester_agent_id == aid)) is not None
 
 
-def test_all_machine_guidance_exposes_no_touch_handshake():
-    for path in ("/onboarding", "/.well-known/aion.json", "/skill.md", "/llms.txt", "/.well-known/agent-card.json"):
-        response = client.get(path)
-        assert response.status_code == 200
-        assert PATH in response.text and TOOL in response.text
-    assert TOOL in json.dumps(_a2a('{"action":"onboarding"}'))
-    discover = _mcp("server/discover").json()["result"]
-    assert TOOL in discover["instructions"]
+def test_legacy_participation_readiness_is_not_an_active_machine_gate():
+    # The legacy self-read remains backward compatible, but active machine
+    # guidance no longer requires operator classification before execution/VUO.
+    aid, key = _agent()
+    response = rest(key)
+    assert response.status_code == 200
+    assert response.json()["canonical_agent_id"] == aid
+    assert mcp(key).status_code == 200
+
     from app.machine_journey import verified_outcome_journey
+
     journey = verified_outcome_journey("https://example.test")
-    assert journey["sequence"].index("check_own_package5_participation_readiness") < journey["sequence"].index("authenticated_verified_callability_action")
-    assert journey["participation_readiness"]["A2A"]["available"] is False
+    assert "package5_countable_participation_gate" not in journey
+    assert "requester_usefulness_acknowledgement" not in journey
+    assert journey["human_participant_required"] is False
+    assert journey["machine_vuo"]["separate_operator_review_required"] is False
+    assert journey["machine_vuo"]["separate_human_usefulness_acknowledgement_required"] is False
+
+    onboarding = _a2a('{"action":"onboarding"}')
+    assert onboarding["verified_outcome_journey"]["human_participant_required"] is False
+    discover = _mcp("server/discover").json()["result"]
+    assert "wait for operator review" not in discover["instructions"]
+    assert "execute_world_bank_population" in discover["instructions"]
 
 
 def test_resource_limit_fails_closed(monkeypatch):

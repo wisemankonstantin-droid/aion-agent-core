@@ -1,9 +1,10 @@
 import json
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import MCP_VERSION, app
+from app.main import A2A_RUNTIME, MCP_VERSION, app
 
 
 client = TestClient(app)
@@ -30,6 +31,31 @@ def _mcp(method: str, params: dict | None = None, bearer: str | None = None):
         headers=headers,
         json={"jsonrpc": "2.0", "id": "agent-only", "method": method, "params": params},
     )
+
+
+def _a2a(text: str) -> dict:
+    if A2A_RUNTIME.get("status") != "mounted":
+        pytest.skip("a2a-sdk not installed in this local test environment")
+    response = client.post(
+        "/a2a/v1",
+        headers={"A2A-Version": "1.0"},
+        json={
+            "jsonrpc": "2.0",
+            "id": "agent-only",
+            "method": "SendMessage",
+            "params": {
+                "message": {
+                    "messageId": "msg-" + uuid.uuid4().hex,
+                    "role": "ROLE_USER",
+                    "parts": [{"text": text}],
+                }
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    rpc = response.json()
+    assert "error" not in rpc, rpc
+    return json.loads(rpc["result"]["message"]["parts"][0]["text"])
 
 
 def _join(label: str) -> tuple[dict, str]:
