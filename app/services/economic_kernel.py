@@ -1,4 +1,4 @@
-"""Package 6A deterministic economic policy and disabled real-money boundary."""
+"""Deterministic economic policy with a fail-closed owner-controlled real-money gate."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import hashlib
 import json
+import os
 import re
 import uuid
 
@@ -22,7 +23,21 @@ from .rate_limit import allow_economic_preflight, configured_economic_preflight_
 
 MINIMUM_MARGIN_BPS = 4_000
 STANDARD_TARGET_MARGIN_BPS = 6_000
-REAL_MONEY_EXECUTION_ENABLED = False
+REAL_MONEY_ENABLE_ENV = "AION_REAL_MONEY_EXECUTION_ENABLED"
+
+
+def configured_real_money_execution_enabled() -> bool:
+    """Return True only for the explicit owner-controlled activation value.
+
+    Missing, malformed or loosely truthy values fail closed. Production reads
+    the value at process startup; changing the environment alone has no effect
+    until the service is deliberately restarted/redeployed.
+    """
+
+    return os.getenv(REAL_MONEY_ENABLE_ENV) == "1"
+
+
+REAL_MONEY_EXECUTION_ENABLED = configured_real_money_execution_enabled()
 QUOTE_TTL_SECONDS = 900
 MAX_LOGICAL_IDENTITIES = 500
 _MONEY = re.compile(r"^(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,6})?$")
