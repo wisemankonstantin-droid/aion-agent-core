@@ -1,0 +1,149 @@
+name: AION Post-Deploy Verification One-Shot
+
+on:
+  push:
+    branches:
+      - codex/package-6b-real-money-control-gate-v1
+    paths:
+      - .github/workflows/post-deploy-verify-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact release, fail-closed payment readiness, and zero-cost World Bank path
+        env:
+          AION_BASE_URL: https://aion-agent-core-live.onrender.com
+          AION_EXPECTED_RELEASE_SHA: fcb2a62c9eeadafe53540eaaedc9c18962555a37
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          import uuid
+
+          base = os.environ["AION_BASE_URL"].rstrip("/")
+          expected = os.environ["AION_EXPECTED_RELEASE_SHA"]
+
+          def call(method, path, body=None, headers=None, expected_status=None):
+              data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
+              h = {"User-Agent": "AION-Authorized-Post-Deploy-Verify/1.0"}
+              if body is not None:
+                  h["Content-Type"] = "application/json"
+              if headers:
+                  h.update(headers)
+              req = urllib.request.Request(base + path, data=data, headers=h, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as resp:
+                      status = resp.status
+                      payload = json.loads(resp.read().decode())
+              except urllib.error.HTTPError as exc:
+                  status = exc.code
+                  raw = exc.read().decode(errors="replace")
+                  try:
+                      payload = json.loads(raw)
+                  except Exception:
+                      payload = {"raw": raw[:500]}
+              if expected_status is not None and status != expected_status:
+                  raise AssertionError((method, path, status, payload))
+              return status, payload
+
+          _, health = call("GET", "/health", expected_status=200)
+          assert health["status"] == "ok", health
+          assert health["release_sha"] == expected, health
+
+          _, readiness = call("GET", "/readiness", expected_status=200)
+          assert readiness["status"] == "ready", readiness
+          assert readiness["expected_schema_revision"] == "0016_official_data_execution_v1", readiness
+          assert readiness["database_schema_revision"] == "0016_official_data_execution_v1", readiness
+          assert readiness["schema_current"] is True, readiness
+
+          _, pay = call("GET", "/commercial/route-intelligence/payment-readiness", expected_status=200)
+          assert pay["protocol"] == "x402", pay
+          assert pay["x402_version"] == 2, pay
+          assert pay["scheme"] == "exact", pay
+          assert pay["payment_flow"] == "upfront", pay
+          assert pay["real_money_execution_enabled"] is False, pay
+          assert pay["launch_ready"] is False, pay
+          assert pay["truth_boundaries"]["settlement_happens_before_resource_release"] is True, pay
+
+          _, purchase_disabled = call(
+              "POST",
+              "/commercial/route-intelligence/purchase",
+              body={"need": "bounded route intelligence verification only"},
+              expected_status=503,
+          )
+          assert purchase_disabled["code"] == "x402_exact_upfront_not_activated", purchase_disabled
+          assert purchase_disabled["real_money_execution_enabled"] is False, purchase_disabled
+
+          external_id = "post-deploy-smoke-" + uuid.uuid4().hex
+          _, joined = call(
+              "POST",
+              "/agents",
+              body={
+                  "external_id": external_id,
+                  "name": "AION Post-Deploy Zero-Cost Smoke Agent",
+                  "description": "Authorized bounded production smoke.",
+                  "protocol": "REST",
+                  "acquisition_source": "authorized_post_deploy_smoke",
+                  "owner_required": False,
+                  "capabilities": [],
+              },
+              expected_status=200,
+          )
+          key = joined["agent_key"]
+          print(f"::add-mask::{key}")
+          auth = {"Authorization": f"Bearer {key}"}
+
+          _, result = call(
+              "POST",
+              "/commercial/executions/world-bank-population",
+              body={
+                  "capability": "world_bank.population.latest",
+                  "country_code": "US",
+                  "authorize_external_contact": True,
+              },
+              headers={
+                  **auth,
+                  "Idempotency-Key": "post-deploy-world-bank-" + uuid.uuid4().hex,
+              },
+              expected_status=200,
+          )
+
+          assert result["state"] == "completed", result
+          assert result["verification"]["capability_verified"] is True, result
+          assert result["outcome"]["machine_completion_state"] == "machine_verified_result_delivered", result
+          assert result["outcome"]["human_usefulness_confirmation_required"] is False, result
+          assert result["execution"]["provider_invoked"] is True, result
+          assert result["execution"]["outbound_attempts"] == 1, result
+          assert result["execution"]["http_status"] == 200, result
+          assert result["execution"]["actual_provider_cost"] == "0", result
+          assert result["execution"]["actual_customer_price"] == "0", result
+
+          normalized = result["execution"]["normalized_result"]
+          assert normalized["country_code"] == "US", normalized
+          assert isinstance(normalized["population"], int) and normalized["population"] > 0, normalized
+          assert isinstance(normalized["year"], int), normalized
+
+          print(json.dumps({
+              "status": "pass",
+              "release_sha": health["release_sha"],
+              "schema_revision": readiness["database_schema_revision"],
+              "payment_launch_ready": pay["launch_ready"],
+              "real_money_execution_enabled": pay["real_money_execution_enabled"],
+              "disabled_purchase_http": 503,
+              "world_bank_execution_id": result["execution_id"],
+              "world_bank_year": normalized["year"],
+              "world_bank_population": normalized["population"],
+              "world_bank_http_status": result["execution"]["http_status"],
+              "provider_cost_usd": result["execution"]["actual_provider_cost"],
+              "customer_price_usd": result["execution"]["actual_customer_price"],
+              "human_usefulness_confirmation_required": result["outcome"]["human_usefulness_confirmation_required"],
+              "payment_or_settlement_performed": False
+          }, sort_keys=True))
+          PY
