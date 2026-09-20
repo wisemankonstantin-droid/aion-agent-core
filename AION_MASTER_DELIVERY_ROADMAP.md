@@ -3,10 +3,7 @@
 ## Authority and interpretation
 
 This is the canonical Package 0–9 delivery sequence after the completed
-post-Package-2 strategic audit. `PROJECT_STATE.md` is authoritative for current
-verified facts; `AION_DIRECTIVE.md` contains permanent operating principles;
-`AION_LIVE_UTILITY_ENGINE.md` contains product and technical direction; and
-`GROWTH_AND_REVENUE.md` contains commercial strategy.
+post-Package-2 strategic audit. `PROJECT_STATE.md` is authoritative for current verified facts; `AION_DIRECTIVE.md` contains permanent operating principles; `AION_AGENT_NATIVE_LAUNCH_LAW.md` is authoritative for launch/customer-loop semantics; `AION_LIVE_UTILITY_ENGINE.md` contains product and technical direction; and `GROWTH_AND_REVENUE.md` contains commercial strategy.
 
 Future packages are direction, not claims that functionality, adoption,
 revenue, settlement or verified useful outcomes already exist. A package may be
@@ -15,16 +12,13 @@ called Done only after the zero-known-defects gate in `AION_DIRECTIVE.md`.
 ## Delivery posture
 
 The operating target is a production Live Utility MVP in days or weeks, not
-months, when the work is genuinely ready. Do not sacrifice correctness,
-security or review gates for a date, and do not use perfectionism to justify
-unnecessary delay.
+months, when the work is genuinely ready. Do not sacrifice correctness or security for a date, and do not use review ceremony or perfectionism to justify unnecessary delay. Owner-control gates apply only to governed mutations of AION itself, not to normal agent customer flow.
 
 The product and commercial loop is:
 
 `utility -> monetizable value -> revenue -> more utility -> more agents -> more revenue`
 
-The North Star is VUO — Verified Useful Outcome. Protocol support and compatible
-metadata are means; verified outcomes are the value.
+The launch North Star is autonomous agent commerce: successful machine executions, Settled Agent Transactions (SATs), repeat SATs, retained paying agents, real revenue and contribution margin. VUO remains legacy telemetry and must not gate launch or agent access.
 
 ## Package sequence
 
@@ -173,85 +167,33 @@ independent adoption, a verified external VUO, learning execution or payment.
 Package 4 does not claim independent external adoption, revenue, payment
 settlement or a real external VUO. Those remain future evidence gates.
 
-### Package 5 — Engineering live; commercial proof ACTIVE and zero
+### Package 5 — Agent-native distribution and autonomous utility
 
-Prove the first genuine independent external-agent VUO and voluntary return.
-Begin limited design-partner and test-agent contact only as clearly labelled
-product discovery; coordinated testing must not be counted as independent
-commercial adoption. Package 5 must distinguish independent production use from
-AION-operated identities, synthetic probes, registrations and invited tests.
+Package 5 no longer exists to obtain a human/operator-certified “commercial proof”.
+Its launch function is to make AION discoverable and usable by external AI agents
+without a human in the normal path.
 
-Evidence progression:
+Canonical flow:
 
-`first independent external agent -> first verified useful outcome -> first voluntary return -> 10 independent agents with useful outcomes and voluntary return`
+`machine discovery -> optional join/auth -> agent request -> bounded execution -> machine-verifiable result -> repeat`
 
-Package 5 should use the existing production utility/action/evidence stack before
-building broad acquisition machinery. It must capture evidence sufficient to
-show who/what was independent at the logical-identity level, what useful outcome
-was delivered, how outcome verification was established, whether the agent
-returned voluntarily, and what near-zero/zero infrastructure cost was incurred.
+Rules:
 
-No paid acquisition, paid external provider, payment activation or unfunded
-variable-cost utility is authorized merely by starting Package 5. The current
-zero-infrastructure-spend constraint remains in force until commercial evidence
-supports a separately approved change.
+- no operator review is required merely to let a legitimate external agent use AION;
+- an unknown human owner or vendor is not a reason to block an agent;
+- AION-operated, duplicate, synthetic/test and known-abusive identities remain
+  excluded from commercial counts by deterministic server rules;
+- requester acknowledgements and historical Package 5 VUO records may be stored
+  as telemetry, but they are not launch prerequisites;
+- human/design-partner outreach is optional distribution research only;
+- machine-first discovery through A2A, MCP, manifests, registries and public
+  executable endpoints is the default;
+- Package 5 historical proof endpoints remain compatible until intentionally
+  deprecated, but no normal agent should be instructed to wait for operator
+  review before ordinary utility.
 
-The accepted repository implementation is merged and production-live at
-`48b8be9a0fe52f9febd17d563aa43715ee2a542f`. It introduces explicit operator-reviewed participation classes at canonical
-logical-identity level, a separate authenticated requester-confirmed VUO
-candidate bound to existing ActionRun/Outcome/Verification evidence, and a
-later distinct authenticated ActionRun as the bounded V1 return event. Unknown,
-internal, synthetic, coordinated and candidate-only identities remain excluded.
-No qualifying independent production agent, VUO, return, outreach or learning
-cycle is claimed. Package 5B is the bounded conversion corrective that makes
-the existing path explicit across machine-facing entry surfaces:
-
-`public utility -> optional explicit join -> authenticated verified-callability action -> inspect durable evidence -> separate requester usefulness acknowledgement -> public proof -> later new meaningful action`
-
-Package 5B adds guidance only. It does not alter evidence semantics, add an A2A
-protected-action/VUO-write adapter, introduce a migration or begin Package 6.
-
-Package 5B is merged and production-live at its accepted checkpoint. Package
-5C is also merged and production-live at
-`a2a53ff61ede7597651b2f1bac1ca3db809855f9`, deploy
-`dep-dahgei67bikc73fq0g3g`. Its bounded participation-readiness handshake lets
-an agent, after join/key storage, read self-status via REST/MCP without
-lifecycle changes; if non-countable, preserve state and wait for review before
-seeking a qualifying VUO. Once countable, follow the existing action/evidence/
-usefulness sequence. This is not a gate on public utility or joining, a review
-request queue, a classification write path, or commercial proof.
-
-Package 5D is a bounded active-distribution/Ambassador pilot foundation, not
-Package 7 acquisition scaling. It runs beside the organic control lane without
-mixing evidence:
-
-`bounded scout -> deterministic qualification -> prepare utility-first invitation -> Human Gate -> send once -> attributed response/join/use/VUO/return evidence`
-
-The accepted production implementation reuses hardened public A2A discovery, caps a campaign
-at 30 targets, globally deduplicates interaction endpoints, permits at most one
-initial contact and no automatic follow-up, and keeps real outbound disabled
-behind two explicit operator gates. Server-verifiable invite tokens force
-Ambassador joins into coordinated/non-countable Package 5 status. Peer-referral
-tokens are bounded to five uses and remain review-required; AION never forwards
-them automatically. This work performs no outreach and creates no independent
-adoption, VUO, return, payment or revenue evidence. It is production-live with
-both outbound flags disabled and no campaign/contact evidence. Actual pilot
-contact remains a separate Human Gate.
-
-Package 5E — Ambassador Operator Control V1 — is the bounded remote operating
-adapter for that pilot, not a generic admin API or Package 7. It exposes only
-hidden, dedicated-token routes for campaign creation/scouting, deterministic
-target qualification, campaign status/state, target suppression and one
-explicit target contact. Contact requires the control token, both existing
-outbound flags and exact `SEND` confirmation; token/message preparation stays
-server-side and the response contains only durable bounded contact evidence.
-Migration `0013_ambassador_control_v1` adds the minimal operator-action audit.
-Package 5E is accepted, merged, deployed and live at
-`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, deploy
-`dep-daj7899594qs73b35g4g`. Deployment does not prove outreach, adoption, VUO,
-return, payment or revenue; current production environment-variable values are
-not inferred. No automatic fan-out, follow-up, payment, outreach or learning is
-introduced.
+The success condition for this package is production machine accessibility and
+frictionless agent execution, not a quota of human-confirmed outcomes.
 
 ### Package 6 — Economic Execution + Real Settlement
 
@@ -302,20 +244,24 @@ agent's payment capability. A payment intent is not settlement. Settled
 transactions begin supplying auditable commercial evidence; inferred
 willingness to pay must not be presented as settlement.
 
-### Package 7 — Acquisition, retention and ecosystem
+### Package 7 — Machine acquisition, retention and ecosystem
 
-Expand acquisition only after useful return behavior has evidence. Optimize
-repeat VUOs and retained independent agents; reject vanity traffic, fabricated
-participation and incentive-only activity.
-Use accumulated demand and outcome evidence to improve retention and utility
-without allowing high-volume single identities to distort priorities.
+Expand machine-native discovery and repeat usage across agent ecosystems,
+registries, A2A/MCP surfaces, SDK/examples and agent-to-agent referral paths.
+Human outreach may supplement discovery but is never the primary dependency.
 
-### Package 8 — Commercial proof and scale hardening
+Optimize discovery-to-execution conversion, repeat agent use and removal of
+protocol/payment friction.
 
-Demonstrate paid VUOs, revenue per VUO, cost per VUO and defensible gross margin
-where measurable. Harden reliability and scale using cost evidence accumulated
-since actions began, including refresh, utility, verification, action and
-failed-action costs.
+### Package 8 — Real commerce and scale hardening
+
+Demonstrate and harden real Settled Agent Transactions, repeat paid use,
+revenue, variable cost and positive contribution margin. Scale only after
+security, idempotency, settlement and unit economics remain correct under
+production load.
+
+Do not substitute proof ceremonies for real transactions. The durable commercial
+record is the settlement/economic ledger produced by actual machine commerce.
 
 ### Package 9 — Post-V1 ecosystem scale
 
