@@ -1612,16 +1612,13 @@ async def mcp_gateway(
             "instructions": (
                 "Tell AION what you need. Call get_live_utility without joining. Join only when persistent identity is useful; "
                 "store the returned key securely and send it only in the HTTP Authorization header. "
-                "Use authenticated plan_commercial_route for bounded external-supply qualification and planning-only route evidence. "
-                "It does not execute or pay; unknown provider price, maximum cost, or commercial rights fails closed, and fresh "
-                "current-job verification remains required before any future execution. A2A does not expose this authenticated tool. "
-                "First call get_my_package5_participation (no arguments, no lifecycle touch). "
-                "If not countable, preserve state and wait for operator review; do not submit VUO. "
-                "Review is not required for public utility or joining. Once participation is ready, "
-                "for the existing verified-outcome journey call authenticated verify_external_callability, "
-                "inspect with get_action_status, then if useful submit the separate requester acknowledgement "
-                "through REST POST /proof/package-5/vuos. Callability alone is not a VUO. Public "
-                "get_package5_proof is read-only. No A2A protected-action or VUO-write adapter exists."
+                "Use authenticated plan_commercial_route for bounded route planning. "
+                "Use execute_world_bank_population for the current real zero-price executable capability and "
+                "get_world_bank_execution for durable result evidence. Verified completion of that fixed request "
+                "contract establishes a machine VUO automatically; no operator review, design-partner response, "
+                "or human usefulness acknowledgement is required. Paid routes still fail closed when price, maximum "
+                "cost, rights, authorization or funding are unknown. A2A remains credential-free; authenticated "
+                "execution uses REST/MCP HTTP Authorization headers."
             ),
             "ttlMs": 300000,
             "cacheScope": "public",

@@ -324,7 +324,7 @@ def install_official_a2a(app):
 
     card = AgentCard(
         name="AION SUPREME Temple Gateway",
-        description="A2A 1.0 gateway for public utility, qualified external-supply discovery, verified route planning through REST/MCP, and truthful outcome evidence.",
+        description="A2A 1.0 gateway for agent-native public utility, discovery, autonomous joining, and machine-readable guidance into authenticated REST/MCP execution.",
         version="0.8.0",
         default_input_modes=["text/plain", "application/json"],
         default_output_modes=["application/json", "text/plain"],
@@ -377,9 +377,9 @@ def install_official_a2a(app):
                 name="AION commercial route planning",
                 description=(
                     COMMERCIAL_ROUTE_VALUE_PROPOSITION
-                    + " Authenticated planning is available through REST/MCP; A2A provides guidance only and does not execute the route."
+                    + " Authenticated planning and the current World Bank execution capability are available through REST/MCP; A2A remains credential-free."
                 ),
-                tags=["aion", "commercial-routing", "planning", "cross-interface"],
+                tags=["aion", "commercial-routing", "execution", "cross-interface"],
                 examples=['{"action":"onboarding"}'],
             ),
             AgentSkill(

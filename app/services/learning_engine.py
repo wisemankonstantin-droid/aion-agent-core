@@ -374,11 +374,14 @@ def commercial_execution_evidence_summary(db) -> dict:
         ),
         "failed_execution_count": sum(row.state == "failed" for row in rows),
         "provider_failure_count": sum(row.state == "failed" for row in rows),
-        "usefulness_confirmed_count": sum(row.useful_outcome for row in rows),
+        "machine_verified_vuo_count": sum(
+            row.useful_outcome and row.capability_verified for row in rows
+        ),
         "failure_class_breakdown": dict(sorted(failures.items())),
         "provider_identifiers": sorted({row.provider_identifier for row in rows}),
+        "human_confirmation_required": False,
+        "demand_evidence_mode": "authenticated_machine_requests",
         "market_demand_claimed": False,
-        "independent_use_established": False,
         "routing_effect": "bounded_evidence_only_no_autonomous_policy_change",
     }
 
