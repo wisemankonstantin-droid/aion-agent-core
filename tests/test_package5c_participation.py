@@ -45,17 +45,11 @@ def test_classes_and_rest_mcp_parity_without_writes(classification):
     assert response.status_code == 200
     data = response.json()
     assert data["canonical_agent_id"] == agent_id
-    excluded = classification in package5_proof._EXCLUDED_CLASSIFICATIONS
-    expected_classification = classification if excluded else "independent_external_countable"
-    assert data["classification"] == expected_classification
-    assert data["countable"] == data["vuo_submission_ready"] == (not excluded)
-    if classification == "independent_external_countable" or excluded:
-        assert data["assessment_id"] is not None
-    else:
-        assert data["assessment_id"] is None
-    assert data["operator_review_incomplete"] is False
-    assert data["operator_review_required_for_normal_utility"] is False
-    assert data["state"] in ("participation_ready", "excluded", "policy_exception")
+    assert data["classification"] == (classification or "unknown_not_proven")
+    assert data["countable"] == data["vuo_submission_ready"] == (classification == "independent_external_countable")
+    assert data["assessment_id"] is not None if classification else data["assessment_id"] is None
+    assert data["operator_review_incomplete"] == (classification in (None, "independent_external_candidate"))
+    assert data["state"] in ("participation_ready", "excluded", "review_incomplete")
     for _ in range(3):
         assert rest(key).json() == data
         rpc = mcp(key)
@@ -160,8 +154,8 @@ def test_package3_action_still_records_normal_authentication(transport, monkeypa
     monkeypatch.setattr(action_engine, "discover_external_agents_with_status", lambda *a: _discovery([_candidate()]))
     monkeypatch.setattr(action_engine, "_post_challenge", lambda url, encoded: _verified_response(encoded))
     aid, key = _agent()
-    assert rest(key).json()["vuo_submission_ready"] is True
-    # Legacy participation telemetry is not a permission gate on existing actions.
+    assert rest(key).json()["vuo_submission_ready"] is False
+    # Readiness is not a new permission gate on existing actions.
     if transport == "REST":
         result = _request(key).json()
     else:
@@ -175,19 +169,18 @@ def test_package3_action_still_records_normal_authentication(transport, monkeypa
         assert db.scalar(select(models.ActionRun).where(models.ActionRun.requester_agent_id == aid)) is not None
 
 
-def test_all_machine_guidance_exposes_agent_native_path_without_operator_gate():
+def test_all_machine_guidance_exposes_no_touch_handshake():
     for path in ("/onboarding", "/.well-known/aion.json", "/skill.md", "/llms.txt", "/.well-known/agent-card.json"):
         response = client.get(path)
         assert response.status_code == 200
-        assert "operator review" not in response.text.lower() or "do not wait" in response.text.lower() or "not" in response.text.lower()
+        assert PATH in response.text and TOOL in response.text
     assert TOOL in json.dumps(_a2a('{"action":"onboarding"}'))
     discover = _mcp("server/discover").json()["result"]
+    assert TOOL in discover["instructions"]
     from app.machine_journey import verified_outcome_journey
     journey = verified_outcome_journey("https://example.test")
-    assert "package5_countable_participation_gate" not in journey["sequence"]
-    assert journey["authenticated_execution"]["operator_participation_review_required"] is False
-    assert journey["machine_verifiable_result"]["human_usefulness_confirmation_required"] is False
-    assert journey["legacy_package5_telemetry"]["blocks_utility"] is False
+    assert journey["sequence"].index("check_own_package5_participation_readiness") < journey["sequence"].index("authenticated_verified_callability_action")
+    assert journey["participation_readiness"]["A2A"]["available"] is False
 
 
 def test_resource_limit_fails_closed(monkeypatch):
