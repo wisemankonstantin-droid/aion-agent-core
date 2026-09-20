@@ -266,7 +266,7 @@ def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
     assert "0014_conversation_intel_v1.py" in migration_names
 
 
-def test_package6a_kernel_is_single_shared_disabled_money_boundary():
+def test_package6a_kernel_is_single_shared_fail_closed_money_boundary():
     main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
@@ -290,7 +290,8 @@ def test_package6a_kernel_is_single_shared_disabled_money_boundary():
     assert '"parent_reserved_budget"' in kernel
     assert '"customer_settlement_scope": "parent_only"' in kernel
     assert "parent_reserve_insufficient_for_delegated_budget" in kernel
-    assert "REAL_MONEY_EXECUTION_ENABLED = False" in kernel
+    assert 'REAL_MONEY_ENABLE_ENV = "AION_REAL_MONEY_EXECUTION_ENABLED"' in kernel
+    assert "REAL_MONEY_EXECUTION_ENABLED = configured_real_money_execution_enabled()" in kernel
     for action in ("economic_preflight", "payment_authorized", "funds_reserved", "settled"):
         assert f'action == "{action}"' not in a2a_source
 
