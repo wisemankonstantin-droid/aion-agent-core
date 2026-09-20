@@ -151,16 +151,16 @@ def _proof():
     return response.json()
 
 
-def test_historical_and_client_controlled_attribution_never_self_promote():
+def test_external_agents_default_to_server_eligibility_without_human_review():
     _agent(acquisition_source="organic", referrer="independent external customer")
     _agent(external_id="self-asserted-independent", name="Organic Independent")
     proof = _proof()
-    assert proof["counts"]["independent_logical_identities"] == 0
+    assert proof["counts"]["independent_logical_identities"] == 2
     assert proof["counts"]["qualifying_vuos"] == 0
     assert proof["counts"]["identities_with_qualifying_return"] == 0
     assert proof["commercial_proof_established"] is False
     assert proof["participation_evidence"]["reason_code_breakdown"][
-        "no_trusted_package5_participation_assessment"
+        package5_proof._DEFAULT_EXTERNAL_REASON
     ] >= 2
 
 
@@ -171,10 +171,9 @@ def test_historical_and_client_controlled_attribution_never_self_promote():
         "synthetic_probe_test",
         "coordinated_design_partner",
         "operator_invited_coordinated_test",
-        "independent_external_candidate",
     ],
 )
-def test_all_non_countable_participation_classes_remain_explicitly_excluded(classification):
+def test_explicit_exclusion_classes_remain_non_countable(classification):
     agent_id, _ = _agent()
     assessment = _assess(agent_id, classification)
     proof = _proof()
@@ -229,21 +228,19 @@ def test_coordinated_classification_follows_canonical_identity_across_raw_rows()
     ] >= 1
 
 
-def test_callability_is_not_automatically_a_vuo_and_late_classification_does_not_backfill():
+def test_legacy_vuo_telemetry_no_longer_requires_operator_assessment():
     agent_id, key = _agent()
     action_id = _action(agent_id)
     assert _proof()["counts"]["stored_vuo_candidates"] == 0
     response = _vuo(key, action_id)
     assert response.status_code == 200
     assert response.json()["semantic_eligible"] is True
-    assert response.json()["qualifies_as_package5_vuo"] is False
-    _assess(agent_id)
+    assert response.json()["qualifies_as_package5_vuo"] is True
+    assert response.json()["participation"]["evidence_authority"] == "server_default_eligibility"
     proof = _proof()
     assert proof["counts"]["independent_logical_identities"] == 1
-    assert proof["counts"]["qualifying_vuos"] == 0
-    assert proof["vuo_evidence"]["reason_code_breakdown"][
-        "participation_not_countable_at_vuo_submission"
-    ] == 1
+    assert proof["counts"]["qualifying_vuos"] == 1
+    assert proof["vuo_evidence"]["reason_code_breakdown"]["qualifying_package5_vuo"] == 1
 
 
 def test_verified_vuo_is_requester_scoped_idempotent_and_exposes_no_raw_or_secret_material():
