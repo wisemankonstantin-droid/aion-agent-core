@@ -97,6 +97,7 @@ class PopulationExecutionRequest(BaseModel):
 
 
 class PopulationUsefulnessAcknowledgement(BaseModel):
+    """Optional requester feedback; never a prerequisite for execution completion."""
     model_config = ConfigDict(extra="forbid")
 
     usefulness_confirmed: bool
@@ -484,12 +485,29 @@ def _serialize(
             "capability_verified": row.capability_verified,
         },
         "outcome": {
+            "machine_completion_state": (
+                "machine_verified_result_delivered"
+                if row.state == "completed" and row.capability_verified
+                else "not_completed"
+            ),
+            "human_usefulness_confirmation_required": False,
+            "optional_requester_feedback_recorded": row.useful_outcome,
+            "optional_requester_feedback": row.usefulness_evidence,
+            "legacy_vuo_state": (
+                "requester_confirmed_verified_useful_outcome"
+                if row.useful_outcome
+                else "optional_feedback_not_recorded"
+                if row.state == "completed"
+                else "not_established"
+            ),
+            # Compatibility aliases retain the pre-agent-native response contract.
+            # They describe optional legacy feedback, not execution completion.
             "useful_outcome": row.useful_outcome,
             "usefulness_evidence": row.usefulness_evidence,
             "vuo_state": (
                 "requester_confirmed_verified_useful_outcome"
                 if row.useful_outcome
-                else "awaiting_requester_usefulness_confirmation"
+                else "optional_feedback_not_recorded"
                 if row.state == "completed"
                 else "not_established"
             ),
@@ -507,6 +525,9 @@ def _serialize(
             ),
         },
         "truth_boundaries": {
+            "zero_price_execution_is_not_revenue_or_settlement": True,
+            "machine_verified_completion_does_not_require_human_acknowledgement": True,
+            "requester_feedback_is_optional_learning_input": True,
             "zero_price_execution_is_not_paid_vuo": True,
             "requester_confirmation_is_not_independent_third_party_verification": True,
             "repository_or_test_execution_is_not_production_use": True,

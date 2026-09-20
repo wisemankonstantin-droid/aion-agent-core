@@ -1,5 +1,55 @@
 # Project checkpoint — 2026-09-13
 
+## Agent-native launch correction — 2026-09-20
+
+AION launch semantics are being corrected on branch `codex/agent-native-launch-law-v1`
+under `AION_AGENT_NATIVE_LAUNCH_LAW.md`.
+
+The correction removes human/operator participation review and human usefulness
+confirmation from the normal external-agent customer path.
+
+Canonical target:
+
+`machine discovery -> agent request -> bounded execution -> machine-verifiable result -> machine payment/settlement when priced -> repeat`
+
+Package 5 participation/VUO proof surfaces remain legacy compatibility telemetry.
+They no longer define whether AION is allowed to launch, distribute, execute or
+accept machine commerce.
+
+The current World Bank official-data path already supplies a zero-cost
+machine-verifiable execution contract. Its acknowledgement endpoint is optional
+feedback, not a completion gate.
+
+The bounded PR #13 compatibility correction preserves the autonomous sequence
+while restoring prior public response keys as explicitly legacy, non-gating
+aliases. Package 5 participation/readiness responses now scope any operator
+review language to historical Package 5 qualification only and state that the
+telemetry does not block ordinary utility, execution, payment or settlement.
+Onboarding and the shared machine journey state that the fixed World Bank
+capability can execute directly without first calling the planning-only
+commercial router. No schema or migration change is involved.
+
+Local validation for this bounded correction:
+
+- TDD red phase failed on the missing compatibility keys, legacy-only scope
+  markers and direct-execution guidance before implementation;
+- focused agent-native and affected-surface matrix: 146 passed;
+- full locked-environment suite: 650 passed, 23 PostgreSQL-only tests skipped;
+- dependency integrity, secret scan over 188 files, compileall, workflow YAML,
+  readiness and fresh SQLite migration-to-`0016_official_data_execution_v1`
+  passed; and
+- official MCP 2026-07-28 plus A2A 1.0 interoperability scripts passed against
+  an isolated local HTTPS server and disposable database.
+
+Owner/control-plane approval remains distinct for mutations of AION itself
+(merge, production deploy/migration, production secrets/configuration,
+real-money rail activation, destructive infrastructure). Those controls are not
+part of the normal agent customer transaction loop.
+
+Commercial success is measured by real machine executions and, for priced
+products, Settled Agent Transactions, repeat paid use, real revenue and
+contribution margin. Human outreach replies are not a project dependency.
+
 ## Current production state
 
 - **Repository:** `wisemankonstantin-droid/aion-agent-core`.

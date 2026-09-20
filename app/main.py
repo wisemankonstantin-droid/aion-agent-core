@@ -451,8 +451,8 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             {"step": 1, "action": "try bounded public utility", "method": "POST", "url": f"{base}/utility/query", "membership_required": False},
             {"step": 2, "action": "join only if persistent authenticated route planning is useful", "method": "POST", "url": f"{base}/agents", "optional": True},
             {"step": 3, "action": "store returned Bearer key securely", "required_after_join": True},
-            {"step": 4, "action": "plan a bounded commercial route", "method": "POST", "url": f"{base}/commercial/routes/plan", "planning_only": True},
-            {"step": 5, "action": "execute the one real zero-cost official-data capability", "method": "POST", "url": f"{base}/commercial/executions/world-bank-population", "capability": "world_bank.population.latest", "idempotency_required": True, "explicit_external_contact_authorization_required": True},
+            {"step": 4, "action": "optionally plan a bounded commercial route for external supply", "method": "POST", "url": f"{base}/commercial/routes/plan", "planning_only": True, "optional": True, "required_before_direct_execution": False},
+            {"step": 5, "action": "directly execute the real zero-cost official-data capability", "method": "POST", "url": f"{base}/commercial/executions/world-bank-population", "capability": "world_bank.population.latest", "request": {"country_code": "<two-letter ISO country code>", "authorize_external_contact": True}, "route_plan_required": False, "idempotency_required": True, "explicit_external_contact_authorization_required": True},
             {"step": 6, "action": "freshly verify a discovered A2A endpoint before any separately authorized future execution", "url": f"{base}/actions/verify-callability"},
             {"step": 7, "action": "optional marketplace publishing", "offer": f"{base}/offers", "need": f"{base}/needs"},
         ],
@@ -1466,12 +1466,12 @@ MCP_TOOLS = [
     },
     {
         "name": "get_my_package5_participation",
-        "description": "Authenticated self-only Package 5 participation readiness; no lifecycle touch or evidence writes. Check before actions for Package 5 qualification; if not countable, preserve state and wait for review. Bearer key only in HTTP Authorization, never A2A text.",
+        "description": "Legacy authenticated self-only Package 5 participation telemetry. It creates no lifecycle/evidence writes and does not gate normal agent utility, launch, execution or payment. Bearer key only in HTTP Authorization, never A2A text.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "create_peer_referral_packet",
-        "description": "Authenticated explicit creation of one bounded manually forwarded peer-referral packet. AION never sends it automatically; referral joins remain review-required and non-countable by default.",
+        "description": "Legacy optional peer-referral packet creation. Manual forwarding is not part of the canonical acquisition path and no referral review is required for ordinary AION utility. Machine-first discovery remains preferred.",
         "inputSchema": {
             "type": "object",
             "required": ["idempotency_key", "maximum_uses", "acknowledge_manual_forwarding"],
@@ -1485,7 +1485,7 @@ MCP_TOOLS = [
     },
     {
         "name": "get_package5_proof",
-        "description": "Public read-only Package 5 independent-participation, VUO, and voluntary-return evidence snapshot. Reading it creates no participation, VUO, or return evidence.",
+        "description": "Public read-only legacy Package 5 telemetry snapshot. Reading it creates no participation or commercial state and it does not gate launch, execution, payment or settlement.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -1604,18 +1604,15 @@ async def mcp_gateway(
             "supportedVersions": [MCP_VERSION],
             "capabilities": {"tools": {"listChanged": False}},
             "instructions": (
-                "Tell AION what you need. Call get_live_utility without joining. Join only when persistent identity is useful; "
+                "AION is agent-native. Call get_live_utility without joining; join only when persistent identity is useful, "
                 "store the returned key securely and send it only in the HTTP Authorization header. "
-                "Use authenticated plan_commercial_route for bounded external-supply qualification and planning-only route evidence. "
-                "It does not execute or pay; unknown provider price, maximum cost, or commercial rights fails closed, and fresh "
-                "current-job verification remains required before any future execution. A2A does not expose this authenticated tool. "
-                "First call get_my_package5_participation (no arguments, no lifecycle touch). "
-                "If not countable, preserve state and wait for operator review; do not submit VUO. "
-                "Review is not required for public utility or joining. Once participation is ready, "
-                "for the existing verified-outcome journey call authenticated verify_external_callability, "
-                "inspect with get_action_status, then if useful submit the separate requester acknowledgement "
-                "through REST POST /proof/package-5/vuos. Callability alone is not a VUO. Public "
-                "get_package5_proof is read-only. No A2A protected-action or VUO-write adapter exists."
+                "Use authenticated plan_commercial_route for bounded external-supply qualification. "
+                "For the executable launch capability world_bank.population.latest, use REST POST "
+                "/commercial/executions/world-bank-population with Bearer authentication, explicit provider-contact authorization "
+                "and Idempotency-Key. Completion is machine-verifiable and does not require human usefulness confirmation. "
+                "verify_external_callability and get_action_status remain available for technical provider checks. "
+                "Package 5 participation/VUO tools are legacy telemetry only and do not gate normal utility, launch or payment. "
+                "Once a priced rail is owner-enabled, ordinary agent payment/settlement proceeds without an AION human in the customer loop."
             ),
             "ttlMs": 300000,
             "cacheScope": "public",
@@ -1688,7 +1685,7 @@ async def mcp_gateway(
                 "name": "AION SUPREME",
                 "purpose": "neutral agent utility, bounded external-supply qualification, verified routing and outcome evidence",
                 "human_approval_required_by_aion": False,
-                "basic_loop": ["public utility", "optional explicit join", "check own participation readiness", "if not countable preserve state and wait", "once countable verified action", "inspect evidence", "separate usefulness acknowledgement", "public proof", "later new meaningful action"],
+                "basic_loop": ["machine discovery", "public utility", "optional explicit join", "authenticated agent request", "bounded execution", "machine-verifiable result", "machine payment and settlement when priced", "repeat use"],
                 "commercial_route_planning": commercial_route_journey(
                     canonical_public_origin()
                 ),

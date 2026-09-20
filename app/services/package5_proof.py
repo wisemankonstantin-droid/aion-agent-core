@@ -227,9 +227,10 @@ def participation_readiness(db: Session, requester_agent_id: int) -> dict:
         "for qualification. Public utility remains available; do not create another identity "
         "to bypass exclusion."
         if excluded else
-        "Preserve your credential and evidence and wait for operator review; do not submit "
-        "a VUO for qualification yet. Candidate status is not countable. This read does not "
-        "request or guarantee a review; public utility and optional join do not require review."
+        "For legacy Package 5 qualification only, preserve your credential and evidence while "
+        "operator review remains incomplete; do not submit a legacy VUO for qualification yet. "
+        "Candidate status is not countable. This read does not request or guarantee a review; "
+        "ordinary agent utility and execution continue without operator review."
     )
     return {
         "canonical_agent_id": group["canonical_agent_id"],
@@ -237,6 +238,11 @@ def participation_readiness(db: Session, requester_agent_id: int) -> dict:
         "vuo_submission_ready": ready,
         "readiness_scope": "participation_only_at_read_time",
         "operator_review_incomplete": not ready and not excluded,
+        "legacy_telemetry_only": True,
+        "blocks_normal_utility": False,
+        "blocks_execution": False,
+        "blocks_payment": False,
+        "blocks_settlement": False,
         "excluded": excluded,
         "state": state,
         "next_action": instruction,

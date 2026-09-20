@@ -147,7 +147,12 @@ def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypat
         "method": service.VERIFICATION_METHOD,
         "capability_verified": True,
     }
+    assert data["outcome"]["machine_completion_state"] == "machine_verified_result_delivered"
+    assert data["outcome"]["human_usefulness_confirmation_required"] is False
+    assert data["outcome"]["optional_requester_feedback_recorded"] is False
     assert data["outcome"]["useful_outcome"] is False
+    assert data["outcome"]["usefulness_evidence"] is None
+    assert data["outcome"]["vuo_state"] == "optional_feedback_not_recorded"
     assert len(calls) == 1
     assert calls[0][0] == "GET"
     assert calls[0][1].startswith(service.PROVIDER_BASE + "/country/US/")
@@ -178,13 +183,21 @@ def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypat
     assert acknowledgement.status_code == 200, acknowledgement.text
     acknowledged = acknowledgement.json()
     assert acknowledged["outcome"] == {
+        "machine_completion_state": "machine_verified_result_delivered",
+        "human_usefulness_confirmation_required": False,
+        "optional_requester_feedback_recorded": True,
+        "optional_requester_feedback": "requester_confirms_population_result_was_useful",
+        "legacy_vuo_state": "requester_confirmed_verified_useful_outcome",
         "useful_outcome": True,
         "usefulness_evidence": "requester_confirms_population_result_was_useful",
         "vuo_state": "requester_confirmed_verified_useful_outcome",
     }
     assert acknowledged["requester_history"]["verified_execution_count"] >= 1
     assert acknowledged["requester_history"]["confirmed_useful_outcome_count"] >= 1
+    assert acknowledged["truth_boundaries"]["zero_price_execution_is_not_revenue_or_settlement"] is True
+    assert acknowledged["truth_boundaries"]["machine_verified_completion_does_not_require_human_acknowledgement"] is True
     assert acknowledged["truth_boundaries"]["zero_price_execution_is_not_paid_vuo"] is True
+    assert acknowledged["truth_boundaries"]["requester_confirmation_is_not_independent_third_party_verification"] is True
     with SessionLocal() as db:
         learning = learning_engine.commercial_execution_evidence_summary(db)
     assert learning["verified_execution_count"] >= 1
@@ -279,6 +292,8 @@ def test_provider_failure_is_durable_non_vuo_and_requester_scoped(monkeypatch):
     assert data["state"] == "failed"
     assert data["failure_class"] == "provider_http_failure"
     assert data["verification"]["capability_verified"] is False
+    assert data["outcome"]["machine_completion_state"] == "not_completed"
+    assert data["outcome"]["legacy_vuo_state"] == "not_established"
     assert data["outcome"]["vuo_state"] == "not_established"
 
     forbidden = client.get(

@@ -86,55 +86,70 @@ def _assert_truthful_journey(journey: dict) -> None:
     assert journey["public_utility"]["creates_membership"] is False
     assert journey["optional_explicit_join"]["required_for_public_utility"] is False
     assert journey["optional_explicit_join"]["creates_membership"] is True
+    assert journey["optional_explicit_join"]["human_review_required"] is False
     assert journey["credential"]["never_put_bearer_credentials_in_a2a_message_text"] is True
 
-    action = journey["verified_callability_action"]
-    assert action["authentication_required"] is True
-    assert action["REST"]["url"].endswith("/actions/verify-callability")
-    assert action["MCP"]["tool"] == "verify_external_callability"
-    assert action["A2A"]["available"] is False
-    assert "not by itself a semantic VUO" in action["evidence_boundary"]
+    assert "package5_countable_participation_gate" not in journey["sequence"]
+    execution = journey["authenticated_execution"]
+    assert execution["operator_participation_review_required"] is False
+    assert execution["zero_cost_capability"]["capability"] == "world_bank.population.latest"
+    assert execution["zero_cost_capability"]["REST"]["url"].endswith(
+        "/commercial/executions/world-bank-population"
+    )
 
-    status = journey["durable_action_evidence"]
-    assert status["reruns_action"] is False
-    assert status["REST"]["url_template"].endswith("/actions/{action_id}")
-    assert status["MCP"]["tool"] == "get_action_status"
+    result = journey["machine_verifiable_result"]
+    assert result["human_usefulness_confirmation_required"] is False
+    assert result["optional_feedback"]["required_for_completion"] is False
+    assert result["optional_feedback"]["required_for_launch"] is False
 
-    participation_gate = journey["package5_countable_participation_gate"]
-    assert participation_gate["required_for_qualifying_vuo_at_submission"] is True
-    assert participation_gate["required_classification"] == "independent_external_countable"
-    assert participation_gate["evidence_authority"] == "operator_reviewed_evidence"
-    assert participation_gate["public_self_promotion_available"] is False
-    assert participation_gate["public_assessment_write_surface_available"] is False
-    assert participation_gate["late_reclassification_upgrades_prior_noncountable_candidate"] is False
-    assert "do not submit the VUO acknowledgement" in participation_gate["guidance"]
+    payment = journey["machine_payment_when_required"]
+    assert payment["human_customer_approval_required_by_aion"] is False
+    assert payment["owner_control_plane_enablement_may_be_required"] is True
+
+    legacy = journey["legacy_package5_telemetry"]
+    assert legacy["blocks_utility"] is False
+    assert legacy["blocks_launch"] is False
+    assert legacy["blocks_execution"] is False
+    assert legacy["blocks_payment"] is False
+    assert legacy["blocks_settlement"] is False
+    assert legacy["proof_read"]["MCP"]["tool"] == "get_package5_proof"
+
+    participation = journey["participation_readiness"]
+    assert participation["legacy_telemetry_only"] is True
+    assert participation["blocks_normal_utility"] is False
+    assert participation["blocks_execution"] is False
+    assert participation["blocks_settlement"] is False
+    assert "legacy Package 5 qualification only" in participation["if_not_ready"]
+
+    historical_gate = journey["package5_countable_participation_gate"]
+    assert historical_gate["legacy_telemetry_only"] is True
+    assert historical_gate["required_for_qualifying_vuo_at_submission"] is True
+    assert historical_gate["blocks_normal_utility"] is False
+    assert historical_gate["blocks_execution"] is False
 
     acknowledgement = journey["requester_usefulness_acknowledgement"]
-    assert acknowledgement["authentication_required"] is True
-    assert acknowledgement["qualifying_participation_required_at_submission"] is True
-    assert acknowledgement["late_reclassification_does_not_upgrade_prior_noncountable_candidate"] is True
+    assert acknowledgement["legacy_telemetry_only"] is True
+    assert acknowledgement["required_for_machine_completion"] is False
     assert acknowledgement["REST"]["url"].endswith("/proof/package-5/vuos")
-    assert acknowledgement["REST"]["body"]["usefulness_evidence"] == "requester_confirms_goal_was_useful"
-    assert acknowledgement["MCP"]["available"] is False
-    assert acknowledgement["A2A"]["available"] is False
-    assert acknowledgement["evidence_kind"] == "authenticated_requester_confirmed"
-    assert acknowledgement["independent_third_party_verification"] is False
 
     proof = journey["package5_proof"]
-    assert proof["authentication_required"] is False
-    assert proof["read_only"] is True
-    assert proof["creates_participation_or_vuo_evidence"] is False
+    assert proof["legacy_telemetry_only"] is True
     assert proof["REST"]["url"].endswith("/proof/package-5")
-    assert proof["MCP"]["tool"] == "get_package5_proof"
 
-    returned = journey["qualifying_return"]
-    assert returned["minimum_seconds_after_qualifying_vuo"] == 86_400
-    assert {"health", "readiness", "status", "telemetry", "documentation reads", "proof reads"} <= set(returned["does_not_qualify"])
+    historical_return = journey["qualifying_return"]
+    assert historical_return["legacy_telemetry_only"] is True
+    assert historical_return["required_for_normal_repeat_use"] is False
 
     truth = journey["truth_boundaries"]
+    assert truth["operator_review_is_not_normal_agent_gate"] is True
+    assert truth["human_usefulness_ack_is_not_completion_gate"] is True
+    assert truth["legacy_vuo_is_not_launch_gate"] is True
+    assert truth["callability_alone_is_not_vuo"] is True
     assert truth["countable_participation_required_at_vuo_submission"] is True
     assert truth["late_reclassification_does_not_upgrade_prior_noncountable_vuo_candidate"] is True
-
+    assert truth["requester_confirmation_is_not_independent_third_party_verification"] is True
+    assert truth["public_reads_do_not_create_package5_evidence"] is True
+    assert truth["tests_and_fixtures_are_not_commercial_proof"] is True
 
 def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
     before_agents = _agent_count()
@@ -155,6 +170,11 @@ def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
 
     _assert_truthful_journey(onboarding["verified_outcome_journey"])
     assert onboarding["verified_outcome_journey"] == manifest["verified_outcome_journey"]
+    planning_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/routes/plan"))
+    execution_step = next(step for step in onboarding["rest_path"] if step.get("url", "").endswith("/commercial/executions/world-bank-population"))
+    assert planning_step["optional"] is True
+    assert planning_step["required_before_direct_execution"] is False
+    assert execution_step["route_plan_required"] is False
     assert root["verified_callability_action"] == "POST /actions/verify-callability"
     assert root["package5_proof"] == "GET /proof/package-5"
     assert _agent_count() == before_agents
@@ -166,12 +186,10 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     card = client.get("/.well-known/agent-card.json").json()
     skills = {skill["id"]: skill for skill in card["skills"]}
     guidance = skills["aion_verified_outcome_guidance"]
-    assert "REST POST /actions/verify-callability" in guidance["description"]
-    assert "MCP verify_external_callability" in guidance["description"]
-    assert "REST POST /proof/package-5/vuos" in guidance["description"]
-    assert "independent_external_countable" in guidance["description"]
-    assert "late reclassification does not upgrade" in guidance["description"]
-    assert "A2A has no protected-action or VUO-write adapter" in guidance["description"]
+    assert "agent-native" in guidance["description"].lower()
+    assert "operator participation review" in guidance["description"].lower()
+    assert "not" in guidance["description"].lower()
+    assert "Package 5 participation/VUO endpoints are legacy telemetry" in guidance["description"]
     assert "verify_external_callability" not in skills
     assert "submit_package5_vuo" not in skills
     assert guidance["examples"] == ['{"action":"onboarding"}']
@@ -192,23 +210,18 @@ def test_a2a_onboarding_and_join_expose_cross_interface_path_without_bearer_in_m
     assert joined["agent_key"].startswith("aion_")
     journey = joined["next_actions"]["verified_outcome_journey"]
     _assert_truthful_journey(journey)
-    assert journey["verified_callability_action"]["A2A"]["available"] is False
+    assert journey["authenticated_execution"]["operator_participation_review_required"] is False
 
 
 def test_skill_and_llms_are_complete_consistent_and_contain_no_real_credential():
     documents = [client.get("/skill.md").text, client.get("/llms.txt").text]
     for document in documents:
-        assert "POST https://aion.example/actions/verify-callability" in document
-        assert "MCP verify_external_callability" in document
-        assert "GET https://aion.example/actions/{action_id}" in document
-        assert "independent_external_countable" in document
-        assert "Late reclassification does not upgrade" in document
-        assert "POST https://aion.example/proof/package-5/vuos" in document
-        assert "MCP get_package5_proof" in document
-        assert "Callability alone is not a semantic VUO" in document
-        assert "requester-confirmed evidence, not independent third-party verification" in document
-        assert "No A2A action adapter exists" in document
-        assert "86400 seconds" in document
+        assert "AGENT-NATIVE AION JOURNEY" in document
+        assert "world_bank.population.latest" in document
+        assert "operator review" in document.lower()
+        assert "do not wait" in document.lower() or "not" in document.lower()
+        assert "Human usefulness acknowledgement is optional feedback" in document
+        assert "agent authorization, settlement and protected result release" in document
         assert not re.search(r"aion_[A-Za-z0-9_-]{20,}", document)
 
 
@@ -218,12 +231,10 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
         json={"external_id": "package5b-rest-" + uuid.uuid4().hex, "name": "Package 5B REST Test"},
     ).json()
     rest_actions = "\n".join(rest["next_actions"])
+    assert "POST /commercial/executions/world-bank-population" in rest_actions
+    assert "No Package 5 operator review is required" in rest_actions
     assert "POST /actions/verify-callability" in rest_actions
-    assert "GET /actions/{action_id}" in rest_actions
-    assert "independent_external_countable" in rest_actions
-    assert "late reclassification does not upgrade" in rest_actions
-    assert "POST /proof/package-5/vuos" in rest_actions
-    assert "GET /proof/package-5" in rest_actions
+    assert "machine-readable payment requirements" in rest_actions
     assert "never in A2A message text" in rest_actions
 
     mcp = _mcp(
@@ -232,9 +243,8 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
     ).json()["result"]["structuredContent"]
     mcp_actions = "\n".join(mcp["next_actions"])
     assert "MCP verify_external_callability" in mcp_actions
-    assert "MCP get_action_status" in mcp_actions
-    assert "independent_external_countable" in mcp_actions
-    assert "POST /proof/package-5/vuos" in mcp_actions
+    assert "No Package 5 operator review is required" in mcp_actions
+    assert "POST /commercial/executions/world-bank-population" in mcp_actions
     _assert_truthful_journey(mcp["verified_outcome_journey"])
 
 
@@ -243,9 +253,8 @@ def test_mcp_discovery_tools_and_knowledge_expose_truthful_existing_interfaces()
     instructions = discovery["instructions"]
     assert "verify_external_callability" in instructions
     assert "get_action_status" in instructions
-    assert "REST POST /proof/package-5/vuos" in instructions
-    assert "Callability alone is not a VUO" in instructions
-    assert "No A2A protected-action or VUO-write adapter exists" in instructions
+    assert "world_bank.population.latest" in instructions
+    assert "operator review" not in instructions.lower() or "not" in instructions.lower()
 
     tools = {
         tool["name"]: tool
@@ -257,6 +266,14 @@ def test_mcp_discovery_tools_and_knowledge_expose_truthful_existing_interfaces()
 
     knowledge = _mcp("tools/call", {"name": "temple_knowledge", "arguments": {}}).json()["result"]["structuredContent"]
     _assert_truthful_journey(knowledge["verified_outcome_journey"])
+    route = knowledge["commercial_route_planning"]
+    executable = route["executable_zero_cost_capability"]
+    assert executable["REST"]["acknowledgement_url_template"] == executable["REST"]["optional_feedback_url_template"]
+    assert route["planning"]["required_before_direct_execution"] is False
+    assert route["truth_boundaries"]["route_plan_is_not_revenue_vuo_or_adoption_proof"] is True
+    assert route["truth_boundaries"]["provider_interaction_endpoint_is_not_contacted"] is True
+    assert route["truth_boundaries"]["payment_rail_is_not_contacted"] is True
+    assert route["truth_boundaries"]["route_plan_is_not_persisted"] is True
 
 
 def test_protected_writes_and_status_remain_authenticated_while_proof_is_read_only():

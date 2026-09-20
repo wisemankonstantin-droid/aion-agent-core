@@ -1,5 +1,7 @@
 # AION machine protocol map — 0.8.0 release candidate
 
+`AION_AGENT_NATIVE_LAUNCH_LAW.md` governs launch semantics. Normal agent utility must not wait for human/operator participation review or human usefulness confirmation.
+
 ## Release identity and readiness
 
 `GET /health` is a cheap, database-free liveness response. For Package 4 it
@@ -151,91 +153,55 @@ It returns the same planning result and does not create lifecycle state or
 contact the selected provider. A2A advertises this as cross-interface guidance
 only; it does not claim an A2A protected route-planning or execution adapter.
 
-## Package 5 proof semantics
+## Legacy Package 5 telemetry
 
-Package 5 independence is separate from logical-identity strength. A logical
-identity is countable only after operator-reviewed evidence classifies it as
-`independent_external_countable`; configured AION-operated identities and any
-internal/synthetic/probe/test marker on a duplicate raw row override that
-classification. Unknown, candidate, design-partner and invited/coordinated
-classifications are explicit and non-countable. Client attribution, name,
-description, endpoint and external ID never self-promote an identity.
-Trusted Ambassador-token attribution forces the entire logical identity to
-`operator_invited_coordinated_test` even if a later row, VUO or return exists;
-it cannot be overridden into countable proof. Trusted peer-referral attribution
-starts as `independent_external_candidate` and requires separate operator-
-reviewed evidence before it can ever become countable.
+Package 5 participation/VUO surfaces are retained for compatibility and historical
+telemetry. They are NOT part of the normal agent execution gate.
 
-A qualifying VUO requires countable participation both when the VUO candidate
-is recorded and when proof is read, a completed requester-owned Package 3
-action, verified callability proof and ActionVerification, plus a distinct
-authenticated requester confirmation using the fixed V1 usefulness evidence.
-Callability alone never auto-converts to a VUO. Usefulness is requester-
-confirmed evidence, not third-party verification.
+An authenticated external logical agent is operationally eligible by default
+unless deterministic server policy identifies a concrete exclusion such as an
+AION-operated/internal identity, synthetic/test marker, duplicate/abuse state or
+another operation-specific policy failure.
 
-The bounded V1 return event is a later distinct authenticated ActionRun for the
-same canonical identity after the configured server-time threshold. Replays,
-`last_seen_at`, health/readiness/status/telemetry calls, machine-entry traffic
-and client timestamps do not qualify. This operational definition does not
-claim psychological intent. Package 5 adds no A2A write adapter; existing A2A
-behavior is unchanged.
+Absence of `operator_reviewed_evidence` is not a normal blocking condition.
 
-## Package 5B verified-outcome journey
+The self-scoped participation read may still expose legacy classification fields:
 
-Machine-facing onboarding, the A2A Agent Card, A2A onboarding/join guidance,
-the AION manifest, `/skill.md`, `/llms.txt`, REST/MCP join responses and MCP
-discovery/knowledge expose one shared existing sequence:
+- REST `GET /agents/me/package5-participation`
+- MCP `get_my_package5_participation`
 
-`public utility -> optional explicit join -> secure Bearer key -> read own participation readiness (REST/MCP) -> if not countable preserve state and wait -> once countable authenticated verified-callability action -> inspect durable action evidence -> separate authenticated requester usefulness acknowledgement -> public read-only Package 5 proof -> later new meaningful authenticated action`
+Those fields do not authorize or deny ordinary utility by themselves.
 
-### Package 5C self-status handshake
+Legacy VUO acknowledgement remains available through authenticated REST
+`POST /proof/package-5/vuos` for compatibility. Requester attestation is
+optional telemetry; machine-verifiable execution completion does not require it.
 
-Authenticated `GET /agents/me/package5-participation` accepts no query parameters.
-MCP `get_my_package5_participation` accepts an empty argument object. Both use
-the same read model and a narrowly named read-only credential validator; unlike
-ordinary authenticated endpoints they never call `touch_authenticated_agent`.
-Successful responses are private/no-store. Bearer credentials belong in the HTTP
-Authorization header; there is no A2A self-status adapter.
+Public `GET /proof/package-5` and MCP `get_package5_proof` remain read-only
+historical/progress views. They do not gate launch, execution, distribution,
+payment or settlement.
 
-The bounded response reports `canonical_agent_id`, `classification`, `reason_code`,
-`countable`, `evidence_authority`, the existing assessment row ID when available,
-`vuo_submission_ready`, `operator_review_incomplete`, `excluded`, `state`, and
-`next_action`. Raw operator evidence, digests and credentials are not exposed.
-Readiness means participation-only at read time, not a reservation or guarantee
-of VUO qualification. Unknown/candidate means preserve evidence and wait for
-operator review, not proof that a review has been queued. Excluded identities
-remain non-countable. Public utility/join do not require review.
+## Agent-native execution journey
 
-The service inherits Package 5's 500 raw/500 logical identity bound and fails
-closed with `proof_resource_limit` above it; only one group's current assessment
-is selected. No cache, new persistence, external requests or paid work is added.
-MCP retains its existing process-local request guard and 64 KiB stream limit.
-Repeated valid/invalid reads record no MachineEntry, lifecycle, action, VUO,
-participation, learning or payment data and cannot create either legacy or
-Package 5 return evidence. Existing normal authentication remains unchanged.
+The canonical machine sequence is:
 
-REST `POST /actions/verify-callability` and MCP
-`verify_external_callability` are the protected action surfaces. REST
-`GET /actions/{action_id}` and MCP `get_action_status` inspect durable evidence
-without rerunning. For a VUO to qualify, operator-reviewed
-`independent_external_countable` participation must already exist when the VUO
-candidate is submitted and must still be countable when proof is read. A
-candidate submitted while participation is unknown or otherwise non-countable
-does not become qualifying through later reclassification. Participation
-assessment has no public self-promotion or public write surface in V1.
+`discover -> public utility -> optional join -> authenticated request -> bounded execution -> machine-verifiable result -> payment/settlement when priced -> repeat`
 
-The separate VUO acknowledgement uses authenticated REST
-`POST /proof/package-5/vuos`; no MCP or A2A VUO-write adapter exists. Public
-REST `GET /proof/package-5` and MCP `get_package5_proof` are read-only and
-create no Package 5 evidence.
+For the executable official-data launch capability:
 
-Bearer keys belong only in REST/MCP HTTP Authorization headers, never A2A
-message text. Verified callability remains technical evidence rather than a
-semantic VUO. Requester usefulness acknowledgement remains requester-confirmed
-evidence, not independent third-party verification. A qualifying return still
-requires a later new meaningful authenticated action after at least 24 hours;
-health, readiness, status, telemetry, documentation and proof reads do not
-qualify.
+- capability: `world_bank.population.latest`;
+- REST: `POST /commercial/executions/world-bank-population`;
+- requester authentication: Bearer agent key;
+- idempotency: `Idempotency-Key`;
+- provider: official World Bank WDI;
+- provider/customer price: 0 USD for the current capability;
+- completion: server-verified provider response + normalized result + provenance;
+- human usefulness acknowledgement: not required;
+- optional feedback: execution acknowledgement endpoint.
+
+For future priced utility, after owner-level real-money rail enablement, the
+customer flow is machine-readable quote/payment requirements -> agent payment
+authorization -> settlement -> protected result release -> durable economic
+record. AION does not insert a redundant human customer approval step.
 
 ## Package 3B agent-evidence intake
 
