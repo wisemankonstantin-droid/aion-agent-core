@@ -1,5 +1,7 @@
 # AION growth and revenue strategy
 
+`AION_AGENT_NATIVE_LAUNCH_LAW.md` supersedes any older wording here that makes a human reply, operator review or human usefulness acknowledgement a prerequisite for normal agent utility, launch or machine commerce.
+
 ## Three engines
 
 AION has three simultaneous engines:
@@ -26,48 +28,37 @@ Database rows are not product proof.
 
 ## Commercial progression
 
-The evidence sequence is:
+AION progresses by shipping executable machine value and closing autonomous
+transactions, not by accumulating pre-launch proof ceremonies.
 
-`first independent external agent -> first verified useful action -> first returning external agent -> first payment-capable external agent -> first settled contribution/payment -> first paid useful action -> first repeat payer -> 10 retained independent external agents -> multiple independent paying agents -> repeatable acquisition -> predictable weekly acquisition -> positive unit economics -> scalable growth`
+Canonical progression:
 
-Later stages must not be claimed from evidence that proves only an earlier
-stage. In particular, a payment intent is not settlement and a registration is
-not a useful action.
+`production capability -> machine discovery -> external agent request -> successful machine result -> machine-readable price/payment -> first Settled Agent Transaction -> repeat SAT -> retained paying agents -> positive contribution margin -> broader supply/demand -> scalable machine acquisition`
+
+Zero-price executions are useful telemetry and acquisition utility. They are not
+revenue. Real commercial validation begins when an external agent can consume
+value and, where priced, settle payment without a human in the normal flow.
 
 ## Acquisition rule
 
-Do not aggressively scale acquisition before this loop is demonstrated with an
-independent external agent:
+AION acquisition is machine-first.
 
-`independent external agent -> useful current result -> successful action -> voluntary return`
+Preferred acquisition surfaces are A2A Agent Cards, MCP tool discovery,
+machine-readable manifests, registries/directories, public executable endpoints,
+agent SDK/examples, protocol ecosystems and agent-to-agent referrals.
 
-Distribution should expand only when retention is attributable to genuine
-utility, not incentives, synthetic traffic, duplicated identities or
-operator-controlled activity.
+Do not wait for cold-email replies, human interviews, design-partner approval or
+manual operator classification before making a production-safe capability
+discoverable.
 
-This does not forbid early product discovery. Around Packages 3–4, work with a
-small number of external design partners or test agents to learn real pain
-points, missing capabilities, integration friction and willingness to pay.
-Coordinated tests must remain labelled as such and must not be counted as
-independent commercial adoption.
+Human outreach is optional bounded research only. It may inform messaging or
+supply/demand hypotheses, but it is not a gate and it is never counted as the
+core acquisition engine.
 
-Package 5D adds a deliberately small active-distribution pilot alongside that
-organic control lane. AION may scout bounded public machine-readable A2A
-candidates, qualify them deterministically and prepare one utility-first
-machine invitation, but real sending remains a separate operator Human Gate.
-Direct Ambassador joins are trusted server-attributed coordinated traffic and
-are never independent Package 5 proof. Peer referrals are bounded,
-recipient-forwarded rather than AION-propagated, and remain non-countable until
-separately justified by trusted review. Campaign conversion, VUO-candidate and
-return evidence must remain labelled as attributed sales-funnel evidence, not
-organic or independent adoption.
-
-Package 5E is accepted, merged, deployed and live as the bounded operator
-control layer for this pilot. Deployment does not prove outreach or any
-independent agent, VUO, return, payer, settlement or revenue. The application
-policy remains gated and fail-closed; current production values for its
-outbound/operator/control-token environment variables are not inferred from
-deployment state.
+A newly authenticated external logical agent is ordinarily eligible to use AION.
+Deterministic exclusions apply to AION-operated/internal, duplicate,
+synthetic/test, known-abusive or policy-disallowed identities. Absence of a human
+review is not an exclusion.
 
 ## Revenue rule
 
@@ -208,20 +199,16 @@ authorized requests. Freshness, versioning and lawful cache reuse are economic
 architecture as well as technical architecture; avoid repeated identical paid
 retrieval when a reusable observation is sufficient.
 
-## Verified useful outcomes and unit economics
+## Settled agent transactions and unit economics
 
-The North Star is **VUO — Verified Useful Outcome**. Track VUO per week, agents
-with at least one VUO, repeat VUO rate, cost per VUO, paid VUO rate, revenue per
-VUO and gross margin per VUO where measurable. Registrations, traffic, API
-calls, synthetic probes and test agents are not VUOs.
+The commercial North Star is **SAT — Settled Agent Transaction**. Track successful external-agent executions, SATs, repeat SATs, retained paying agents, revenue per SAT, variable cost per SAT and contribution margin per SAT. Registrations, traffic and synthetic probes are diagnostic telemetry, not revenue.
 
 Once actions begin, retain enough bounded evidence to calculate refresh,
 utility-request, verification, action and failed-action costs alongside revenue
 and cost per VUO. Do not prematurely optimize at tiny scale, but do not defer
 all economic evidence until Package 8.
 
-Economic measurement should additionally include **CM/VUO — contribution
-margin per Verified Useful Outcome**, contribution-margin percentage, repeat
+Economic measurement should additionally include **CM/SAT — contribution margin per Settled Agent Transaction**, contribution-margin percentage, repeat
 paid VUO and repeat payer. Total expected variable cost includes providers,
 external agents, inference, search, browser/compute, verification, network,
 storage, payment fees, expected failed attempts, bounded retries and applicable
@@ -267,8 +254,15 @@ available.
 
 ## Decision discipline
 
-Growth decisions must use verified outcome, return and cost evidence. Prioritize
-time and cost to useful result, successful invocation, verified outcome,
-voluntary return, repeat use and repeat paid use over page views, registrations,
-listings or database-row growth. Scale only when the resulting unit economics
-are measurable and defensible.
+Prioritize the shortest path to autonomous agent value and real machine commerce:
+
+`BLOCKER -> executable capability -> production deployment -> machine discovery -> payment/settlement -> repeat use -> economics -> scale`
+
+Do not create human-validation dependencies where a machine-verifiable contract
+can decide completion. Do not spend launch capacity on evidence ceremony unless
+the evidence directly protects security, economics, fraud prevention, dispute
+resolution or production correctness.
+
+Historical Package 5/VUO data may be retained for compatibility. It must not
+prevent an otherwise legitimate agent from discovering, executing or paying for
+AION utility.
