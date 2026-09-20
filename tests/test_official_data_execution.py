@@ -147,7 +147,9 @@ def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypat
         "method": service.VERIFICATION_METHOD,
         "capability_verified": True,
     }
-    assert data["outcome"]["useful_outcome"] is False
+    assert data["outcome"]["machine_completion_state"] == "machine_verified_result_delivered"
+    assert data["outcome"]["human_usefulness_confirmation_required"] is False
+    assert data["outcome"]["optional_requester_feedback_recorded"] is False
     assert len(calls) == 1
     assert calls[0][0] == "GET"
     assert calls[0][1].startswith(service.PROVIDER_BASE + "/country/US/")
