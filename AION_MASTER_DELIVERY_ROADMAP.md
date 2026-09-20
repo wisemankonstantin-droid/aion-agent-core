@@ -197,52 +197,56 @@ frictionless agent execution, not a quota of human-confirmed outcomes.
 
 ### Package 6 — Economic Execution + Real Settlement
 
-Package 6A is merged and present in the Package 5E production ancestry. It implements trusted
-immutable quote inputs, exact-decimal policy decisions, the 40% hard margin
-floor, known maximum and recursive child-spend bounds, requester-scoped
-idempotency, an auditable state/transition model and authenticated REST/MCP
-preflight/status. Its real-money adapter is fixed disabled: no authorization,
-reserve, spend, settlement or paid-provider call is performed or claimed.
-Migration `0011_economic_kernel_v1` is additive and precedes the live Package
-5D schema. Parent-funded children consume bounded verified parent reserve and
-cannot create a second customer authorization, reserve, settlement or revenue.
-Package 6B/real-rail activation has not started and
-requires separate acceptance and production Human Gates.
+Package 6A is implemented and production-live as deterministic economic
+infrastructure with real-money behavior disabled. It preserves exact-decimal
+policy decisions, bounded maximum spend, the 40% minimum contribution-margin
+floor, requester-scoped idempotency and auditable economic state.
 
-Commercial Router V1 is merged in repository main as an authenticated,
-planning-only bridge from a concrete need to bounded external discovery,
-qualification, evidence-aware ranking and a fail-closed route plan. It performs
-no provider execution, quote, reserve, payment or settlement. Historical
-callability evidence may rank only the same endpoint/protocol identity and does
-not replace fresh current-job verification before any future execution.
-It is not production-live at the Commercial Launch Readiness baseline. Package
-5F is production-live at `5e53fc242ec5beb418be10ee16d068b6b012baf0`, with
-schema `0014_conversation_intel_v1`. Package 6A's controlled `$10`/`$5.5`/`$6`
-values are policy fixtures, not proven market price or provider-cost evidence.
+Repository main now also contains:
 
-Commercial Launch Readiness exposes that existing value path consistently to
-machine clients through REST and MCP. Its next steps are exact-SHA validation,
-independent review, separately authorized merge and gated manual deployment,
-exact live smoke, passive registry distribution, bounded demand-pilot contact,
-learning from real demand, and only then the
-quote/payment adapter evidence shows is required. Trusted Quote, migration
-`0015`, payment/settlement activation and provider execution remain explicitly
-outside this readiness scope.
+- migration `0015_x402_exact_upfront_v1` and the x402 exact-upfront payment
+  integration surface;
+- migration `0016_official_data_execution_v1`;
+- authenticated direct capability `world_bank.population.latest` through the
+  official World Bank WDI provider;
+- machine-verifiable completion, provenance and freshness semantics;
+- the agent-native compatibility correction that makes requester acknowledgement
+  optional feedback rather than a completion or launch gate;
+- direct World Bank execution without requiring a prior Commercial Router plan.
 
-Repository `render.yaml` is not authoritative for the current external-Neon
-production infrastructure and must not be Blueprint-synchronized without a
-separate Human Gate.
+The World Bank capability is currently a zero-provider-cost / zero-customer-price
+execution path. A successful zero-price execution is real product usage, not
+revenue or settlement.
 
-Implement the controlled economic path:
+The exact agent-native candidate
+`f3bc436de3dde30e18235597e5e71c179ae6e8ec` passed AION CI and PostgreSQL
+pre-production gate #68. PR #13 merged to repository main as
+`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`, and exact merge-SHA AION CI
+#331 passed. The merge tree is identical to the exact-PG-tested candidate tree.
 
-`quote -> payment authorization -> reserve funds -> execute/spend -> verify outcome -> settle -> record cost/revenue/margin`
+As of the 2026-09-20 read-only Render/Neon verification, production still
+serves the older deploy `dep-daju1vdg1s2s73c6gtp0` at commit
+`18afa934fdddef2a0489874c5ac2446fcf947475`; AutoDeploy remains OFF. The
+prepared Neon PostgreSQL 18 production database reports Alembic revision
+`0014_conversation_intel_v1`. Therefore migrations `0015` and `0016`, the
+World Bank direct execution path, and the agent-native PR #13 correction are
+repository-main behavior but are not yet production-live.
 
-Bind payment to concrete value, enforce maximum spend and contribution-margin
-gates, preserve idempotency and settlement evidence, and do not add redundant
-owner-authorization friction when the selected rail already accepts the
-agent's payment capability. A payment intent is not settlement. Settled
-transactions begin supplying auditable commercial evidence; inferred
-willingness to pay must not be presented as settlement.
+The next controlled release step is therefore a separately authorized production
+deploy of the verified current main, with its normal Alembic upgrade to head,
+while keeping AutoDeploy OFF, preserving production configuration/secrets and
+leaving real-money activation disabled.
+
+Real-money rail activation remains a separate owner/control-plane gate. Once a
+rail is safely enabled, ordinary agent transactions through that rail must not
+require an AION human in the customer loop.
+
+Canonical paid path:
+
+`machine-readable quote -> economic preflight -> payment requirement -> agent authorization -> reserve/settlement as required -> execution -> machine verification -> protected result release -> durable economic record`
+
+Commercial truth is actual settlement, revenue, repeat paid use and contribution
+margin. Historical VUO/Package 5 proof remains compatibility telemetry only.
 
 ### Package 7 — Machine acquisition, retention and ecosystem
 
@@ -288,4 +292,7 @@ endpoints alone.
 - Do not begin the next package until the current one is accepted with zero
   known reproducible defects; deliberate scope limitations must be explicit.
 - Production releases require the relevant internal tests, CI, PostgreSQL gate,
-  independent review, corrective revalidation and Human Gate.
+  corrective revalidation and the owner/control-plane Human Gate.
+- Normal external-agent utility, execution, result completion and already-enabled
+  payment flows must not wait for operator review, human usefulness confirmation
+  or human outreach.

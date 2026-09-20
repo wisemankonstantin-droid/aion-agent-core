@@ -1,823 +1,396 @@
-# Project checkpoint — 2026-09-13
-
-## Agent-native launch correction — 2026-09-20
-
-AION launch semantics are being corrected on branch `codex/agent-native-launch-law-v1`
-under `AION_AGENT_NATIVE_LAUNCH_LAW.md`.
-
-The correction removes human/operator participation review and human usefulness
-confirmation from the normal external-agent customer path.
-
-Canonical target:
-
-`machine discovery -> agent request -> bounded execution -> machine-verifiable result -> machine payment/settlement when priced -> repeat`
-
-Package 5 participation/VUO proof surfaces remain legacy compatibility telemetry.
-They no longer define whether AION is allowed to launch, distribute, execute or
-accept machine commerce.
-
-The current World Bank official-data path already supplies a zero-cost
-machine-verifiable execution contract. Its acknowledgement endpoint is optional
-feedback, not a completion gate.
-
-The bounded PR #13 compatibility correction preserves the autonomous sequence
-while restoring prior public response keys as explicitly legacy, non-gating
-aliases. Package 5 participation/readiness responses now scope any operator
-review language to historical Package 5 qualification only and state that the
-telemetry does not block ordinary utility, execution, payment or settlement.
-Onboarding and the shared machine journey state that the fixed World Bank
-capability can execute directly without first calling the planning-only
-commercial router. No schema or migration change is involved.
-
-Local validation for this bounded correction:
-
-- TDD red phase failed on the missing compatibility keys, legacy-only scope
-  markers and direct-execution guidance before implementation;
-- focused agent-native and affected-surface matrix: 146 passed;
-- full locked-environment suite: 650 passed, 23 PostgreSQL-only tests skipped;
-- dependency integrity, secret scan over 188 files, compileall, workflow YAML,
-  readiness and fresh SQLite migration-to-`0016_official_data_execution_v1`
-  passed; and
-- official MCP 2026-07-28 plus A2A 1.0 interoperability scripts passed against
-  an isolated local HTTPS server and disposable database.
-
-Owner/control-plane approval remains distinct for mutations of AION itself
-(merge, production deploy/migration, production secrets/configuration,
-real-money rail activation, destructive infrastructure). Those controls are not
-part of the normal agent customer transaction loop.
-
-Commercial success is measured by real machine executions and, for priced
-products, Settled Agent Transactions, repeat paid use, real revenue and
-contribution margin. Human outreach replies are not a project dependency.
-
-## Current production state
-
-- **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Accepted Package 2 application baseline:**
-  `88bc6fae247a5bb454d435380c24d665ba48f512`.
-- **Post-Package-2 strategy alignment checkpoint:**
-  `7fb469024855a065a1d42d12fc5c1a40d354ab6f`.
-- **Accepted pre-Package-3 audit-correction checkpoint:**
-  `d8465a17522044c0349609e44ac7ccd9f0facf82`.
-- **Main checkpoint at Economic Control Plane alignment start:**
-  `d2ddb13797915788a06ad1bf4266fea7683ab462`.
-- **Main checkpoint at Package 3B implementation start:**
-  `a92964e0b7d29eacae8016e6ea54f084f6f3a4bf`.
-- **Package 3B acceptance/merge and Package 4 task-start checkpoint:**
-  `d9d4b699b688663ec46ee84fafb5c4d814fd4799`.
-- **Package 4 accepted production application checkpoint:**
-  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
-- **Package 5 implementation starting checkpoint:**
-  `8d508f5944c0810e5e52bed88645128857b369a0`.
-- **Package 5 accepted application checkpoint:**
-  `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
-- **Package 5B conversion-corrective starting checkpoint:**
-  `b9d3521f6b5a7fd9ac61c3670ac150d8a16df772`.
-- **Package 5C accepted production application checkpoint and Package 6A
-  repository baseline:** `a2a53ff61ede7597651b2f1bac1ca3db809855f9`.
-- **Package 5D repository starting checkpoint:**
-  `1201eb1944457bf6745b4f1a4ad7ae1c7e42be54` (Package 6A parent-funding
-  corrective merged to main; not deployed).
-- **Package 5E repository starting checkpoint:**
-  `373da335367c2ec686ccc0bb8e24c167fad0f672` (preserved historical task start).
-- **Commercial Launch Readiness V1 task baseline:**
-  `76541a7ae342b5344b9a914d496242aae7da2e58`. At this checkpoint, Package 5F,
-  Package 6A and Commercial Router V1 are merged to repository main but are not
-  part of the verified production deployment below.
-- **Live repository state rule:** verify the current branch HEAD directly from
-  GitHub. The verified GitHub ref wins over this durable checkpoint document;
-  no field here claims that a commit contains its own future SHA.
-- **Repository main at Package 2 task start:**
-  `d5257c539dc2bf86411297aca8b787933a1bed42`.
-- **Production deployed SHA:**
-  `5e53fc242ec5beb418be10ee16d068b6b012baf0`. Commercial Router V1 is newer
-  repository-main behavior and is not production-live at this checkpoint.
-- **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
-- **Render:** service `aion-agent-core-live`
-  (`srv-daei9gpt0dsc73abhs10`) in workspace
-  `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **Historical Package 5E deploy:** `dep-daj7899594qs73b35g4g`. The current
-  production deploy identifier for the newer SHA above is not asserted here;
-  verify external state before any separately authorized production operation.
-- **Deployment architecture:** the controlled direct-source cutover is
-  complete. Production builds tracked source directly from GitHub main. The old
-  ZIP plus environment-backed runtime-patch architecture is historical and is
-  not active.
-- **AutoDeploy:** OFF (`autoDeployTrigger: off`). A merge or branch push does
-  not authorize or initiate a production deployment.
-- **Root Directory:** blank.
-- **Build Command:**
-  `python -m pip install --require-hashes -r requirements.txt`.
-- **Start Command:**
-  `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Database:** the prepared Neon PostgreSQL 18 production database. Package
-  4 copied and verified the legacy dataset before cutover and preserved the
-  zero-infrastructure-spend boundary.
-- **Runtime status:** health reports version `0.7.1`; readiness reports the
-  database ready and the A2A runtime mounted.
-- **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
-- **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0014_conversation_intel_v1`. The earlier
-  Package 5E startup showed the additive `0012_ambassador_pilot_v1 ->
-  0013_ambassador_control_v1` migration and successful application startup.
-  Package 4's
-  separately verified historical revision was `0009_continuous_learning_v1`.
-- **Repository main Alembic head at the 2026-09-19 commercial-convergence task
-  start:** `0015_x402_exact_upfront_v1`. The current repository-only candidate
-  branch advances the head to `0016_official_data_execution_v1`; production
-  remains at `0014_conversation_intel_v1` until a separately authorized release.
-- **Production recovery:** the Package 4 Neon manual recovery snapshot was
-  restored on a separate rehearsal branch and integrity-checked. Canonical
-  evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
-- **Production boundary:** Package 5 engineering is merged, deployed and live
-  at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B, Package 5C, Package 6A, Package 5D, Package 5E and Package 5F are
-  in the current production ancestry. Commercial Router V1 is merged to main
-  but not production-live. Package 6A is disabled economic infrastructure;
-  real-money behavior
-  remains disabled. Deployment does not prove outreach, independent adoption,
-  VUO, return, payment, settlement or revenue. This closeout does not claim
-  current values for Ambassador environment variables or expose secrets.
-  AutoDeploy remains OFF.
-
-## Current product and architecture phase
-
-The current major product phase is **AION LIVE UTILITY ENGINE**. The detailed
-direction is defined in `AION_LIVE_UTILITY_ENGINE.md` and the permanent product
-rules in `AION_DIRECTIVE.md`.
-
-The canonical entry contract is `first contact -> immediate utility -> optional
-onboarding -> explicit join`. Only explicit join creates membership. Discovery,
-first-contact and onboarding traffic are not membership or independent
-adoption.
-
-Package 0 is **Done**. Repository main contains the Phase 1 contracts, durable
-persistence and the accepted Package 1 data engine through migration
-`0006_live_utility_data`.
-Package 1 is **Done**. It was independently reviewed and merged at main SHA
-`d5257c539dc2bf86411297aca8b787933a1bed42`.
-
-Package 1 adds two explicitly configured Tier-1 release adapters for the
-official A2A and Model Context Protocol GitHub projects, a shared hardened HTTPS
-transport, adapter-specific normalization, canonical content digests,
-material-version deduplication and lineage, structured field changes, persisted
-verification evidence, deterministic refresh decisions and restart-safe current
-state. Migration `0006_live_utility_data` adds normalized observation data and
-the `live_utility_verifications` evidence table.
-
-Package 2 is **Done** with zero known defects. HQ independently reviewed and
-accepted it, including the corrective request-stream security fix, and it was fast-forwarded into main at
-`88bc6fae247a5bb454d435380c24d665ba48f512`. It adds a shared bounded utility
-selection service over Package 1, anonymous REST/first-contact, A2A and MCP
-machine surfaces, explicit provenance/freshness/verification output,
-deterministic A2A/MCP protocol-version compatibility and durable per-agent
-subject checkpoints through additive migration
-`0007_agent_utility_checkpoints`.
-
-Package 2 does not perform remote action, arbitrary invocation or requester-
-selected retrieval. Anonymous utility creates no Agent identity. Only an
-authenticated existing agent receives a durable personalized delta; anonymous
-results explicitly report that limitation. At Package 2 close, production
-remained on SHA `419f11b2a34fdec26269a216de65e9dcf955e963`; the later accepted
-Package 4 release now supplies the current production state recorded above.
-
-The pre-Package-3 audit corrections are **Done**, HQ-accepted and merged at
-`d8465a17522044c0349609e44ac7ccd9f0facf82`. They moved legacy external
-registry/card discovery onto the shared bounded transport, removed implicit
-external-agent invocation, bounded request work and cache state, and corrected
-the repository-state documentation model. Resulting-main AION CI run
-`34315606416` passed on that exact SHA.
-
-## Current Package 3 implementation
-
-Package 3 is **implemented and independently HQ-accepted with zero known
-reproducible defects**. It is merged to main at
-`d2ddb13797915788a06ad1bf4266fea7683ab462` and was deployed through the
-accepted Package 4 release. The implementation provides one
-narrow authenticated and explicitly authorized public/no-credential A2A
-callability action: bounded discovery, deterministic safe selection, one fixed
-server-generated nonce challenge, verification and durable correlated history.
-REST and MCP use one service. A2A inbound action exposure is deliberately not
-included in V1; credentials are never placed in A2A message content.
-
-The **AION Data & Learning Plane** is now defined directionally as the planned
-persistent intelligence/evidence layer behind the Live Utility Engine. Package
-3 captures bounded request, selection, reachability/callability, invocation,
-result, verification, outcome, failure, duration, attempt and economic evidence
-from its first real action. The HQ-accepted Package 3B implementation adds a minimal Continuous
-Learning & Self-Update Engine V1 for selected source watch, automatic refresh,
-bounded agent-evidence intake and demand/gap/opportunity signals.
-
-The broader Data & Learning Plane remains architecture direction. Package 3
-adds four bounded evidence boundaries: ActionRun, ActionAttempt, ActionOutcome
-and ActionVerification. Migration `0008_action_outcome_evidence` is additive and stores normalized evidence,
-digests and byte/timing counters without raw remote response bodies.
-Callability proof leaves `capability_verified=false`; controlled fixtures are
-not independent adoption or external VUO evidence.
-
-## Current Package 3B implementation
-
-Package 3B is **implemented and independently HQ-accepted with zero known
-reproducible defects** and was deployed through Package 4. The accepted
-implementation adds a one-shot bounded learning cycle,
-durable selected-source watch/circuit coordination, authenticated REST/MCP
-agent-evidence intake, and deterministic demand/gap opportunity candidates.
-It watches only the configured official A2A and MCP release sources and reuses
-the Package 1 normalization, verification, freshness and material-version
-lineage. Migration `0009_continuous_learning_v1` is additive.
-
-Agent claims begin unverified; distinct authenticated logical agents may
-establish corroboration but not verified truth. Duplicate raw identity rows do
-not create corroboration or independent market breadth. Submitted URLs are passive untrusted
-evidence and are never contacted by intake. Genuine `no_result`,
-`capability_not_found`, `incompatible`, and authenticated
-`missing_capability` evidence feed bounded unmet-demand aggregation.
-Operational failures remain separate and cannot masquerade as market demand.
-Every authenticated evidence attempt—including replay, conflict and duplicate
-traffic—passes the same per-agent abuse gate before database reads. Shared
-material locking makes concurrent cross-agent corroboration converge.
-Opportunity recency uses durable AION action timestamps and evidence receipt
-time, never a future agent-supplied `observed_at`. AION-operated/test logical
-identities are excluded from independent opportunity breadth, confidence and
-priority.
-
-Automatic Package 3B paid external spend is disabled with a maximum of zero.
-The accepted implementation contains no real payment implementation, paid-provider calls,
-automatic production scheduler, crawler, autonomous code modification, merge
-or deployment behavior. A2A evidence intake is a deliberate V1 limitation;
-REST and MCP share one authenticated service. No independent adoption,
-production learning operation, external VUO, payment, revenue or commercial
-opportunity proof is claimed.
-
-Package 3B validation at this checkpoint:
-
-- the initial Package 3B candidate at
-  `5fb5915ba63db63baad9ffd1e5184132ffcfcfbc` passed AION CI run
-  `34377175042` and PostgreSQL 18 pre-production release gate run
-  `34377175046` on that exact SHA;
-- the bounded HQ corrective pass makes replay, conflict and duplicate evidence
-  attempts consume the common rate allowance; serializes shared-material
-  corroboration; maps demand through canonical logical identities; excludes
-  AION-operated/test identities from commercial breadth; and makes durable
-  receipt time authoritative for untrusted-claim recency;
-- corrective targeted learning, migration, request-boundary, source-integrity,
-  Live Utility, safe-HTTP, external-security, Package 3, MCP and PostgreSQL-gate
-  collection: 175 passed, 10 PostgreSQL-only tests skipped locally;
-- corrective full local suite: 295 passed, 10 PostgreSQL-only tests skipped;
-- SQLite fresh-to-head and `0008 -> 0009` upgrade paths, repeated upgrade and
-  Alembic schema check passed; and
-- the HQ corrective commit `8e6b4a19263dcb687d20d6240f8752779685b90d`
-  passed AION CI run `34382094903` and PostgreSQL 18 pre-production release
-  gate run `34382094918` on that exact SHA; HQ independently re-reviewed the
-  four prior blockers and accepted Package 3B with zero known reproducible
-  defects. The documentation closeout was merged at
-  `d9d4b699b688663ec46ee84fafb5c4d814fd4799`; resulting-main AION CI run
-  `34385252760` passed. Package 3B was subsequently production-released by
-  Package 4.
-
-## Current Package 4 production release
-
-Package 4 is **Done, HQ accepted, merged, deployed and live verified** at
-application SHA `e52c5db99b30feb18ca06ace567b4668c8019bde` and Render deploy
-`dep-dah96uu1egvs73d4gvh0`. At that historical release production used the prepared Neon PostgreSQL Free
-database at schema `0009_continuous_learning_v1`; AutoDeploy remains OFF and
-infrastructure spend remains $0. Backup/restore and live-smoke evidence is
-recorded in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
-
-## Current Package 5 implementation
-
-Package 5 engineering is **implemented, accepted, merged and production-live**
-at `48b8be9a0fe52f9febd17d563aa43715ee2a542f`. It adds a truth-preserving evidence layer for operator-reviewed
-canonical participation classification, requester-scoped VUO candidates that
-reference existing Package 3 action evidence, and later meaningful return
-evidence. Its additive migration is `0010_package5_proof_v1`.
-
-No current production row, historical row, test, fixture, synthetic probe,
-coordinated design partner or operator-invited test is claimed as Package 5
-commercial proof. The verified real counters remain zero unless qualifying
-production evidence is later created under the documented rules. Engineering
-tests do not establish independent adoption, a VUO or voluntary return.
-
-Package 5 commercial proof remains **Active and zero / not established**. Package 5B is a merged,
-production-live bounded conversion corrective, developed on branch
-`codex/package-5b-organic-vuo-conversion-v1`. It exposes the already-existing
-journey from public utility through optional join, authenticated Package 3
-callability verification, durable evidence inspection, separate requester
-usefulness acknowledgement, public Package 5 proof and a later new meaningful
-action. It does not change Package 5 qualification, classification, return or
-cost semantics and does not start Package 6.
-
-Package 5B local candidate validation at this checkpoint:
-
-- Package 5B journey tests: 8 passed;
-- affected Package 5, Package 3, A2A, MCP, onboarding/join, authentication,
-  request-boundary, source-integrity and outbound-security matrix: 209 passed;
-- full local suite: 351 passed, with 11 disposable-PostgreSQL-only tests
-  skipped locally and 100 upstream deprecation warnings;
-- migration suite: 6 passed;
-- readiness, secret scan, compileall, dependency integrity, workflow/manifest
-  parsing and working-tree diff checks passed; and
-- Alembic remains exactly one head: `0010_package5_proof_v1`.
-
-These historical tests prove repository behavior only. They do not create independent
-participation, VUO, voluntary-return or commercial evidence. Package 5B was subsequently
-merged and deployed at the HQ-verified baseline above.
-
-## Package 5C participation readiness — production live
-
-Starting main was fetched and verified at `a97a7898e7a72d70fbe5cc01735a4046fd2afc94`.
-The accepted Package 5C implementation is merged and production-live at
-`a2a53ff61ede7597651b2f1bac1ca3db809855f9`, Render deploy
-`dep-dahgei67bikc73fq0g3g`. It added no migration; production remains at
-`0010_package5_proof_v1` and AutoDeploy remains OFF.
-
-REST `GET /agents/me/package5-participation` and MCP
-`get_my_package5_participation` share bounded canonical classification logic
-and an explicit no-lifecycle-touch credential validator. They return only the
-requester's logical identity, safe classification evidence fields and the
-participation-only readiness decision. Polling does not create evidence,
-request review, reserve qualification, or become a useful action or return.
-There is no credential-bearing A2A adapter. Public utility/join remain ungated.
-The journey says to preserve state and wait while non-countable, then perform
-the existing action/evidence/acknowledgement sequence when ready. All accepted
-Package 5 classification and submission-time rules remain unchanged.
-
-HQ's baseline reports only 2 historical Agent rows and zero Package 5
-assessments/VUOs/actions. Agent Card HTTP 200 and a non-standard
-`/a2a/v1/health` HTTP 404 probe are not adoption, VUO or automatic defects.
-No new health alias was added. Production data was not queried in this task.
-
-Package 5C local validation before candidate commit:
-
-- affected identity/lifecycle, action/learning, Package 5/5B/5C, REST/MCP/A2A,
-  authentication, stream/security and source-integrity matrix: 270 passed;
-- Package 5C targeted tests (24), migration tests (6), and source-integrity
-  tests (15): 45 passed together;
-- polling snapshots compare every persisted column across all mapped tables,
-  plus legacy and Package 5 counters, including across the 86,400-second
-  threshold; no status-read mutations were observed;
-- normal REST/MCP Package 3 execution still records authentication activity;
-- final committed-SHA full-suite and local-check results belong in the HQ
-  handoff; disposable PostgreSQL tests are not claimed as locally passed.
-
-These are isolated engineering fixtures, never commercial proof. No schema,
-classification policy, persistence/concurrency semantics or economic gate was
-changed. Readiness does not establish a review SLA or guarantee later qualification.
-
-## Package 5D active distribution / Ambassador pilot — production live
-
-Package 5D is the bounded active-distribution pilot foundation, not Package 7
-acquisition scale. It keeps two evidence lanes separate: unsolicited organic
-inbound remains the Package 5 control lane, while AION Ambassador invitations
-and peer referrals retain trusted coordinated/referral provenance and do not
-automatically become independent Package 5 proof.
-
-The accepted production implementation adds additive migration `0012_ambassador_pilot_v1`,
-durable campaigns/targets/contact attempts, server-verifiable hashed
-distribution tokens, join attribution, deterministic qualification, a bounded
-utility-first message, a manually requested peer-referral packet and a
-read-only operator campaign funnel. Campaigns are capped at 30 targets, only
-one initial contact is permitted per globally deduplicated target, no automatic
-follow-up exists, and actual sending requires both
-`AION_AMBASSADOR_OUTBOUND_ENABLED=1` and `AION_AMBASSADOR_OPERATOR=1` through
-the operator CLI. At Package 5D closeout both production gates were `0`; that
-historical observation is not a current Package 5E environment-value claim.
-No campaign, contact, external outreach, production classification, learning
-cycle, payment or spend was established by Package 5D deployment.
-
-The HQ corrective binds each send cryptographically to the exact prepared
-message and target/campaign Ambassador token, makes identical idempotent replay
-read existing bounded attempt evidence without another POST, preserves safe
-explicit HTTPS ports, and derives campaign returns from the canonical Package
-5 same-identity rule. Tokenless joins cannot claim reserved trusted attribution,
-and referral packets use only the configured canonical AION public origin rather
-than the request Host header. Package 5D is accepted, merged and deployed at
-`373da335367c2ec686ccc0bb8e24c167fad0f672`, deploy
-`dep-daiqdk0ae00c73fi8ml0`; no outreach was established by that closeout.
-
-The implementation and fixtures do not claim adoption, VUO, return or
-commercial proof. Package 5D's historical production schema was
-`0012_ambassador_pilot_v1`; current Package 5E production is recorded above.
-AutoDeploy remains OFF.
-
-## Package 5E Ambassador Operator Control V1 — production live
-
-Package 5E adds the smallest remote control surface needed to operate the
-existing Package 5D pilot through the live web application when separately
-authorized. Hidden `/ops/ambassador/...` routes use a dedicated, absent-by-
-default `AION_AMBASSADOR_CONTROL_TOKEN`; agent keys never grant operator
-access. Mutations are bounded and idempotent, and additive migration
-`0013_ambassador_control_v1` stores only action kind, campaign/target links,
-idempotency key, request digest, result class and server timestamps.
-
-Creating, scouting and qualifying never contact a target. A contact request
-names exactly one persisted target and requires the dedicated control token,
-both existing outbound flags set to `1`, and exact `confirm="SEND"`. The server
-prepares and binds the Package 5D target token/message internally, invokes the
-existing one-attempt sender and returns only bounded contact evidence—never the
-raw distribution token or prepared message. A claimed or ambiguous operation
-is never automatically retried.
-
-Package 5E changes no Package 5 participation, VUO or return semantics. Direct
-Ambassador traffic remains coordinated and permanently non-countable; peer
-referrals remain review-required. Legacy Render outreach/static runners are
-not the Package 5D/5E execution path because they bypass required provenance,
-dedupe, suppression and contact evidence. Package 5E is HQ accepted, merged
-and production-live at application SHA
-`c6a976d8af7afa8adc7456a0022fb2b657f5af2e`, Render deploy
-`dep-daj7899594qs73b35g4g` and schema `0013_ambassador_control_v1`.
-AutoDeploy is OFF.
-
-The application policy remains fail-closed: contact needs dedicated operator
-authentication, both outbound gates and exact `SEND`. This closeout does not
-claim the current production values of those environment variables. A bounded
-post-deploy request-log interval contained no `/ops/ambassador/...` requests;
-that observation is limited to the reviewed interval and is not proof that
-outreach could never have occurred. Deployment itself proves no outreach,
-independent adoption, qualifying VUO, voluntary return, payment, settlement or
-revenue. Package 6A real-money behavior remains disabled. Canonical closeout
-evidence is in `PACKAGE_5E_PRODUCTION_CLOSEOUT.md`.
-
-Package 5E local candidate validation at this checkpoint:
-
-- focused Package 5E, migration and source-integrity matrix: 45 passed, with
-  one disposable-PostgreSQL-only concurrency test skipped locally;
-- affected Package 3/3B/5/5D/6A, REST/MCP, request-boundary and security
-  matrix: 337 passed, with the same PostgreSQL-only test skipped locally;
-- full local suite: 475 passed, 22 disposable-PostgreSQL-only tests skipped and
-  103 upstream deprecation warnings;
-- disposable SQLite fresh-to-head and direct `0012 -> 0013` upgrades, repeated
-  upgrade, exact head and Alembic schema check passed;
-- readiness, secret scan, compileall, dependency integrity, workflow/manifest
-  parsing and diff checks passed. PostgreSQL behavior remains pending the
-  exact-SHA PostgreSQL 18 gate after a separately authorized push. This is
-  retained historical candidate evidence; the exact candidate later passed
-  AION CI run `34750014620` and PostgreSQL 18 gate `34750014622`, and resulting
-  main passed AION CI run `34750465528`.
-
-## Package 6A Economic Execution Kernel V1 — production live, real money disabled
-
-Package 6A and its bounded parent-funding corrective are merged and present in
-the verified Package 5D production baseline.
-Package 6A adds the deterministic economic policy/state-machine kernel and
-additive migration `0011_economic_kernel_v1`. The repository implementation
-provides authenticated requester-scoped REST/MCP
-preflight and read-only status, trusted immutable product profiles, exact
-decimal money and a durable append-only transition trail. It enforces the 40%
-hard contribution-margin floor, known maximum spend, commercial rights,
-bounded child allocations, idempotency and verified ActionRun outcome binding.
-
-All real-money adapters remain disabled. Requester budget is not funding;
-legacy `PaymentIntent(status="created")` is only intent scaffolding and is not
-authorization, reserve, payment, settlement, revenue or paid VUO evidence.
-There is no A2A credential-bearing economic mutation surface. No real payment,
-reserve, provider spend, settlement, revenue or paid VUO is claimed. A child
-operation is a delegated maximum-spend slice of verified parent reserve, never
-a second customer authorization, reserve, settlement or revenue event. Package
-6A is deployed as repository behavior and schema ancestry, while real money
-remains disabled and no payment, provider spend or settlement has occurred.
-
-Package 6A final local validation at this checkpoint:
-
-- Package 6A economic, migration, source-integrity and request-stream matrix:
-  121 passed;
-- full SQLite/local suite: 421 passed, with 14 disposable-PostgreSQL-only
-  concurrency tests skipped locally and 101 upstream deprecation warnings;
-- the PostgreSQL 18 gate is wired to prove fresh-to-head, direct `0010 -> 0011`,
-  repeated upgrade, Alembic check and real quote/transition/child-budget
-  concurrency after an exact-SHA push; those 14 cases are not claimed as
-  locally passed; and
-- readiness, secret scan (136 files, zero findings), compileall, dependency,
-  workflow/manifest parsing, Alembic head and working-tree diff checks passed.
-
-The post-merge parent-funding corrective adds no migration and leaves the sole
-head at `0011_economic_kernel_v1`. Focused Package 6A/source/PostgreSQL wiring
-validation passed with 47 tests and 15 disposable-PostgreSQL-only tests skipped
-locally. The final local suite passed with 425 tests and the same 15 PostgreSQL
-tests skipped; exact PostgreSQL locking evidence remains pending the corrective
-SHA's pre-production gate. Real money remains disabled, and these fixtures are
-not payment, settlement, revenue, VUO or adoption evidence.
-
-## Package 5F production baseline and Commercial Router V1 repository main
-
-Package 5F Conversation Intelligence V1 is production-live at
-`5e53fc242ec5beb418be10ee16d068b6b012baf0`. Commercial Router V1 is merged to
-repository main at the Commercial Launch Readiness baseline above but is not
-production-live. Repository and production schema are both
-`0014_conversation_intel_v1`; this launch-readiness work adds no migration.
-
-Commercial Router V1 is authenticated planning only:
-`discover -> qualify -> rank -> plan -> fail closed`. Historical verified
-callability may influence ranking only when provider identifier, exact
-interaction URL, protocol binding and protocol version match correlated proof.
-It never establishes current callability: any later real execution still
-requires fresh current-job verification. Planning performs no provider contact,
-action execution, quote, reserve, payment, settlement, revenue/VUO claim or
-route-plan persistence, and unknown price, maximum cost, commercial rights or
-economic authority remain fail-closed. Package 6A's controlled `$10` customer
-price, `$5.5` expected variable cost and `$6` maximum-spend values are policy
-fixtures, not observed market price or provider-cost evidence.
-
-The later repository main includes migration `0015_x402_exact_upfront_v1` and a
-bounded exact-upfront x402 purchase seam for AION-owned Route Intelligence.
-Real-money execution remains hard-disabled; repository code and tests do not
-prove production configuration, payment, settlement, revenue or paid VUO.
-
-Commercial Launch Readiness V1 local validation on the uncommitted candidate
-tree completed with 564 tests passed and 22 disposable-PostgreSQL-only tests
-skipped. The launch/security focus, source-integrity checks, regenerated
-hash-lock installation, dependency check, secret scan, compileall, readiness,
-workflow/manifest parsing, fresh SQLite migration through the sole
-`0014_conversation_intel_v1` head, repeated upgrade, Alembic check and diff
-checks also passed. Exact PostgreSQL 18 behavior remains subject to the
-candidate SHA's pre-production release gate; no local or production PostgreSQL
-result is invented here.
-
-## Commercial convergence official-data supply candidate — repository only
-
-The 2026-09-19 task started from clean GitHub `main` at
-`85908f8f8c8effe76fc5a439fae3ac428fc8834f`. A bounded live registry sample
-found reachable declarations but no no-credential A2A 1.0 provider eligible
-for the existing executor. The candidate branch therefore adds one deliberately
-narrow Tier-D/manually-qualified external capability instead of a marketplace:
-authenticated `world_bank.population.latest` execution through the official
-World Bank World Development Indicators API.
-
-The path performs a fixed-host, one-attempt, DNS-pinned HTTPS GET; accepts only
-a two-letter country code; normalizes and verifies the WDI source, indicator,
-country, year, nonnegative integer value and dataset freshness; records a
-response digest and normalized result; and requires a separate authenticated
-requester acknowledgement before reporting a requester-confirmed useful
-outcome. Provider maximum cost and customer price are both exactly `0 USD`.
-Before any execution claim or outbound provider call, the path evaluates its
-trusted zero-cost plan through the Package 6A economic kernel and fails closed
-when policy denies execution. This keeps the provider route, maximum spend,
-verification allowance and VUO-cost assumptions explicit and machine-visible.
-Commercial rights are recorded as CC BY 4.0 with attribution, using the public
-WDI dataset catalog entry. Migration `0016_official_data_execution_v1` adds the
-minimal durable idempotency, execution, verification, cost and usefulness
-evidence row.
-
-The response keeps structured raw intake, deterministic AION interpretation,
-the executable requirement and the verified result separate. Latest-available
-freshness is explicit and never presented as a current-year observation.
-Transport, TLS, DNS, timeout, HTTP, malformed/schema and no-value failures are
-kept distinct where the bounded transport can establish them; the sole-provider
-route states that no fallback provider exists. Package 3B's bounded learning
-summary consumes verified execution, failure and usefulness counts as decision
-support only: it does not manufacture market demand or autonomously change
-routing policy. Package 5F remains the bounded conversation path for actual
-Ambassador responses; no conversation is invented for this structured API
-intake.
-
-Fresh candidate verification after these connections completed with 650 tests
-passed and 23 PostgreSQL-only tests skipped. The focused executor, learning,
-Conversation Intelligence, router, economic-kernel, paid-route readiness,
-migration and source-integrity set passed 189 tests.
-At `2026-09-19T20:51:43Z`, one final zero-cost call through the candidate's
-exact DNS-pinned transport and `mrv=1` endpoint returned HTTP 200 in one
-attempt. It verified the U.S. 2025 population `341784857`, dataset update
-`2026-07-13`, and response digest
-`sha256:24eae3b423ccc9775c1b6388ecf4d6b2eaae67e5d562f7c6aae70b7127df47b2`.
-The exact PostgreSQL 18 pre-production release gate completed successfully for
-candidate SHA `910beca60fda6984a00bee19694f80e858499d0d` in GitHub Actions run
-`35469173115`, including fresh/upgrade migrations, the PostgreSQL application
-and real-concurrency suite, and startup/readiness. This is pre-production CI
-evidence, not production deployment or production-database evidence.
-
-This candidate does not activate money, invoke a paid provider, prove an
-independent customer, establish a paid VUO, settle funds, establish positive
-CM/VUO, deploy production, or change production schema/configuration. The
-generic A2A Commercial Router remains planning-only and fail-closed. The new
-path proves only one fixed external API capability and is intentionally not a
-general URL fetcher, crawler or arbitrary action surface.
-
-## Pre-Package-3 audit-correction validation
-
-- External discovery now uses the shared hardened HTTPS transport for registry
-  search, detail, resolution and Agent Card retrieval. Normal discovery records
-  bounded reachability/declaration evidence and never invokes the declared A2A
-  interaction URL.
-- Targeted external-discovery, security, REST, MCP, A2A and regression suite:
-  92 passed.
-- Full local suite: 202 passed, 5 PostgreSQL-only tests skipped.
-- Readiness reported all local checks true; secret scanning inspected 110 files
-  with 0 findings; compile, dependency and diff checks passed.
-- No database model, migration or database-concurrency behavior changed. The
-  repository Alembic head remains `0007_agent_utility_checkpoints`.
-
-## Package 3 validation
-
-- Targeted action, request-boundary, hardened-transport, external-security and
-  migration suite: 89 passed.
-- Full local suite: 245 passed, 6 PostgreSQL-only tests skipped.
-- SQLite fresh-to-head and `0007 -> 0008` paths, repeated upgrade and Alembic
-  schema check passed. The accepted Package 3 head is
-  `0008_action_outcome_evidence`.
-- The controlled end-to-end responder proof exercised bounded discovery,
-  requester-scoped claim, one official A2A `SendMessage`, nonce verification,
-  four durable evidence boundaries and restart-safe retrieval. It is a test
-  fixture, not independent adoption or a commercial VUO.
-- HQ independently accepted the corrected Package 3 implementation at
-  `b34ae9b3d792f96fb3c71710d727a1db56d78cb3` after AION CI run
-  `34325607999` and PostgreSQL 18 release gate run `34325608008` both passed
-  on that exact SHA. It was not yet deployed at Package 3 acceptance and was
-  subsequently production-released through the accepted Package 4 gate.
-- The HQ-accepted corrective implementation preserves structured discovery status internally
-  so operational, rate, configuration and budget failures cannot be persisted
-  as a factual `no_result`. Public discovery lists remain compatible and
-  declaration-only.
-- Corrective targeted discovery/action/security/source-integrity suite: 73
-  passed, with 6 PostgreSQL-only cases skipped locally. Corrective full local
-  suite: 254 passed, 6 PostgreSQL-only cases skipped. The PostgreSQL cases
-  remain required in the exact-SHA release gate.
-
-## Economic Control Plane alignment
-
-The Economic Constitution alignment is **independently HQ-accepted with zero
-known reproducible defects**. It canonically defines no unfunded variable
-spend, no AION credit, pay-before-spend, maximum-cost and funding gates,
-contribution-margin floors and targets, lawful paid-source use,
-prepaid/reserved funding, recursive spend limits, the Economic Capability
-Profile, product tiers, and future cost/VUO and CM/VUO evidence.
-
-The accepted alignment itself was documentation and architecture policy. The
-merged Package 6A repository implementation provides only its deterministic
-kernel, disabled adapter seam and durable evidence state machine. No payment
-rail, wallet, real authorization/reserve/settlement, balance ledger,
-paid-provider execution or dynamic pricing is enabled. Package 3B and Package
-5 do not weaken these rules. No economic runtime or payment activation has
-changed the production baseline above. Live merge/main status must be verified
-directly from GitHub under the repository state rule above.
-
-## Package 2 validation
-
-- The HQ corrective security fix replaces post-buffering body measurement with
-  an outer ASGI request-stream limiter for `POST /utility/query`, `POST /mcp`
-  and `POST /a2a/v1`. It rejects malformed or declared-over-limit lengths
-  before reading, stops on the first streamed byte above 64 KiB, and replays
-  successfully bounded ASGI messages to the existing handlers unchanged.
-- Corrective targeted REST, MCP, A2A and request-stream tests: 44 passed.
-- Corrective full local suite: 186 passed, 5 PostgreSQL-only tests skipped.
-- Corrective readiness reported all local checks true; secret scan inspected
-  109 files with 0 findings; compile, dependency and diff checks passed.
-- Targeted utility, transport, A2A, MCP and migration suite: 49 passed.
-- Full local suite: 173 passed, 5 PostgreSQL-only tests skipped.
-- Controlled real-source machine proof used a temporary local database and the
-  public REST utility surface. Official A2A `v1.0.1` and MCP `2026-07-28`
-  observations were fresh, source-observation verified, compatible and
-  consequentially eligible; no Agent membership was created.
-- SQLite `0006 -> 0007`, older-to-head and fresh-to-head paths, repeated upgrade
-  and Alembic schema check passed. Head is
-  `0007_agent_utility_checkpoints`.
-- Accepted final Package 2 SHA
-  `88bc6fae247a5bb454d435380c24d665ba48f512` passed AION CI run
-  `34286807720` and PostgreSQL 18 release gate run `34286807680`. After the
-  fast-forward merge, the same exact SHA passed main AION CI run `34288863432`.
-
-## Phase 1 contract validation
-
-- `python -m pytest -q tests/test_live_utility.py`: 25 passed.
-- `python -m pytest -q tests/test_source_integrity.py tests/test_live_utility.py`:
-  29 passed.
-- `python -m pytest -q`: 101 passed, 3 PostgreSQL-only tests skipped.
-- `python scripts/readiness.py`: all 26 local readiness checks passed.
-- `python scripts/check_secrets.py`: 92 files scanned, 0 findings.
-- `git diff --check`: passed.
-
-## Phase 1 persistence validation
-
-- `python -m pytest -q tests/test_live_utility.py tests/test_live_utility_persistence.py`:
-  50 passed.
-- `python -m pytest -q tests/test_migrations.py`: 2 passed; both the additive
-  `0004 -> 0005` path with sentinel preservation and fresh-to-head path passed.
-- `python -m pytest -q`: 127 passed, 3 PostgreSQL-only tests skipped.
-- Disposable SQLite fresh-to-head, repeated `upgrade head`, exact revision and
-  `alembic check`: passed; head is `0005_live_utility_persistence` with no schema
-  drift.
-- `python scripts/readiness.py`: all 28 local readiness checks passed.
-- `python scripts/check_secrets.py`: 95 files scanned, 0 findings.
-- `python -m compileall -q app tests scripts`: passed.
-- Workflow YAML parsing and `git diff --check`: passed.
-- Exact persistence head `4a161933d37162947eaa3d08a1035f8c7cfa8def`
-  passed AION CI run `34243034700`, PostgreSQL 18 release gate run
-  `34243034819`, and resulting-main AION CI run `34244216770`.
-
-## Package 1 local and controlled-source validation
-
-- Targeted Live Utility, hardened transport, migration and regression suite:
-  90 passed.
-- Full local suite: 148 passed, 4 PostgreSQL-only tests skipped.
-- Disposable SQLite `0005 -> 0006` and empty-to-head upgrades, repeated
-  `upgrade head`, exact head `0006_live_utility_data` and `alembic check`:
-  passed with no schema drift.
-- `python scripts/readiness.py`: all 30 local readiness checks passed.
-- `python scripts/check_secrets.py`: 103 files scanned, 0 findings.
-- Compile, workflow YAML and `git diff --check`: passed.
-- Controlled real-source verification at `2026-09-08T16:23:50.067733+00:00`:
-  official A2A release `v1.0.1` and official MCP specification release
-  `2026-07-28` each fetched through the pinned HTTPS path in one attempt,
-  normalized, stored and assessed `fresh`.
-- Package 1 implementation commit
-  `5f9d64bcd0bc47b6171d6e7c4635af60e9c9d9ec` passed AION CI run
-  `34252092282` and PostgreSQL 18 release gate run `34252092298`. The gate
-  passed `0005 -> 0006`, empty-to-head, repeated upgrade, Alembic check,
-  PostgreSQL application/concurrency tests and startup/readiness. The exact
-  final branch SHA and its repeated workflow evidence are reported in the
-  handoff after the factual documentation commit.
-
-## Documentation alignment validation
-
-- Data & Learning Plane strategy alignment: source-integrity suite 7 passed;
-  `scripts/check_secrets.py` scanned 110 files with 0 findings; and
-  `git diff --check` passed. This documentation-only alignment did not change
-  runtime code, tests, migrations, workflows or production configuration.
-- Post-Package-2 strategy alignment: source-integrity suite 4 passed;
-  `scripts/check_secrets.py` scanned 110 files with 0 findings; and
-  `git diff --check` passed.
-- `git diff --check`: passed.
-- `python scripts/check_secrets.py`: 90 files scanned, 0 findings.
-- `python -m pytest -q tests/test_source_integrity.py`: 4 passed.
-
-## Current architecture and completed hardening
-
-- Direct tracked source under `app/`, Alembic migrations, tests, scripts,
-  dependency locks and deployment configuration are the repository source of
-  truth. The retained ZIP is historical recovery evidence only.
-- FastAPI, SQLAlchemy and Alembic remain the application architecture. A2A 1.0
-  is the primary agent-to-agent layer; MCP is a separate integration/tool layer.
-- PostgreSQL advisory locks serialize strong logical-identity joins. Agent and
-  initial-capability creation share one transaction boundary and roll back
-  together on failure. Exact external-ID uniqueness and controlled logical
-  duplicate conflicts remain enforced.
-- Untrusted HTTPS destinations use controlled DNS resolution, globally routable
-  address validation and a connection pinned to the validated numeric address,
-  while TLS SNI, certificate verification and HTTP Host retain the original
-  hostname. Redirects remain rejected.
-- Declared but unverified endpoints receive no verified/callable semantics or
-  ranking benefit. The current data model has no persisted endpoint-liveness
-  evidence.
-- External registry search/detail/resolve and Agent Card reads use the shared
-  pinned public-only HTTPS transport with redirect, byte, timeout and attempt
-  bounds. Normal external discovery validates only registry/card/interface
-  declarations and the safety of the declared interaction destination; it does
-  not contact the interaction URL or claim invocation success, callability or a
-  verified outcome.
-- External discovery is capped at five candidates, a 128-character query, 12
-  outbound attempts per call and a process-local 30-call/60-second guard. Its
-  validation cache is TTL/LRU bounded to 128 entries for 600 seconds.
-- Historical shadowed registry and lifecycle definitions were removed while
-  preserving the active behavior and identity-aware funnel metrics.
-- Final production smoke passed for health, readiness, public discovery,
-  OpenAPI, stats/funnel, Agent Card, A2A status, MCP discovery/tool listing and
-  the canonical first-contact/onboarding contract. No explicit join or
-  destructive production action occurred during that smoke.
-
-## Current limitations and evidence boundaries
-
-- Identity evidence can include self-declared fields; a display name or
-  capability similarity alone is not strong identity proof.
-- Reputation completion is requester-reported. Payment records are intents,
-  not verified settlement.
-- A2A task storage and rate limits are process-local.
-- Compatibility V1 is deterministic protocol/release-version comparison for
-  A2A and MCP only. It does not prove runtime interoperability or endpoint
-  callability.
-- Personalized Delta V1 records only per-agent A2A/MCP observation revision,
-  freshness and eligibility checkpoints. It is not a generic news feed.
-- Synthetic probes validate behavior but do not prove independent adoption,
-  activation, retention or revenue.
-- Historical metrics and database rows must not be presented as product proof.
-  The milestone of 10 retained independent external agents is not established.
-
-## Historical release and cutover evidence
-
-Everything in this section is a historical checkpoint. It is retained for
-audit, rollback and reliability evidence and must not be interpreted as the
-current production state or as authorization to repeat a cutover.
-
-- The repository was normalized from historical 0.6.2 material, and the exact
-  live 0.7.1 source was recovered and reconciled into direct tracked files.
-- Recovery and hardening lineage included recovery `406df8e`, atomic join
-  `b08629e`, DNS pinning `a57dfa1`, matching integrity `15ae2b8`, shadowed
-  definition cleanup `022855b`, PostgreSQL release validation, controlled
-  cutover preparation and A2A contract alignment.
-- The isolated PostgreSQL release gate used PostgreSQL 18.6. It passed a
-  hash-locked clean install, dependency check, SQLite and PostgreSQL suites,
-  real concurrent advisory-lock behavior, fresh and upgrade migrations,
-  Alembic head/check, real startup/readiness and secret scanning.
-- Before cutover, production used main SHA
-  `078aa55d144adaefa53a93e5411e7a24401d066a`, deploy
-  `dep-dafda3ad0e5s73buoq80`, AutoDeploy enabled, and a ZIP plus
-  environment-backed runtime-patch build. Those values describe the historical
-  rollback point and are not current production facts.
-- A controlled encrypted pre-cutover production backup was created, restored
-  and integrity-checked. Temporary database ingress used for the controlled
-  operation was subsequently removed; the public external allow list is now
-  empty and must not be reopened without separate authorization.
-- The controlled direct-source cutover completed at main SHA
-  `419f11b2a34fdec26269a216de65e9dcf955e963` and deploy
-  `dep-dafuu3v40ujc73d3fks0`. AutoDeploy was left OFF.
-
-No merge, deployment, Render change or production database action is authorized
-by this checkpoint.
+# AION PROJECT STATE
+
+## Checkpoint
+
+Date: 2026-09-20
+
+Repository: `wisemankonstantin-droid/aion-agent-core`
+
+This file is the concise mutable repository checkpoint.
+
+If it conflicts with actual GitHub, CI, Render, database or production state:
+
+**ACTUAL VERIFIED STATE WINS.**
+
+Historical implementation detail remains available in Git history and package
+closeout documents. Do not turn this file back into an archive of every prior
+checkpoint.
+
+## Canonical launch law
+
+`AION_AGENT_NATIVE_LAUNCH_LAW.md` governs launch and customer-flow semantics.
+
+AION exists for AI agents.
+
+Canonical product/commercial loop:
+
+`machine discovery -> optional join/auth -> agent request -> bounded execution -> machine-verifiable result -> machine-readable payment when priced -> settlement -> repeat use`
+
+Normal external-agent utility does not depend on:
+
+- human replies;
+- design-partner interviews;
+- operator participation review;
+- human usefulness acknowledgement;
+- manual customer qualification;
+- ceremonial commercial proof.
+
+Owner/control-plane gates remain separate for mutations of AION itself.
+
+## Current verified GitHub state
+
+Agent-native runtime merge checkpoint:
+
+`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`
+
+PR #13, **Make AION launch and commerce agent-native**, is merged.
+
+This document is itself being updated by a docs-only state-sync change, so it
+does not claim the future SHA of its own merge. Resolve the live `main` ref
+directly from GitHub before any write operation. The docs-only state-sync changes
+no runtime code, migration or dependency.
+
+Exact pre-merge candidate:
+
+`f3bc436de3dde30e18235597e5e71c179ae6e8ec`
+
+Exact-candidate validation:
+
+- AION CI push run #329: success;
+- AION CI PR run #330: success;
+- PostgreSQL pre-production release gate #68: success;
+- PostgreSQL gate included fresh/upgrade migrations, application/concurrency,
+  startup and readiness.
+
+The candidate tree and merge-main tree are identical.
+
+Post-merge exact-main AION CI:
+
+- run #331;
+- exact SHA `e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`;
+- success;
+- locked install, dependency integrity, secret scan, full pytest, readiness,
+  migration smoke and MCP/A2A interoperability passed.
+
+Repository Alembic head:
+
+`0016_official_data_execution_v1`
+
+Current release identity expects:
+
+`0016_official_data_execution_v1`
+
+## Current verified production state
+
+Render service:
+
+`aion-agent-core-live`
+
+Service ID:
+
+`srv-daei9gpt0dsc73abhs10`
+
+Workspace:
+
+`tea-daehtv2d0e5s738ir540`
+
+URL:
+
+`https://aion-agent-core-live.onrender.com`
+
+Region:
+
+Frankfurt
+
+Branch:
+
+`main`
+
+AutoDeploy:
+
+OFF
+
+Service is not suspended.
+
+Build command:
+
+`python -m pip install --require-hashes -r requirements.txt`
+
+Start command:
+
+`python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+Current verified live deploy:
+
+`dep-daju1vdg1s2s73c6gtp0`
+
+Current verified live application commit:
+
+`18afa934fdddef2a0489874c5ac2446fcf947475`
+
+Deploy status:
+
+LIVE
+
+Therefore the verified agent-native repository runtime baseline is newer than
+production. The live GitHub `main` ref may advance by docs-only commits without
+changing that runtime baseline.
+
+The current live artifact expects schema:
+
+`0014_conversation_intel_v1`
+
+Repository migration chain after that revision is linear:
+
+`0014_conversation_intel_v1 -> 0015_x402_exact_upfront_v1 -> 0016_official_data_execution_v1`
+
+Both upgrades are additive on upgrade: each creates its new table/indexes and
+does not drop existing production tables or columns.
+
+Production database verification on 2026-09-20 resolved the prepared Neon
+production project:
+
+- Neon project: `AION Production Free`;
+- project ID: `floral-cloud-01727932`;
+- region: `aws-eu-central-1`;
+- PostgreSQL: 18;
+- default branch: `main` / `br-orange-mountain-b259usgb`;
+- database: `neondb`;
+- read-only query `SELECT version_num FROM alembic_version;` returned
+  `0014_conversation_intel_v1`.
+
+This matches the schema expected by the currently deployed application artifact.
+
+The Render-native SQL connector separately failed to establish its required
+SSL/TLS session against the visible Render PostgreSQL inventory instance; that
+connector failure does not override the successful direct Neon revision read.
+
+Render does not expose the current DATABASE_URL value through the available
+read-only service metadata, so this checkpoint does not print or infer secret
+connection material. Reverify association only through a safe non-secret
+mechanism if needed before deployment.
+
+## What is production-live
+
+The verified live ancestry includes the established AION foundation and the
+pre-`0015` application line, including:
+
+- core REST/MCP/A2A foundation;
+- live utility and compatibility;
+- safe action/callability foundation;
+- continuous learning foundation;
+- historical Package 5 compatibility/proof surfaces;
+- Economic Execution Kernel V1 with real-money behavior disabled;
+- Ambassador infrastructure;
+- Conversation Intelligence V1;
+- Commercial Router code present in the live commit ancestry where applicable.
+
+Do not infer a capability is live merely because it exists in current main.
+Current Render deploy provenance wins.
+
+## What is merged to main but not yet production-live
+
+The verified agent-native repository runtime baseline additionally contains:
+
+- `0015_x402_exact_upfront_v1`;
+- `0016_official_data_execution_v1`;
+- direct authenticated `world_bank.population.latest` execution;
+- machine-verifiable World Bank result/provenance/freshness handling;
+- PR #13 agent-native machine journey and compatibility correction.
+
+These require a separately authorized production release.
+
+## World Bank executable path
+
+Capability:
+
+`world_bank.population.latest`
+
+Provider:
+
+World Bank World Development Indicators.
+
+Current trusted economics:
+
+- provider price: 0 USD;
+- customer price: 0 USD;
+- maximum variable spend: 0;
+- payment required: no.
+
+Direct request does not require a prior Commercial Router plan.
+
+Request shape includes:
+
+- fixed capability `world_bank.population.latest`;
+- two-letter country code;
+- explicit authorization to contact the external provider;
+- authenticated requester;
+- idempotency key.
+
+Completion is machine-verifiable from bounded execution state, provider
+response, normalized result, provenance and freshness.
+
+Requester acknowledgement remains optional feedback and legacy compatibility
+telemetry. It is not a completion or launch gate.
+
+A zero-price successful execution is real product usage.
+
+It is not revenue or settlement.
+
+## Package / subsystem status
+
+### Foundation through controlled live utility
+
+Packages 0-4: implemented and historically accepted.
+
+### Historical Package 5 proof
+
+Legacy compatibility telemetry only.
+
+It must not gate:
+
+- ordinary utility;
+- launch;
+- distribution;
+- execution;
+- payment;
+- settlement.
+
+Historical records are not retroactively rewritten to manufacture commercial
+metrics.
+
+### Package 5D / 5E / 5F
+
+Ambassador infrastructure and Conversation Intelligence exist.
+
+Human outreach is optional research, not the canonical acquisition path and not
+a launch dependency.
+
+### Economic Execution Kernel
+
+Package 6A infrastructure exists with deterministic economic controls.
+
+Real-money behavior remains disabled.
+
+### Commercial Router
+
+Available for cases that actually require provider discovery/selection.
+
+Do not force route planning before a known fixed executable capability.
+
+### Real settlement
+
+Not active.
+
+No real payment, settlement, payer, revenue, repeat paid use or positive
+contribution margin is claimed.
+
+## Commercial truth
+
+Primary commercial event:
+
+**Settled Agent Transaction (SAT).**
+
+Primary measures:
+
+- successful external-agent executions;
+- SATs;
+- repeat SATs;
+- retained paying agents;
+- real revenue;
+- variable cost;
+- contribution margin / SAT;
+- repeat agent use.
+
+Historical VUO/Package 5 metrics may remain for compatibility and analysis but
+are not the launch North Star.
+
+Synthetic tests and AION-operated traffic test software.
+
+They are not revenue or real settlement.
+
+## Distribution
+
+Distribution is machine-first.
+
+Primary surfaces:
+
+- A2A Agent Card;
+- MCP discovery;
+- machine-readable manifests;
+- public executable endpoints;
+- compatible registries/directories;
+- SDK/examples;
+- agent-to-agent discovery/referral.
+
+Human cold outreach is not required.
+
+Do not wait for email replies before advancing the launch path.
+
+## Economic boundaries
+
+Permanent controls remain:
+
+- no unfunded variable spend;
+- no AION credit;
+- pay before spend for variable-cost execution;
+- unknown maximum cost = no paid execution;
+- deterministic margin policy;
+- idempotency;
+- bounded retries/spend;
+- real settlement must be recorded from actual rail state, never inferred.
+
+The model is not the financial authority.
+
+## Human / owner control-plane gates
+
+Explicit owner authorization remains required for:
+
+- merge where project governance requires it;
+- production deploy;
+- production rollback;
+- production DB migration/write outside ordinary application transactions;
+- destructive production DB actions;
+- Render production configuration;
+- AutoDeploy changes;
+- production secrets;
+- global real-money rail activation;
+- destructive infrastructure changes;
+- paid acquisition spend.
+
+These are control-plane gates.
+
+They are not normal customer-flow gates.
+
+## Immediate launch-critical sequence
+
+Current sequence:
+
+`verified current main -> controlled production deploy -> migrate to repository head -> live readiness/release verification -> bounded zero-cost World Bank production smoke -> machine discovery/distribution -> remove agent friction -> prepare/enable priced machine commerce -> first SAT -> repeat SAT -> positive contribution margin -> scale`
+
+The next write step is a controlled production release of the then-current
+verified GitHub main, after confirming that its runtime/migration content remains
+the accepted agent-native baseline.
+
+That release is NOT authorized merely by this document.
+
+Before deploy:
+
+1. reverify GitHub main is still the intended tested SHA;
+2. reverify Render service and AutoDeploy OFF;
+3. reverify live deploy provenance;
+4. resolve production DB association/revision if safely possible;
+5. preserve current production configuration/secrets;
+6. keep real-money activation disabled unless separately authorized.
+
+## Continuous execution rule
+
+Do not stop at documentation, outreach or proof ceremony when another safe,
+authorized launch-critical action exists.
+
+Do not repeat broad architecture audits.
+
+Do not repeatedly re-prove an unchanged exact-SHA fact.
+
+Continue until a genuine owner/control-plane gate, hard external technical
+dependency or unsafe ambiguity is reached.
