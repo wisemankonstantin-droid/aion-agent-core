@@ -1,144 +1,200 @@
-# Project checkpoint — 2026-09-13
+# Project checkpoint — 2026-09-20
 
-## Agent-native launch correction — 2026-09-20
+## Agent-native launch correction — merged
 
-AION launch semantics are being corrected on branch `codex/agent-native-launch-law-v1`
-under `AION_AGENT_NATIVE_LAUNCH_LAW.md`.
+AION's canonical launch/customer loop is now agent-native.
 
-The correction removes human/operator participation review and human usefulness
-confirmation from the normal external-agent customer path.
+Normal external-agent utility, execution, completion and already-enabled payment
+flows do not depend on human replies, design-partner interviews, operator
+participation review or human usefulness acknowledgement.
 
-Canonical target:
+Canonical loop:
 
-`machine discovery -> agent request -> bounded execution -> machine-verifiable result -> machine payment/settlement when priced -> repeat`
+`machine discovery -> optional join/auth -> direct agent request -> bounded execution -> machine-verifiable result -> machine-readable payment when priced -> settlement -> repeat use`
 
-Package 5 participation/VUO proof surfaces remain legacy compatibility telemetry.
-They no longer define whether AION is allowed to launch, distribute, execute or
-accept machine commerce.
+Historical Package 5 participation/VUO surfaces remain compatibility telemetry.
+Any operator-review language there is restricted to historical Package 5
+qualification and does not block ordinary utility, launch, execution, payment or
+settlement.
 
-The current World Bank official-data path already supplies a zero-cost
-machine-verifiable execution contract. Its acknowledgement endpoint is optional
-feedback, not a completion gate.
+The fixed `world_bank.population.latest` capability can execute directly.
+Commercial Router planning is optional and is not a prerequisite for this known
+capability. Requester acknowledgement is optional feedback, not completion.
 
-The bounded PR #13 compatibility correction preserves the autonomous sequence
-while restoring prior public response keys as explicitly legacy, non-gating
-aliases. Package 5 participation/readiness responses now scope any operator
-review language to historical Package 5 qualification only and state that the
-telemetry does not block ordinary utility, execution, payment or settlement.
-Onboarding and the shared machine journey state that the fixed World Bank
-capability can execute directly without first calling the planning-only
-commercial router. No schema or migration change is involved.
+## Current verified GitHub state
 
-Local validation for this bounded correction:
+Repository:
 
-- TDD red phase failed on the missing compatibility keys, legacy-only scope
-  markers and direct-execution guidance before implementation;
-- focused agent-native and affected-surface matrix: 146 passed;
-- full locked-environment suite: 650 passed, 23 PostgreSQL-only tests skipped;
-- dependency integrity, secret scan over 188 files, compileall, workflow YAML,
-  readiness and fresh SQLite migration-to-`0016_official_data_execution_v1`
-  passed; and
-- official MCP 2026-07-28 plus A2A 1.0 interoperability scripts passed against
-  an isolated local HTTPS server and disposable database.
+`wisemankonstantin-droid/aion-agent-core`
 
-Owner/control-plane approval remains distinct for mutations of AION itself
-(merge, production deploy/migration, production secrets/configuration,
-real-money rail activation, destructive infrastructure). Those controls are not
-part of the normal agent customer transaction loop.
+Current verified `main`:
 
-Commercial success is measured by real machine executions and, for priced
-products, Settled Agent Transactions, repeat paid use, real revenue and
-contribution margin. Human outreach replies are not a project dependency.
+`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`
 
-## Current production state
+PR #13, **Make AION launch and commerce agent-native**, merged on 2026-09-20.
 
-- **Repository:** `wisemankonstantin-droid/aion-agent-core`.
-- **Accepted Package 2 application baseline:**
-  `88bc6fae247a5bb454d435380c24d665ba48f512`.
-- **Post-Package-2 strategy alignment checkpoint:**
-  `7fb469024855a065a1d42d12fc5c1a40d354ab6f`.
-- **Accepted pre-Package-3 audit-correction checkpoint:**
-  `d8465a17522044c0349609e44ac7ccd9f0facf82`.
-- **Main checkpoint at Economic Control Plane alignment start:**
-  `d2ddb13797915788a06ad1bf4266fea7683ab462`.
-- **Main checkpoint at Package 3B implementation start:**
-  `a92964e0b7d29eacae8016e6ea54f084f6f3a4bf`.
-- **Package 3B acceptance/merge and Package 4 task-start checkpoint:**
-  `d9d4b699b688663ec46ee84fafb5c4d814fd4799`.
-- **Package 4 accepted production application checkpoint:**
-  `e52c5db99b30feb18ca06ace567b4668c8019bde`.
-- **Package 5 implementation starting checkpoint:**
-  `8d508f5944c0810e5e52bed88645128857b369a0`.
-- **Package 5 accepted application checkpoint:**
-  `48b8be9a0fe52f9febd17d563aa43715ee2a542f`.
-- **Package 5B conversion-corrective starting checkpoint:**
-  `b9d3521f6b5a7fd9ac61c3670ac150d8a16df772`.
-- **Package 5C accepted production application checkpoint and Package 6A
-  repository baseline:** `a2a53ff61ede7597651b2f1bac1ca3db809855f9`.
-- **Package 5D repository starting checkpoint:**
-  `1201eb1944457bf6745b4f1a4ad7ae1c7e42be54` (Package 6A parent-funding
-  corrective merged to main; not deployed).
-- **Package 5E repository starting checkpoint:**
-  `373da335367c2ec686ccc0bb8e24c167fad0f672` (preserved historical task start).
-- **Commercial Launch Readiness V1 task baseline:**
-  `76541a7ae342b5344b9a914d496242aae7da2e58`. At this checkpoint, Package 5F,
-  Package 6A and Commercial Router V1 are merged to repository main but are not
-  part of the verified production deployment below.
-- **Live repository state rule:** verify the current branch HEAD directly from
-  GitHub. The verified GitHub ref wins over this durable checkpoint document;
-  no field here claims that a commit contains its own future SHA.
-- **Repository main at Package 2 task start:**
-  `d5257c539dc2bf86411297aca8b787933a1bed42`.
-- **Production deployed SHA:**
-  `5e53fc242ec5beb418be10ee16d068b6b012baf0`. Commercial Router V1 is newer
-  repository-main behavior and is not production-live at this checkpoint.
-- **Production:** `https://aion-agent-core-live.onrender.com`, version `0.7.1`.
-- **Render:** service `aion-agent-core-live`
-  (`srv-daei9gpt0dsc73abhs10`) in workspace
-  `tea-daehtv2d0e5s738ir540`, branch `main`.
-- **Historical Package 5E deploy:** `dep-daj7899594qs73b35g4g`. The current
-  production deploy identifier for the newer SHA above is not asserted here;
-  verify external state before any separately authorized production operation.
-- **Deployment architecture:** the controlled direct-source cutover is
-  complete. Production builds tracked source directly from GitHub main. The old
-  ZIP plus environment-backed runtime-patch architecture is historical and is
-  not active.
-- **AutoDeploy:** OFF (`autoDeployTrigger: off`). A merge or branch push does
-  not authorize or initiate a production deployment.
-- **Root Directory:** blank.
-- **Build Command:**
-  `python -m pip install --require-hashes -r requirements.txt`.
-- **Start Command:**
-  `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Database:** the prepared Neon PostgreSQL 18 production database. Package
-  4 copied and verified the legacy dataset before cutover and preserved the
-  zero-infrastructure-spend boundary.
-- **Runtime status:** health reports version `0.7.1`; readiness reports the
-  database ready and the A2A runtime mounted.
-- **Accepted Package 3 Alembic head:** `0008_action_outcome_evidence`.
-- **Accepted Package 3B Alembic head:** `0009_continuous_learning_v1`.
-- **Production database revision:** `0014_conversation_intel_v1`. The earlier
-  Package 5E startup showed the additive `0012_ambassador_pilot_v1 ->
-  0013_ambassador_control_v1` migration and successful application startup.
-  Package 4's
-  separately verified historical revision was `0009_continuous_learning_v1`.
-- **Repository main Alembic head at the 2026-09-19 commercial-convergence task
-  start:** `0015_x402_exact_upfront_v1`. The current repository-only candidate
-  branch advances the head to `0016_official_data_execution_v1`; production
-  remains at `0014_conversation_intel_v1` until a separately authorized release.
-- **Production recovery:** the Package 4 Neon manual recovery snapshot was
-  restored on a separate rehearsal branch and integrity-checked. Canonical
-  evidence is in `PACKAGE_4_PRODUCTION_CLOSEOUT.md`.
-- **Production boundary:** Package 5 engineering is merged, deployed and live
-  at the application SHA above; commercial proof remains legitimately zero.
-  Package 5B, Package 5C, Package 6A, Package 5D, Package 5E and Package 5F are
-  in the current production ancestry. Commercial Router V1 is merged to main
-  but not production-live. Package 6A is disabled economic infrastructure;
-  real-money behavior
-  remains disabled. Deployment does not prove outreach, independent adoption,
-  VUO, return, payment, settlement or revenue. This closeout does not claim
-  current values for Ambassador environment variables or expose secrets.
-  AutoDeploy remains OFF.
+Exact pre-merge candidate:
+
+`f3bc436de3dde30e18235597e5e71c179ae6e8ec`
+
+Validation on that exact candidate:
+
+- AION CI push run #329: success;
+- AION CI PR run #330: success;
+- PostgreSQL pre-production release gate #68: success, including migrations,
+  real concurrency, startup and readiness;
+- focused affected matrix: 146 passed;
+- full local locked suite: 650 passed, 23 PostgreSQL-only skipped.
+
+The candidate tree and merge-main tree are identical.
+
+Post-merge exact-main AION CI run #331 on
+`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7` completed successfully, including
+locked dependency install, dependency integrity, secret scan, full pytest,
+readiness, migration smoke and official MCP 2026-07-28 / A2A 1.0
+interoperability.
+
+Repository Alembic head:
+
+`0016_official_data_execution_v1`
+
+Current repository release identity expects:
+
+`0016_official_data_execution_v1`
+
+No production deploy, production DB mutation, Render configuration change,
+AutoDeploy change, production secret change or real-money activation occurred as
+part of PR #13 merge.
+
+## Current verified production state
+
+Production service:
+
+`aion-agent-core-live`
+
+Service ID:
+
+`srv-daei9gpt0dsc73abhs10`
+
+Workspace:
+
+`tea-daehtv2d0e5s738ir540`
+
+Production URL:
+
+`https://aion-agent-core-live.onrender.com`
+
+Region:
+
+Frankfurt
+
+Branch:
+
+`main`
+
+AutoDeploy:
+
+OFF
+
+Render production configuration remains:
+
+- build: `python -m pip install --require-hashes -r requirements.txt`;
+- start: `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
+- one web-service instance;
+- service not suspended.
+
+Current verified live deploy:
+
+`dep-daju1vdg1s2s73c6gtp0`
+
+Current verified live application commit:
+
+`18afa934fdddef2a0489874c5ac2446fcf947475`
+
+Deploy status:
+
+LIVE
+
+Therefore current repository main
+`e1bbbec76be43de39ad213d2fe0ebb6f12d144d7` is newer than production.
+
+The following current-main behavior is NOT yet production-live:
+
+- migration `0015_x402_exact_upfront_v1`;
+- migration `0016_official_data_execution_v1`;
+- direct `world_bank.population.latest` execution;
+- PR #13 agent-native machine-journey correction.
+
+The live deploy artifact predates those repository changes.
+
+A read-only Render PostgreSQL query for `alembic_version` was attempted on
+2026-09-20 but the Render query connector could not establish the required
+SSL/TLS session. Therefore this checkpoint does NOT invent or assert the current
+live database revision from that failed query.
+
+A Render PostgreSQL instance named `aion-agent-db` is visible and available in
+the same workspace, but this checkpoint does not infer the service's active
+DATABASE_URL association merely from account inventory.
+
+Actual production database identity and revision must be reverified before the
+next authorized production write.
+
+## Current commercial and execution truth
+
+AION now targets autonomous agent commerce.
+
+Primary commercial truth:
+
+`external agent request -> value delivered -> payment when priced -> real settlement -> durable economic record -> repeat use`
+
+Primary measures:
+
+- successful external-agent executions;
+- Settled Agent Transactions (SATs);
+- repeat SATs;
+- retained paying agents;
+- real revenue;
+- variable cost;
+- contribution margin / SAT;
+- repeat agent use.
+
+Historical VUO / Package 5 proof is legacy telemetry and is not a launch gate.
+
+The World Bank capability is currently zero provider cost and zero customer
+price. Its successful execution is real product usage but is not revenue or
+settlement.
+
+Real-money execution remains disabled. No real settlement, payer, revenue,
+repeat paid use or positive contribution margin is claimed.
+
+Human outreach replies are not a project dependency and are not part of the
+canonical launch path.
+
+## Immediate next controlled step
+
+The repository is ready for the next owner/control-plane gate:
+
+CONTROLLED PRODUCTION RELEASE OF CURRENT MAIN.
+
+That release would necessarily run the configured:
+
+`python -m alembic upgrade head`
+
+and therefore may advance production schema through repository head
+`0016_official_data_execution_v1`.
+
+Before that write:
+
+1. reverify current GitHub main and exact CI;
+2. reverify Render service, live deploy and AutoDeploy OFF;
+3. reverify the production database association/revision if safely possible;
+4. preserve production configuration and secrets;
+5. keep real-money activation disabled.
+
+Production deploy, production DB migration, rollback, production configuration,
+secrets and real-money activation remain owner/control-plane Human Gates.
+
+They are not customer-flow gates.
 
 ## Current product and architecture phase
 
