@@ -224,12 +224,13 @@ pre-production gate #68. PR #13 merged to repository main as
 `e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`, and exact merge-SHA AION CI
 #331 passed. The merge tree is identical to the exact-PG-tested candidate tree.
 
-As of the 2026-09-20 read-only Render verification, production still serves the
-older deploy `dep-daju1vdg1s2s73c6gtp0` at commit
-`18afa934fdddef2a0489874c5ac2446fcf947475`; AutoDeploy remains OFF.
-Therefore migrations `0015` and `0016`, the World Bank direct execution path,
-and the agent-native PR #13 correction are repository-main behavior but are not
-yet production-live.
+As of the 2026-09-20 read-only Render/Neon verification, production still
+serves the older deploy `dep-daju1vdg1s2s73c6gtp0` at commit
+`18afa934fdddef2a0489874c5ac2446fcf947475`; AutoDeploy remains OFF. The
+prepared Neon PostgreSQL 18 production database reports Alembic revision
+`0014_conversation_intel_v1`. Therefore migrations `0015` and `0016`, the
+World Bank direct execution path, and the agent-native PR #13 correction are
+repository-main behavior but are not yet production-live.
 
 The next controlled release step is therefore a separately authorized production
 deploy of the verified current main, with its normal Alembic upgrade to head,
