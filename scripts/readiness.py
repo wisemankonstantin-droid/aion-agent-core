@@ -91,9 +91,11 @@ checks = {
     "package_5b_conversion_journey": (
         "verified_outcome_journey" in main
         and "verify_external_callability" in machine_journey
-        and "/proof/package-5/vuos" in machine_journey
-        and '"available": False' in machine_journey
-        and "RETURN_THRESHOLD_SECONDS = 24 * 60 * 60" in machine_journey
+        and "world_bank.population.latest" in machine_journey
+        and '"operator_participation_review_required": False' in machine_journey
+        and '"human_usefulness_confirmation_required": False' in machine_journey
+        and '"blocks_launch": False' in machine_journey
+        and '"blocks_payment": False' in machine_journey
     ),
     "live_utility_data_engine": (root / "app/services/live_utility_engine.py").exists() and (root / "app/services/live_utility_sources.py").exists(),
     "agent_utility_compatibility": (root / "app/services/agent_utility.py").exists() and '@app.post("/utility/query")' in main,
@@ -137,12 +139,10 @@ checks = {
 }
 
 external = [
-    "Production operations require the relevant Human Gate and fresh external-state verification.",
-    "Ambassador outreach requires separate explicit authorization and verified operator controls.",
-    "Use Package 5F conversation intelligence only as coordinated pilot evidence; it is not independent adoption or a VUO.",
-    "Obtain the first genuinely independent external participation evidence; historical, coordinated, AION-operated and synthetic identities are not proof.",
-    "Prove a qualifying VUO and later meaningful requester return before expanding distribution.",
-    "Configure and verify a real settlement rail before claiming completed machine payments.",
+    "Production deploy/migration remains an owner control-plane gate; it is not part of the normal agent customer loop.",
+    "Publish and verify production machine-discovery surfaces after deployment so agents can discover and execute AION autonomously.",
+    "Configure, owner-enable and verify a real settlement rail before any priced capability can claim completed machine payments or revenue.",
+    "After a real-money rail is enabled, measure real Settled Agent Transactions, repeat paid use, revenue, variable cost and contribution margin from durable production records.",
 ]
 
 
