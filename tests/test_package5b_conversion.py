@@ -212,10 +212,36 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     assert "Package 5 participation/VUO endpoints are legacy telemetry" in guidance["description"]
     assert "verify_external_callability" not in skills
     assert "submit_package5_vuo" not in skills
-    paid = skills["aion_paid_route_intelligence"]
-    assert "x402" in paid["description"]
-    assert "payment-readiness" in paid["examples"][0]
-    assert "route-intelligence/purchase" in paid["examples"][1]
+    assert "aion_paid_route_intelligence" not in skills
+    serialized_skills = json.dumps(card["skills"]).lower()
+    assert "route-intelligence/payment-readiness" not in serialized_skills
+    assert "route-intelligence/purchase" not in serialized_skills
+    assert "mark-paid" not in serialized_skills
+    assert "settlement" not in serialized_skills
+
+    route_guidance = skills["aion_commercial_route_planning"]
+    assert "a2a provides guidance only" in route_guidance["description"].lower()
+    assert route_guidance["examples"] == ['{"action":"onboarding"}']
+
+    onboarding = client.get("/onboarding").json()
+    priced = onboarding["verified_outcome_journey"]["machine_payment_when_required"][
+        "priced_route_intelligence"
+    ]
+    assert priced["readiness"]["url"].endswith(
+        "/commercial/route-intelligence/payment-readiness"
+    )
+    assert priced["purchase"]["url"].endswith(
+        "/commercial/route-intelligence/purchase"
+    )
+
+    ard_entry = client.get("/.well-known/ard.json").json()["entries"][0]
+    assert "PaidRouteIntelligence" in ard_entry["capabilities"]
+    assert ard_entry["metadata"]["routeIntelligencePaymentReadiness"].endswith(
+        "/commercial/route-intelligence/payment-readiness"
+    )
+    assert ard_entry["metadata"]["routeIntelligencePurchase"].endswith(
+        "/commercial/route-intelligence/purchase"
+    )
     assert guidance["examples"] == ['{"action":"onboarding"}']
 
 

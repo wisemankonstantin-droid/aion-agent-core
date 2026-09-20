@@ -81,6 +81,18 @@ def test_readiness_recognizes_non_invoking_external_validation():
     assert result["local_readiness"]["external_validation"] is True
 
 
+def test_readiness_recognizes_fail_closed_owner_real_money_gate():
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "readiness.py")],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    assert result["local_readiness"]["package_6a_economic_kernel"] is True
+
+
 def test_public_discovery_resolves_then_validates(monkeypatch):
     resolved = [
         {"identifier": "one", "url": "https://one.example/card"},

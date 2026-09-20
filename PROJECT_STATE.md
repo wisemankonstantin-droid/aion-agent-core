@@ -148,6 +148,28 @@ Missing, malformed or loosely truthy values remain disabled. This branch does
 not set production environment variables, does not activate x402, does not
 contact a facilitator, does not move money and does not create settlement.
 
+The bounded PR #15 correction keeps paid Route Intelligence discoverable
+through onboarding, the shared machine journey, ARD/AI Catalog, REST and
+OpenAPI while removing its purchase/settlement skill from the public A2A Agent
+Card. A2A remains guidance/discovery-only for this protected commercial path;
+it does not advertise payment, purchase, mark-paid or settlement mutation.
+The repository readiness check also recognizes the explicit fail-closed owner
+gate instead of requiring the superseded hardcoded-disabled assignment.
+
+Local validation for this bounded correction:
+
+- focused A2A/payment/discovery/source-integrity matrix: 77 passed;
+- final full locked-environment suite: 653 passed, 23 PostgreSQL-only tests
+  skipped locally;
+- dependency integrity, 188-file secret scan, compileall, workflow YAML,
+  readiness and fresh SQLite migration to `0016_official_data_execution_v1`
+  passed; and
+- official MCP 2026-07-28 and A2A 1.0 interoperability passed against an
+  isolated local HTTPS server and disposable database.
+
+Independent exact-SHA AION CI and PostgreSQL release-gate evidence is required
+before this branch is merge-ready.
+
 ## World Bank executable path
 
 Capability:
