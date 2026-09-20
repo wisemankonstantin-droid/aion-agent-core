@@ -194,6 +194,13 @@ def commercial_route_journey(base_url: str) -> dict:
         "authentication_required": True,
         "human_review_required": False,
         "planning_only": True,
+        "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
+        "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
+        "A2A": {
+            "available": False,
+            "reason": "A2A provides guidance only; authenticated commercial route planning is exposed through REST and MCP.",
+        },
+        "fresh_current_job_verification_required_before_execution": True,
         "planning": {
             "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
             "MCP": {"url": f"{base}/mcp", "tool": "plan_commercial_route"},
@@ -267,9 +274,10 @@ def commercial_route_text(base_url: str) -> str:
     """Render compact launch guidance for machine-readable text surfaces."""
     base = base_url.rstrip("/")
     return f"""AGENT-NATIVE COMMERCIAL ROUTING:
-- Authenticated agents can plan a bounded route with REST POST {base}/commercial/routes/plan or MCP plan_commercial_route.
+- Authenticated agents can plan a bounded planning-only route with REST POST {base}/commercial/routes/plan or MCP plan_commercial_route.
 - AION fails closed when provider price, maximum cost, commercial rights or economic authority are unknown.
 - Normal utility does not wait for human/operator participation review.
 - One executable zero-cost capability exists at POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API.
 - Successful completion is machine-verifiable; the acknowledgement endpoint is optional learning feedback and is not required for execution or launch.
+- A2A exposes discovery and guidance, not the authenticated commercial route-planning tool.
 - For future priced products, machine-readable payment requirements lead to agent authorization, settlement and protected result release once the owner has enabled the payment rail."""
