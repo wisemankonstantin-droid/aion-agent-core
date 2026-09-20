@@ -224,18 +224,26 @@ pre-production gate #68. PR #13 merged to repository main as
 `e1bbbec76be43de39ad213d2fe0ebb6f12d144d7`, and exact merge-SHA AION CI
 #331 passed. The merge tree is identical to the exact-PG-tested candidate tree.
 
-As of the 2026-09-20 read-only Render/Neon verification, production still
-serves the older deploy `dep-daju1vdg1s2s73c6gtp0` at commit
-`18afa934fdddef2a0489874c5ac2446fcf947475`; AutoDeploy remains OFF. The
-prepared Neon PostgreSQL 18 production database reports Alembic revision
-`0014_conversation_intel_v1`. Therefore migrations `0015` and `0016`, the
-World Bank direct execution path, and the agent-native PR #13 correction are
-repository-main behavior but are not yet production-live.
+The controlled production release completed on 2026-09-20 as Render deploy
+`dep-dao02e3tqb8s73dd9gc0` at exact main SHA
+`094077fb4f4d853714764c73a2890b157da7141d`. AutoDeploy remained OFF and
+production configuration/secrets were not changed.
 
-The next controlled release step is therefore a separately authorized production
-deploy of the verified current main, with its normal Alembic upgrade to head,
-while keeping AutoDeploy OFF, preserving production configuration/secrets and
-leaving real-money activation disabled.
+Startup executed the exact additive migration chain
+`0014_conversation_intel_v1 -> 0015_x402_exact_upfront_v1 -> 0016_official_data_execution_v1`.
+Direct Neon verification after deploy reports production Alembic revision
+`0016_official_data_execution_v1`.
+
+The exact live machine gate passed for the deployed SHA and schema. One bounded
+authenticated production smoke for `world_bank.population.latest` completed
+successfully through the official World Bank WDI provider with HTTP 200,
+machine verification, zero provider/customer price and no payment/settlement.
+The durable execution ID is `cc441763-2202-4102-bd18-76ba926dfa61`.
+
+The next bounded engineering step is an explicit fail-closed owner-controlled
+real-money activation gate. Preparing and testing that gate does not itself
+enable x402, modify production configuration, contact a facilitator or move
+money.
 
 Real-money rail activation remains a separate owner/control-plane gate. Once a
 rail is safely enabled, ordinary agent transactions through that rail must not
