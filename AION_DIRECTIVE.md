@@ -267,16 +267,23 @@ This directive does not authorize unsolicited outreach, production mutation, dep
 
 ## Current critical path
 
-`audit -> normalize GitHub -> reproducible deployment -> identity/deduplication -> A2A conformance -> core product loop -> matching -> external-agent validation -> metrics/retention -> security/reliability/testing -> machine payments -> 10 retained external agents -> growth`
+Resolve the mutable checkpoint from actual GitHub / CI / production state before
+acting. The default agent-native launch sequence is:
 
-The accepted delivery sequence and current package status are defined in
-`AION_MASTER_DELIVERY_ROADMAP.md`. Packages 3 and 3B are historically accepted, merged and production-released
-through Package 4. Package 5 engineering is merged and live; its historical
-proof counters are legacy telemetry and do not gate launch. Package 5B and
-Package 5C are merged and live. Package 6A is present in production ancestry as
-disabled Economic Execution Kernel infrastructure, and Package 5D and Package
-5E are accepted, merged, deployed and live. Real-money adapters remain disabled,
-so real settlement/revenue is still zero until an owner-enabled rail and an
-actual agent payment occur. Human outreach status is not a launch criterion. Live
-merge/main and deployment status must still be verified directly. Each package
-remains subject to the criticality ordering and release gates above.
+`executable capability -> controlled production release -> machine discovery -> direct external-agent request -> bounded execution -> machine-verifiable result -> machine-readable price/payment when priced -> settlement -> repeat paid use -> positive contribution margin -> scale`
+
+Historical Package 5 participation/VUO surfaces are compatibility telemetry only.
+They do not gate normal utility, distribution, execution, payment or settlement.
+
+Human outreach, interviews, design-partner replies and operator usefulness
+confirmation are not launch prerequisites.
+
+Owner/control-plane gates remain separate for governed mutations of AION itself,
+including merge where configured, production deploy/rollback, production
+migration/config/secrets, real-money rail activation and destructive
+infrastructure changes.
+
+Current package status and the immediate bounded next action belong in
+`AION_MASTER_DELIVERY_ROADMAP.md` and `PROJECT_STATE.md`, and must be
+reverified against external state before every write operation.
+
