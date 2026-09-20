@@ -10,6 +10,7 @@ on:
       - codex/package-4-controlled-production-release
       - codex/package-5-independent-external-agent-proof-v1
       - codex/package-6a-economic-execution-kernel-v1
+      - codex/package-6b-real-money-control-gate-v1
       - codex/package-5d-active-distribution-pilot-v1
       - codex/package-5e-ambassador-operator-control-v1
       - codex/package-5f-conversation-intelligence-v1
