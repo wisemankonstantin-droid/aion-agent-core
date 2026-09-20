@@ -244,25 +244,24 @@ def test_package5e_manifest_has_current_production_baseline_and_no_fake_proof():
     assert "does not claim the future SHA of its own documentation commit" in closeout
 
 
-def test_package5b_uses_shared_journey_and_does_not_add_a2a_protected_adapter():
+def test_agent_only_machine_journey_has_no_human_commercial_gate():
     main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     a2a_source = (ROOT / "app" / "a2a_official.py").read_text(encoding="utf-8")
     journey_source = (ROOT / "app" / "machine_journey.py").read_text(encoding="utf-8")
-    migration_names = {
-        path.name for path in (ROOT / "alembic" / "versions").glob("*.py")
-    }
+    official_source = (ROOT / "app" / "services" / "official_data_execution.py").read_text(encoding="utf-8")
 
     assert "verified_outcome_journey" in main_source
     assert "verified_outcome_journey" in a2a_source
-    assert "No credential-bearing A2A Package 3 action adapter exists" in journey_source
-    assert "No credential-bearing A2A Package 5 write adapter exists" in journey_source
-    assert '"available": False' in journey_source
+    assert "execute_world_bank_population" in main_source
+    assert "get_world_bank_execution" in main_source
+    assert "machine_verified_request_contract_satisfied" in official_source
+    assert "acknowledge_population_usefulness" not in official_source
+    assert '@app.post("/commercial/executions/{execution_id}/acknowledge")' not in main_source
+    assert "wait for operator review" not in journey_source
+    assert "separate_human_usefulness_acknowledgement_required" in journey_source
+    assert "human_participant_required" in journey_source
     assert 'action == "verify_external_callability"' not in a2a_source
     assert 'action == "submit_package5_vuo"' not in a2a_source
-    assert "0011_economic_kernel_v1.py" in migration_names
-    assert "0012_ambassador_pilot_v1.py" in migration_names
-    assert "0013_ambassador_control_v1.py" in migration_names
-    assert "0014_conversation_intel_v1.py" in migration_names
 
 
 def test_package6a_kernel_is_single_shared_disabled_money_boundary():

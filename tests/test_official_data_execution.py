@@ -71,8 +71,8 @@ def _execute(key: str, *, idem: str, country_code: str = "US"):
     )
 
 
-def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypatch):
-    agent, key = _join("success")
+def test_real_supply_route_executes_verifies_persists_and_establishes_machine_vuo(monkeypatch):
+    _, key = _join("success")
     calls = []
 
     def fetch(method, url, **kwargs):
@@ -147,7 +147,13 @@ def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypat
         "method": service.VERIFICATION_METHOD,
         "capability_verified": True,
     }
-    assert data["outcome"]["useful_outcome"] is False
+    assert data["outcome"] == {
+        "useful_outcome": True,
+        "acceptance_method": "deterministic_capability_contract_v1",
+        "acceptance_evidence": "machine_verified_request_contract_satisfied_v1",
+        "human_confirmation_required": False,
+        "vuo_state": "machine_verified_request_contract_satisfied",
+    }
     assert len(calls) == 1
     assert calls[0][0] == "GET"
     assert calls[0][1].startswith(service.PROVIDER_BASE + "/country/US/")
@@ -167,44 +173,20 @@ def test_real_supply_route_executes_verifies_persists_and_acknowledges(monkeypat
     assert status.status_code == 200
     assert status.json()["execution"]["response_digest"].startswith("sha256:")
 
-    acknowledgement = client.post(
-        f"/commercial/executions/{data['execution_id']}/acknowledge",
-        headers=_auth(key),
-        json={
-            "usefulness_confirmed": True,
-            "usefulness_evidence": "requester_confirms_population_result_was_useful",
-        },
-    )
-    assert acknowledgement.status_code == 200, acknowledgement.text
-    acknowledged = acknowledgement.json()
-    assert acknowledged["outcome"] == {
-        "useful_outcome": True,
-        "usefulness_evidence": "requester_confirms_population_result_was_useful",
-        "vuo_state": "requester_confirmed_verified_useful_outcome",
-    }
-    assert acknowledged["requester_history"]["verified_execution_count"] >= 1
-    assert acknowledged["requester_history"]["confirmed_useful_outcome_count"] >= 1
-    assert acknowledged["truth_boundaries"]["zero_price_execution_is_not_paid_vuo"] is True
     with SessionLocal() as db:
         learning = learning_engine.commercial_execution_evidence_summary(db)
     assert learning["verified_execution_count"] >= 1
-    assert learning["usefulness_confirmed_count"] >= 1
+    assert learning["machine_verified_vuo_count"] >= 1
+    assert learning["human_confirmation_required"] is False
     assert learning["provider_failure_count"] == 0
     assert learning["routing_effect"] == "bounded_evidence_only_no_autonomous_policy_change"
 
-    acknowledgement_replay = client.post(
+    removed_ack = client.post(
         f"/commercial/executions/{data['execution_id']}/acknowledge",
         headers=_auth(key),
-        json={
-            "usefulness_confirmed": True,
-            "usefulness_evidence": "requester_confirms_population_result_was_useful",
-        },
+        json={"usefulness_confirmed": True},
     )
-    assert acknowledgement_replay.status_code == 200
-    assert acknowledgement_replay.json()["idempotent_replay"] is True
-    assert acknowledgement_replay.json()["requester_history"]["confirmed_useful_outcome_count"] >= 1
-    assert agent["id"] == data["requester_history"].get("agent_id", agent["id"])
-
+    assert removed_ack.status_code == 404
 
 def test_validation_authorization_and_idempotency_fail_before_extra_contact(monkeypatch):
     _, key = _join("validation")
@@ -286,16 +268,12 @@ def test_provider_failure_is_durable_non_vuo_and_requester_scoped(monkeypatch):
     )
     assert forbidden.status_code == 404
 
-    acknowledgement = client.post(
+    removed_ack = client.post(
         f"/commercial/executions/{data['execution_id']}/acknowledge",
         headers=_auth(key),
-        json={
-            "usefulness_confirmed": True,
-            "usefulness_evidence": "requester_confirms_population_result_was_useful",
-        },
+        json={"usefulness_confirmed": True},
     )
-    assert acknowledgement.status_code == 409
-    assert acknowledgement.json()["detail"]["code"] == "verified_result_required"
+    assert removed_ack.status_code == 404
 
 
 @pytest.mark.parametrize(
