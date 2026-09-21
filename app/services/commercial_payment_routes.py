@@ -144,7 +144,7 @@ def _payment_response_header(data: dict) -> str:
     accounting = data.get("accounting") or {}
     if accounting.get("settled_atomic_amount_source") in {
         "facilitator_reported",
-        "onchain_base_usdc_transfer_event",
+        "onchain_base_usdc_eip3009_transfer",
     }:
         response["amount"] = accounting["settled_atomic_amount"]
     raw = json.dumps(response, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -179,7 +179,7 @@ def install_commercial_payment_routes(app) -> None:
             description=(
                 "Read-only truth surface. It creates no payment, entitlement, revenue, "
                 "VUO, membership or adoption evidence. Production-first semantics are "
-                "buyer-funded direct Base USDC; x402 remains optional compatibility."
+                "buyer-broadcast purchase-bound EIP-3009 Base USDC; x402 remains optional compatibility."
             ),
         )
 
@@ -338,10 +338,11 @@ def install_commercial_payment_routes(app) -> None:
             include_in_schema=True,
             summary="Purchase a prepared AION Route Intelligence result",
             description=(
-                "No AION membership is required. Preferred launch flow is a buyer-funded "
-                "native USDC transfer on Base: the buyer pays gas, submits purchase ID and "
-                "transaction hash, and AION releases the frozen result only after read-only "
-                "on-chain verification. Legacy x402 exact/upfront remains compatible."
+                "No AION membership is required. Preferred launch flow is buyer-broadcast "
+                "purchase-bound EIP-3009 native USDC on Base: the buyer or its selected "
+                "broadcaster pays gas, submits purchase ID and transaction hash, and AION "
+                "releases the frozen result only after read-only on-chain verification. "
+                "Legacy x402 exact/upfront remains compatible."
             ),
         )
         app.add_middleware(_CommercialPurchaseBodyLimit)
