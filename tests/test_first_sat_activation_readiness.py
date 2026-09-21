@@ -1,9 +1,12 @@
 """Read-only first-SAT activation preflight; never contacts a payment rail."""
 
-import base64
 import json
 
 from app.services import economic_kernel
+from app.services.direct_base_usdc import (
+    BASE_USDC_ADDRESS,
+    DIRECT_ENABLE_ENV,
+)
 from app.services.first_sat_activation import first_sat_activation_preflight
 from app.services.paid_route_intelligence import (
     CURRENCY_ENV,
@@ -11,15 +14,10 @@ from app.services.paid_route_intelligence import (
     PRICE_ENV,
     QUOTE_ENABLE_ENV,
 )
-from app.services.x402_exact_upfront import EXACT_UPFRONT_ENABLE_ENV
 from app.services.x402_payment_offer import (
     ASSET_CODE_ENV,
     ASSET_DECIMALS_ENV,
     ASSET_ENV,
-    ASSET_NAME_ENV,
-    ASSET_TRANSFER_METHOD_ENV,
-    ASSET_VERSION_ENV,
-    MAX_TIMEOUT_SECONDS_ENV,
     NETWORK_ENV,
     PAY_TO_ENV,
 )
@@ -31,18 +29,12 @@ def _configured_environment(monkeypatch):
         CURRENCY_ENV: "USDC",
         PRICE_ENV: "1.25",
         MAX_PAYMENT_FEE_ENV: "0.10",
-        EXACT_UPFRONT_ENABLE_ENV: "1",
+        DIRECT_ENABLE_ENV: "1",
         NETWORK_ENV: "eip155:8453",
-        ASSET_ENV: "0x" + "1" * 40,
+        ASSET_ENV: BASE_USDC_ADDRESS,
         ASSET_CODE_ENV: "USDC",
-        ASSET_NAME_ENV: "USD Coin",
-        ASSET_VERSION_ENV: "2",
         ASSET_DECIMALS_ENV: "6",
         PAY_TO_ENV: "0x" + "2" * 40,
-        MAX_TIMEOUT_SECONDS_ENV: "60",
-        ASSET_TRANSFER_METHOD_ENV: "eip3009",
-        "CDP_API_KEY_ID": "organizations/example/apiKeys/example",
-        "CDP_API_KEY_SECRET": base64.b64encode(bytes(range(64))).decode("ascii"),
         "AION_RELEASE_SHA": "a" * 40,
     }
     for name, value in values.items():
@@ -61,13 +53,15 @@ def test_preflight_is_secret_safe_read_only_and_stops_at_master_gate(monkeypatch
     result = first_sat_activation_preflight(CurrentSchemaSession(), expected_release_sha="a" * 40)
 
     serialized = json.dumps(result, sort_keys=True)
-    assert configured["CDP_API_KEY_SECRET"] not in serialized
-    assert configured["CDP_API_KEY_ID"] not in serialized
+    assert "CDP_API_KEY" not in serialized
     assert result["preflight_only"] is True
     assert result["facilitator_contacted"] is False
+    assert result["blockchain_rpc_contacted"] is False
     assert result["payment_attempted"] is False
     assert result["schema"]["current"] is True
     assert result["release"]["release_sha"] == "a" * 40
+    assert result["payment"]["buyer_pays_gas"] is True
+    assert result["payment"]["facilitator_required"] is False
     assert result["activation_ready_except_master_gate"] is True
     assert result["activation_ready"] is False
     assert result["blocking_reasons"] == ["real_money_execution_disabled"]
@@ -117,6 +111,6 @@ def test_preflight_requires_exact_expected_release_and_representable_atomic_pric
     non_atomic = first_sat_activation_preflight(
         CurrentSchemaSession(), expected_release_sha="a" * 40
     )
-    assert "quote_not_representable_in_asset_atomic_units" in non_atomic["blocking_reasons"]
+    assert "direct_payment_asset_decimals_not_6" in non_atomic["blocking_reasons"]
     assert non_atomic["activation_ready_except_master_gate"] is False
     assert non_atomic["human_gate"]["required"] is False
