@@ -1,9 +1,8 @@
 """Late-installed commercial payment routes.
 
-The production-first path is x402 v2 ``exact`` with ``paymentFlow=upfront``:
-AION prepares a bounded result before payment, settlement commits before release,
-and the same signed EIP-3009 payment identity cannot fund two results. The older
-auth-capture builder remains visible as future compatibility readiness only.
+The production-first path is buyer-broadcast purchase-bound EIP-3009 Base USDC: the buyer broadcasts
+and pays gas, then AION verifies the on-chain Transfer before releasing the
+prepared result. x402 exact/upfront remains available as optional compatibility.
 """
 from __future__ import annotations
 
@@ -16,6 +15,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from .direct_base_usdc import DIRECT_PAYMENT_METHOD, direct_base_usdc_readiness
 from .paid_route_intelligence import (
     ROUTE_INTELLIGENCE_SKU,
     register_paid_route_intelligence_profile,
@@ -25,6 +25,7 @@ from .route_intelligence_purchase import (
     payment_required_response_data,
     prepare_route_intelligence,
     settle_and_release,
+    settle_direct_and_release,
 )
 from .x402_exact_upfront import (
     encode_exact_payment_required,
@@ -141,7 +142,10 @@ def _payment_response_header(data: dict) -> str:
         "payer": payment["payer"],
     }
     accounting = data.get("accounting") or {}
-    if accounting.get("settled_atomic_amount_source") == "facilitator_reported":
+    if accounting.get("settled_atomic_amount_source") in {
+        "facilitator_reported",
+        "onchain_base_usdc_eip3009_transfer",
+    }:
         response["amount"] = accounting["settled_atomic_amount"]
     raw = json.dumps(response, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
@@ -155,11 +159,12 @@ def install_commercial_payment_routes(app) -> None:
 
     if "/commercial/route-intelligence/payment-readiness" not in existing:
         def readiness_endpoint():
-            primary = exact_upfront_readiness()
+            primary = direct_base_usdc_readiness()
             return JSONResponse(
                 {
                     **primary,
-                    "preferred_launch_path": "exact_upfront",
+                    "preferred_launch_path": "direct_base_usdc_eip3009_buyer_broadcast",
+                    "legacy_x402_exact_upfront_compatibility": exact_upfront_readiness(),
                     "future_auth_capture_compatibility": payment_offer_readiness(),
                 },
                 headers={"Cache-Control": "public, max-age=60"},
@@ -174,7 +179,7 @@ def install_commercial_payment_routes(app) -> None:
             description=(
                 "Read-only truth surface. It creates no payment, entitlement, revenue, "
                 "VUO, membership or adoption evidence. Production-first semantics are "
-                "x402 exact/upfront; auth-capture remains future compatibility."
+                "buyer-broadcast purchase-bound EIP-3009 Base USDC; x402 remains optional compatibility."
             ),
         )
 
@@ -182,33 +187,97 @@ def install_commercial_payment_routes(app) -> None:
         def purchase_endpoint(
             payload: dict,
             payment_signature: str | None = Header(default=None, alias="PAYMENT-SIGNATURE"),
+            direct_purchase_id: str | None = Header(default=None, alias="X-AION-PURCHASE-ID"),
+            direct_transaction: str | None = Header(default=None, alias="X-AION-PAYMENT-TX"),
             db: Session = Depends(get_db),
         ):
-            readiness = exact_upfront_readiness()
+            direct_readiness = direct_base_usdc_readiness()
+            x402_readiness = exact_upfront_readiness()
             try:
-                if payment_signature is None:
-                    if not readiness["launch_ready"]:
+                direct_proof_present = bool(direct_purchase_id or direct_transaction)
+                if direct_proof_present:
+                    if not direct_purchase_id or not direct_transaction:
+                        raise RouteIntelligencePurchaseError(
+                            400,
+                            "direct_payment_proof_incomplete",
+                            "Both X-AION-PURCHASE-ID and X-AION-PAYMENT-TX are required",
+                        )
+                    if not direct_readiness["launch_ready"]:
+                        return JSONResponse(
+                            status_code=503,
+                            content={
+                                "code": "direct_base_usdc_not_activated",
+                                "product_sku": ROUTE_INTELLIGENCE_SKU,
+                                "payment_offer_configured": direct_readiness[
+                                    "payment_offer_configured"
+                                ],
+                                "real_money_execution_enabled": direct_readiness[
+                                    "real_money_execution_enabled"
+                                ],
+                                "blocking_reasons": direct_readiness["blocking_reasons"],
+                                "aion_membership_required": False,
+                                "result_released": False,
+                            },
+                            headers={"Cache-Control": "private, no-store"},
+                        )
+                    data = settle_direct_and_release(
+                        db,
+                        payload,
+                        purchase_id=direct_purchase_id,
+                        transaction_hash=direct_transaction,
+                    )
+                    return JSONResponse(
+                        status_code=200,
+                        content=data,
+                        headers={
+                            "PAYMENT-RESPONSE": _payment_response_header(data),
+                            "Cache-Control": "private, no-store",
+                        },
+                    )
+
+                if payment_signature is not None:
+                    if not x402_readiness["launch_ready"]:
                         return JSONResponse(
                             status_code=503,
                             content={
                                 "code": "x402_exact_upfront_not_activated",
                                 "product_sku": ROUTE_INTELLIGENCE_SKU,
-                                "quote_configured": readiness["quote_configured"],
-                                "payment_offer_configured": readiness["payment_offer_configured"],
-                                "facilitator_credentials_configured": readiness[
-                                    "facilitator_credentials_configured"
-                                ],
-                                "live_payment_handler_implemented": readiness[
-                                    "live_payment_handler_implemented"
-                                ],
-                                "real_money_execution_enabled": readiness[
-                                    "real_money_execution_enabled"
-                                ],
-                                "blocking_reasons": readiness["blocking_reasons"],
+                                "blocking_reasons": x402_readiness["blocking_reasons"],
                                 "aion_membership_required": False,
+                                "result_released": False,
                             },
                             headers={"Cache-Control": "private, no-store"},
                         )
+                    data = settle_and_release(db, payload, payment_signature)
+                    return JSONResponse(
+                        status_code=200,
+                        content=data,
+                        headers={
+                            "PAYMENT-RESPONSE": _payment_response_header(data),
+                            "Cache-Control": "private, no-store",
+                        },
+                    )
+
+                if direct_readiness["launch_ready"]:
+                    row = prepare_route_intelligence(db, payload)
+                    info = payment_required_response_data(row)
+                    required = info.pop("payment_required")
+                    return JSONResponse(
+                        status_code=402,
+                        content={
+                            "code": "payment_required",
+                            "payment_method": DIRECT_PAYMENT_METHOD,
+                            "payment_flow": "upfront",
+                            "buyer_pays_gas": True,
+                            "facilitator_required": False,
+                            "aion_membership_required": False,
+                            "payment_instructions": required,
+                            **info,
+                        },
+                        headers={"Cache-Control": "private, no-store"},
+                    )
+
+                if x402_readiness["launch_ready"]:
                     row = prepare_route_intelligence(db, payload)
                     info = payment_required_response_data(row)
                     required = info.pop("payment_required")
@@ -229,14 +298,25 @@ def install_commercial_payment_routes(app) -> None:
                         },
                     )
 
-                data = settle_and_release(db, payload, payment_signature)
                 return JSONResponse(
-                    status_code=200,
-                    content=data,
-                    headers={
-                        "PAYMENT-RESPONSE": _payment_response_header(data),
-                        "Cache-Control": "private, no-store",
+                    status_code=503,
+                    content={
+                        "code": "commercial_payment_not_activated",
+                        "product_sku": ROUTE_INTELLIGENCE_SKU,
+                        "preferred_launch_path": "direct_base_usdc_eip3009_buyer_broadcast",
+                        "payment_offer_configured": direct_readiness[
+                            "payment_offer_configured"
+                        ],
+                        "real_money_execution_enabled": direct_readiness[
+                            "real_money_execution_enabled"
+                        ],
+                        "blocking_reasons": direct_readiness["blocking_reasons"],
+                        "legacy_x402_blocking_reasons": x402_readiness[
+                            "blocking_reasons"
+                        ],
+                        "aion_membership_required": False,
                     },
+                    headers={"Cache-Control": "private, no-store"},
                 )
             except RouteIntelligencePurchaseError as exc:
                 return JSONResponse(
@@ -256,12 +336,13 @@ def install_commercial_payment_routes(app) -> None:
             purchase_endpoint,
             methods=["POST"],
             include_in_schema=True,
-            summary="Purchase a prepared AION Route Intelligence result through x402",
+            summary="Purchase a prepared AION Route Intelligence result",
             description=(
-                "No AION membership is required. AION first prepares a bounded route "
-                "snapshot without revealing it, then exact/upfront x402 settlement must "
-                "succeed before that frozen result is released. PAYMENT-SIGNATURE is "
-                "never stored raw; duplicate payment identities cannot fund two results."
+                "No AION membership is required. Preferred launch flow is buyer-broadcast "
+                "purchase-bound EIP-3009 native USDC on Base: the buyer or its selected "
+                "broadcaster pays gas, submits purchase ID and transaction hash, and AION "
+                "releases the frozen result only after read-only on-chain verification. "
+                "Legacy x402 exact/upfront remains compatible."
             ),
         )
         app.add_middleware(_CommercialPurchaseBodyLimit)

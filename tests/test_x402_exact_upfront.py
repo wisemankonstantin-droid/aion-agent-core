@@ -264,7 +264,7 @@ def test_disabled_real_money_gate_returns_503_without_preparing_or_creating_memb
         json={"need": "research"},
     )
     assert response.status_code == 503
-    assert response.json()["code"] == "x402_exact_upfront_not_activated"
+    assert response.json()["code"] == "commercial_payment_not_activated"
     assert calls == []
     with SessionLocal() as db:
         assert (db.scalar(select(func.count()).select_from(RouteIntelligencePurchase)) or 0) == 0
@@ -356,6 +356,7 @@ def test_settlement_releases_frozen_result_once_and_replay_returns_same_entitlem
         assert row.transaction_id == "0x" + "4" * 64
         assert row.accounting_evidence == {
             "schema": "first_sat_accounting_v1",
+            "payment_method": "x402_exact_upfront",
             "currency": "USDC",
             "quoted_gross_revenue": "1.25",
             "quoted_atomic_amount": "1250000",

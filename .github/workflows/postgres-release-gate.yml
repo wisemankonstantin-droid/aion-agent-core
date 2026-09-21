@@ -18,6 +18,7 @@ on:
       - codex/commercial-router-v1
       - codex/commercial-launch-readiness-v1
       - feat/x402-exact-upfront-v1
+      - aion/direct-base-usdc-buyer-pays-gas-v1
 permissions:
   contents: read
 jobs:

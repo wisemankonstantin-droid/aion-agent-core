@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..release_identity import EXPECTED_SCHEMA_REVISION, release_identity
-from .x402_exact_upfront import exact_upfront_readiness
+from .direct_base_usdc import direct_base_usdc_readiness
 
 
 _SHA = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -17,8 +17,8 @@ _SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 def first_sat_activation_preflight(
     db: Session, *, expected_release_sha: str | None = None
 ) -> dict:
-    """Inspect prerequisites without facilitator contact or money-moving work."""
-    readiness = exact_upfront_readiness()
+    """Inspect prerequisites without payment broadcast or money-moving work."""
+    readiness = direct_base_usdc_readiness()
     try:
         revisions = list(db.scalars(text("SELECT version_num FROM alembic_version")))
     except Exception:
@@ -48,6 +48,7 @@ def first_sat_activation_preflight(
     return {
         "preflight_only": True,
         "facilitator_contacted": False,
+        "blockchain_rpc_contacted": False,
         "payment_attempted": False,
         "entitlement_created": False,
         "revenue_claimed": False,
@@ -78,7 +79,9 @@ def first_sat_activation_preflight(
             ),
         },
         "truth_boundaries": {
-            "local_credential_shape_is_not_remote_acceptance": True,
+            "buyer_pays_gas": True,
+            "facilitator_credentials_not_required": True,
+            "preflight_does_not_contact_base_rpc": True,
             "preflight_is_not_payment": True,
             "configured_quote_is_not_revenue": True,
             "schema_current_is_not_production_deployment": True,

@@ -16,7 +16,7 @@ def test_purchase_surface_does_not_require_aion_membership_or_agent_key():
     )
     assert response.status_code == 503
     body = response.json()
-    assert body["code"] == "x402_exact_upfront_not_activated"
+    assert body["code"] == "commercial_payment_not_activated"
     assert body["aion_membership_required"] is False
     assert response.headers["cache-control"] == "private, no-store"
 
@@ -29,6 +29,6 @@ def test_unsigned_or_signed_payment_attempt_never_turns_missing_aion_auth_into_4
     )
     assert response.status_code == 503
     body = response.json()
-    assert body["code"] == "paid_route_quote_not_configured"
+    assert body["code"] == "x402_exact_upfront_not_activated"
     assert body["aion_membership_required"] is False
     assert body["result_released"] is False
