@@ -82,12 +82,19 @@ MAX_MACHINE_REQUEST_BYTES = 64 * 1024
 MAX_WRITE_REQUEST_BYTES = 256 * 1024
 
 
-def _app_title() -> str:
-    base = "AION Agent Core"
+def _public_claim_proof() -> str | None:
     proof = (os.environ.get("AION_PUBLIC_CLAIM_PROOF") or "").strip()
     if not proof:
-        return base
+        return None
     if len(proof) > 128 or not all(ch.isalnum() or ch in "-_." for ch in proof):
+        return None
+    return proof
+
+
+def _app_title() -> str:
+    base = "AION Agent Core"
+    proof = _public_claim_proof()
+    if not proof:
         return base
     return f"{base} [{proof}]"
 
@@ -230,6 +237,22 @@ def _agent_public(a: models.Agent):
         "reputation": a.reputation,
         "trust_level": a.trust_level,
     }
+
+
+@app.get(
+    "/.well-known/allagents-proof.txt",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+def allagents_claim_proof():
+    proof = _public_claim_proof()
+    if not proof:
+        raise HTTPException(status_code=404, detail="claim proof not configured")
+    return PlainTextResponse(
+        content=proof,
+        media_type="text/plain",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/")
