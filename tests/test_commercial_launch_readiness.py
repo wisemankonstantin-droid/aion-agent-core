@@ -196,11 +196,33 @@ def test_machine_surfaces_lead_with_truthful_commercial_route_guidance():
     assert route["A2A"]["available"] is False
     assert route["fresh_current_job_verification_required_before_execution"] is True
     assert route["truth_boundaries"]["requester_budget_is_preference_not_funds"] is True
+    payment = onboarding["verified_outcome_journey"]["machine_payment_when_required"]["priced_route_intelligence"]
+    assert payment["payment_method"] == "direct_base_usdc_eip3009_buyer_broadcast"
+    assert payment["network"] == "eip155:8453"
+    assert payment["asset_code"] == "USDC"
+    assert payment["buyer_pays_gas"] is True
+    assert payment["aion_pays_gas"] is False
+    assert payment["facilitator_required"] is False
+    assert payment["purchase"]["payment_submission_headers"] == {
+        "purchase_id": "X-AION-PURCHASE-ID",
+        "transaction_hash": "X-AION-PAYMENT-TX",
+    }
+    step7 = onboarding["rest_path"][6]
+    assert step7["payment_method"] == "direct_base_usdc_eip3009_buyer_broadcast"
+    assert step7["buyer_pays_gas"] is True
+    assert step7["facilitator_required"] is False
+    assert "PAYMENT-SIGNATURE" not in json.dumps(onboarding)
+    assert "x402-v2-exact-upfront" not in json.dumps(onboarding)
+
     for path in ("/skill.md", "/llms.txt"):
         text = client.get(path).text
         assert "plan_commercial_route" in text
         assert "planning-only" in text
         assert "A2A exposes discovery and guidance, not the authenticated commercial route-planning tool" in text
+        assert "buyer-broadcast purchase-bound EIP-3009 USDC on Base" in text
+        assert "X-AION-PURCHASE-ID" in text
+        assert "X-AION-PAYMENT-TX" in text
+        assert "PAYMENT-SIGNATURE" not in text
 
 
 def test_agent_card_advertises_cross_interface_planning_without_false_a2a_execution():
