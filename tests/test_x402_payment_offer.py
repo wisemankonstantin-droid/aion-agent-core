@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.main import MCP_TOOLS, app
 from app.services import economic_kernel, x402_payment_offer
+from app.services.direct_base_usdc import DIRECT_PAYMENT_METHOD
 from app.services.paid_route_intelligence import (
     CURRENCY_ENV,
     MAX_PAYMENT_FEE_ENV,
@@ -186,7 +187,7 @@ def test_public_readiness_exposes_auth_capture_only_as_future_compatibility(monk
     response = client.get("/commercial/route-intelligence/payment-readiness")
     assert response.status_code == 200
     data = response.json()
-    assert data["preferred_launch_path"] == "exact_upfront"
+    assert data["preferred_launch_path"] == DIRECT_PAYMENT_METHOD
     assert data["payment_offer_configured"] is False
     future = data["future_auth_capture_compatibility"]
     assert future["payment_offer_configured"] is True
@@ -211,5 +212,5 @@ def test_future_auth_capture_builder_has_independent_activation_gates(monkeypatc
         json={"need": "research"},
     )
     assert purchase.status_code == 503
-    assert purchase.json()["code"] == "x402_exact_upfront_not_activated"
+    assert purchase.json()["code"] == "commercial_payment_not_activated"
     assert "PAYMENT-REQUIRED" not in purchase.headers
