@@ -25,6 +25,7 @@ from ..payment_models import RouteIntelligencePurchase
 from . import economic_kernel
 from .cdp_x402_facilitator import FacilitatorSettlementError, settle_exact_upfront
 from .direct_base_usdc import (
+    DIRECT_PAYMENT_METHOD,
     configured_direct_base_usdc_offer,
     direct_payment_requirements,
     verify_direct_base_usdc_transfer,
@@ -101,7 +102,7 @@ def _accounting_evidence(
     budgeted_contribution = gross - maximum_payment_fee
     budgeted_margin_bps = int((budgeted_contribution / gross) * Decimal(10_000))
     unknown_cost_reasons = ["aion_operating_cost_not_metered"]
-    if payment_method != "direct_base_usdc_transfer":
+    if payment_method != DIRECT_PAYMENT_METHOD:
         unknown_cost_reasons.append(
             "facilitator_settlement_contract_has_no_payment_fee_field"
         )
@@ -190,7 +191,7 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
     direct_offer = configured_direct_base_usdc_offer()
     if direct_offer is not None:
         offer = direct_offer
-        payment_method = "direct_base_usdc_transfer"
+        payment_method = DIRECT_PAYMENT_METHOD
     else:
         offer = configured_exact_upfront_offer()
         payment_method = "x402_exact_upfront"
@@ -214,7 +215,7 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
     result_digest = _digest(prepared_result)
     purchase_id = str(uuid.uuid4())
     expires_at = now + timedelta(seconds=PREPARATION_TTL_SECONDS)
-    if payment_method == "direct_base_usdc_transfer":
+    if payment_method == DIRECT_PAYMENT_METHOD:
         requirements = direct_payment_requirements(
             purchase_id=purchase_id,
             result_digest=result_digest,
@@ -263,7 +264,7 @@ def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
     payment_method = (row.accounting_evidence or {}).get(
         "payment_method", "x402_exact_upfront"
     )
-    if payment_method == "direct_base_usdc_transfer":
+    if payment_method == DIRECT_PAYMENT_METHOD:
         requirements = direct_payment_requirements(
             purchase_id=row.purchase_id,
             result_digest=row.result_digest,
@@ -438,9 +439,9 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
                 "payment_method", "x402_exact_upfront"
             ),
             "scheme": (
-                "direct_transfer"
+                "eip3009_buyer_broadcast"
                 if (row.accounting_evidence or {}).get("payment_method")
-                == "direct_base_usdc_transfer"
+                == DIRECT_PAYMENT_METHOD
                 else "exact"
             ),
             "payment_flow": "upfront",
@@ -516,7 +517,7 @@ def settle_direct_and_release(
             "payment_request_binding_mismatch",
             "Payment proof is bound to a different purchase request",
         )
-    if (row.accounting_evidence or {}).get("payment_method") != "direct_base_usdc_transfer":
+    if (row.accounting_evidence or {}).get("payment_method") != DIRECT_PAYMENT_METHOD:
         raise RouteIntelligencePurchaseError(
             409,
             "payment_method_mismatch",
@@ -538,7 +539,7 @@ def settle_direct_and_release(
 
     payment_digest = _digest(
         {
-            "payment_method": "direct_base_usdc_transfer",
+            "payment_method": DIRECT_PAYMENT_METHOD,
             "transaction": normalized_tx,
         }
     )
@@ -622,13 +623,15 @@ def settle_direct_and_release(
             409, "payment_claim_conflict", "Persisted payment claim is unavailable"
         )
 
+    authorization = requirements["authorization"]["message"]
     settlement = verify_direct_base_usdc_transfer(
         normalized_tx,
         expected_asset=row.asset,
         expected_pay_to=row.pay_to,
         expected_atomic_amount=row.atomic_amount,
-        not_before=_aware(row.prepared_at),
-        not_after=_aware(row.expires_at),
+        expected_authorization_nonce=authorization["nonce"],
+        expected_valid_after=int(authorization["validAfter"]),
+        expected_valid_before=int(authorization["validBefore"]),
     )
 
     outcome = settlement.get("outcome")
@@ -642,10 +645,14 @@ def settle_direct_and_release(
         accounting = dict(row.accounting_evidence or {})
         accounting["settled_atomic_amount"] = str(settlement["amount"])
         accounting["settled_atomic_amount_source"] = (
-            "onchain_base_usdc_transfer_event"
+            "onchain_base_usdc_eip3009_transfer"
         )
         accounting["actual_payment_cost"] = "0"
-        accounting["buyer_paid_gas"] = True
+        accounting["aion_blockchain_gas_cost"] = "0"
+        accounting["buyer_or_buyer_selected_broadcaster_paid_gas"] = True
+        accounting["purchase_bound_authorization_nonce"] = settlement.get(
+            "authorization_nonce"
+        )
         accounting["settlement_finality"] = settlement.get("finality")
         accounting["settlement_recorded"] = True
         accounting["unknown_cost_reasons"] = [
