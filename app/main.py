@@ -1983,6 +1983,8 @@ class _AionA2AV1IngressCompat:
             if obj.get("method")=="message/send":
                 obj["method"]="SendMessage"; changed=True
             m=((obj.get("params") or {}).get("message") or {})
+            if "kind" in m:
+                m.pop("kind",None); changed=True
             if m.get("role")=="user":
                 m["role"]="ROLE_USER"; changed=True
             elif m.get("role")=="agent":
