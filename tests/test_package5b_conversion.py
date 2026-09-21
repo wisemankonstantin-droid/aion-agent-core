@@ -243,8 +243,10 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     assert "direct base usdc" in route_description
     assert "buyer-paid gas" in route_description
     assert "no facilitator" in route_description
-    assert "a2a provides discovery/guidance only" in route_description
-    assert "does not execute or settle" in route_description
+    assert "rest/mcp" in route_description
+    assert "a2a provides guidance only" in route_description
+    assert "does not execute the paid route or move funds" in route_description
+    assert "settle" not in route_description
     assert {
         "route-intelligence",
         "provider-selection",
