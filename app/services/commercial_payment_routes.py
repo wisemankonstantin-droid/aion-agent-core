@@ -1,6 +1,6 @@
 """Late-installed commercial payment routes.
 
-The production-first path is buyer-funded direct Base USDC: the buyer broadcasts
+The production-first path is buyer-broadcast purchase-bound EIP-3009 Base USDC: the buyer broadcasts
 and pays gas, then AION verifies the on-chain Transfer before releasing the
 prepared result. x402 exact/upfront remains available as optional compatibility.
 """
@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from .direct_base_usdc import direct_base_usdc_readiness
+from .direct_base_usdc import DIRECT_PAYMENT_METHOD, direct_base_usdc_readiness
 from .paid_route_intelligence import (
     ROUTE_INTELLIGENCE_SKU,
     register_paid_route_intelligence_profile,
@@ -163,7 +163,7 @@ def install_commercial_payment_routes(app) -> None:
             return JSONResponse(
                 {
                     **primary,
-                    "preferred_launch_path": "direct_base_usdc_buyer_pays_gas",
+                    "preferred_launch_path": "direct_base_usdc_eip3009_buyer_broadcast",
                     "legacy_x402_exact_upfront_compatibility": exact_upfront_readiness(),
                     "future_auth_capture_compatibility": payment_offer_readiness(),
                 },
@@ -266,7 +266,7 @@ def install_commercial_payment_routes(app) -> None:
                         status_code=402,
                         content={
                             "code": "payment_required",
-                            "payment_method": "direct_base_usdc_transfer",
+                            "payment_method": DIRECT_PAYMENT_METHOD,
                             "payment_flow": "upfront",
                             "buyer_pays_gas": True,
                             "facilitator_required": False,
@@ -303,7 +303,7 @@ def install_commercial_payment_routes(app) -> None:
                     content={
                         "code": "commercial_payment_not_activated",
                         "product_sku": ROUTE_INTELLIGENCE_SKU,
-                        "preferred_launch_path": "direct_base_usdc_buyer_pays_gas",
+                        "preferred_launch_path": "direct_base_usdc_eip3009_buyer_broadcast",
                         "payment_offer_configured": direct_readiness[
                             "payment_offer_configured"
                         ],
