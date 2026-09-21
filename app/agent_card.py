@@ -5,7 +5,7 @@ def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for external-agent discovery, provider selection, commercial routing and paid Route Intelligence. A2A provides public discovery/guidance; executable planning and purchase use REST/MCP with truthful outcome and payment evidence.",
+        "description": "A2A 1.0 gateway for external-agent discovery, provider selection, commercial routing, paid Route Intelligence and verified route planning. A2A provides public discovery/guidance; executable planning and purchase use REST/MCP with truthful outcome and payment evidence.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
@@ -68,7 +68,7 @@ def get_agent_card(base_url: str):
                     + "Check REST GET /commercial/route-intelligence/payment-readiness, then purchase through "
                     + "REST POST /commercial/route-intelligence/purchase when launch_ready=true. "
                     + "Payment is direct Base USDC with buyer-paid gas and no facilitator. "
-                    + "A2A provides guidance only for this paid capability; it does not execute the paid route or move funds."
+                    + "A2A provides guidance only for this paid capability; it does not execute the route or move funds."
                 ),
                 "tags": [
                     "aion",
