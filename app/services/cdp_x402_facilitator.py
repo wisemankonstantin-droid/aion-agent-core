@@ -61,6 +61,37 @@ def facilitator_credentials_configured() -> bool:
     )
 
 
+def facilitator_credential_readiness() -> dict:
+    """Validate local credential shape without exposing it or contacting CDP."""
+    key_id_present = bool((os.getenv(CDP_API_KEY_ID_ENV) or "").strip())
+    secret = (os.getenv(CDP_API_KEY_SECRET_ENV) or "").strip()
+    secret_present = bool(secret)
+    secret_locally_valid = False
+    if secret_present:
+        try:
+            _parse_private_key(secret)
+            secret_locally_valid = True
+        except FacilitatorSettlementError:
+            pass
+    reasons = []
+    if not key_id_present:
+        reasons.append("cdp_api_key_id_missing")
+    if not secret_present:
+        reasons.append("cdp_api_key_secret_missing")
+    elif not secret_locally_valid:
+        reasons.append("cdp_api_key_secret_invalid")
+    return {
+        "key_id_present": key_id_present,
+        "secret_present": secret_present,
+        "secret_locally_valid": secret_locally_valid,
+        "credentials_locally_valid": bool(
+            key_id_present and secret_present and secret_locally_valid
+        ),
+        "remote_acceptance_verified": False,
+        "blocking_reasons": reasons,
+    }
+
+
 def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
@@ -69,7 +100,7 @@ def _parse_private_key(secret: str):
     value = secret.replace("\\n", "\n")
     try:
         key = serialization.load_pem_private_key(value.encode("utf-8"), password=None)
-        if isinstance(key, ec.EllipticCurvePrivateKey):
+        if isinstance(key, ec.EllipticCurvePrivateKey) and isinstance(key.curve, ec.SECP256R1):
             return key
     except Exception:
         pass

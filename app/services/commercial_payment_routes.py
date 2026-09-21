@@ -139,8 +139,10 @@ def _payment_response_header(data: dict) -> str:
         "transaction": payment["transaction"],
         "network": payment["network"],
         "payer": payment["payer"],
-        "amount": payment["atomic_amount"],
     }
+    accounting = data.get("accounting") or {}
+    if accounting.get("settled_atomic_amount_source") == "facilitator_reported":
+        response["amount"] = accounting["settled_atomic_amount"]
     raw = json.dumps(response, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
 
@@ -202,6 +204,7 @@ def install_commercial_payment_routes(app) -> None:
                                 "real_money_execution_enabled": readiness[
                                     "real_money_execution_enabled"
                                 ],
+                                "blocking_reasons": readiness["blocking_reasons"],
                                 "aion_membership_required": False,
                             },
                             headers={"Cache-Control": "private, no-store"},

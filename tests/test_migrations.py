@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-EXPECTED_HEAD = "0016_official_data_execution_v1"
+EXPECTED_HEAD = "0017_first_sat_accounting_v1"
 
 
 def _alembic(root, database_url, *args):
@@ -225,6 +225,61 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
         "package5_vuo_proofs",
         "route_intelligence_purchases",
     } <= tables
+
+
+def test_existing_0016_database_gains_first_sat_accounting_and_preserves_rows(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "package-6c-upgrade-path.db"
+    url = "sqlite:///" + database.as_posix()
+
+    _alembic(root, url, "upgrade", "0016_official_data_execution_v1")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO route_intelligence_purchases ("
+            "purchase_id, product_sku, request_digest, request_evidence, "
+            "result_digest, prepared_result, quote_currency, quote_amount, "
+            "network, asset, asset_code, pay_to, atomic_amount, "
+            "payment_requirements_digest, state, prepared_at, expires_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "11111111-1111-4111-8111-111111111111",
+                "aion.verified.route_intelligence.v1",
+                "sha256:" + "1" * 64,
+                '{"need":"research"}',
+                "sha256:" + "2" * 64,
+                '{"selected_provider":null}',
+                "USDC",
+                "1.25",
+                "eip155:8453",
+                "0x" + "1" * 40,
+                "USDC",
+                "0x" + "2" * 40,
+                "1250000",
+                "sha256:" + "3" * 64,
+                "prepared",
+                "2026-09-20 12:00:00",
+                "2026-09-20 12:15:00",
+                "2026-09-20 12:00:00",
+            ),
+        )
+    _alembic(root, url, "upgrade", "head")
+    _alembic(root, url, "check")
+
+    with sqlite3.connect(database) as connection:
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info('route_intelligence_purchases')"
+            ).fetchall()
+        }
+        preserved = connection.execute(
+            "SELECT purchase_id, state, accounting_evidence FROM route_intelligence_purchases"
+        ).fetchone()
+
+    assert revision == EXPECTED_HEAD
+    assert "accounting_evidence" in columns
+    assert preserved == ("11111111-1111-4111-8111-111111111111", "prepared", None)
 
 
 def test_existing_0006_database_upgrades_to_agent_utility_checkpoints(tmp_path):

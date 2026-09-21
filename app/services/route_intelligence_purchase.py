@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import uuid
+from decimal import Decimal
 
 from pydantic import ValidationError
 from sqlalchemy import select, update
@@ -67,6 +68,46 @@ def _digest(value) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _money_text(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def _accounting_evidence(*, quote_amount: str, atomic_amount: str, currency: str) -> dict:
+    plan = configured_route_intelligence_plan()
+    if plan is None:  # Defensive: preparation already proved the plan exists.
+        raise RouteIntelligencePurchaseError(
+            503, "paid_route_quote_not_configured", "Paid Route Intelligence quote changed"
+        )
+    gross = Decimal(quote_amount)
+    maximum_payment_fee = Decimal(plan.payment_fee_allowance)
+    budgeted_contribution = gross - maximum_payment_fee
+    budgeted_margin_bps = int((budgeted_contribution / gross) * Decimal(10_000))
+    return {
+        "schema": "first_sat_accounting_v1",
+        "currency": currency,
+        "quoted_gross_revenue": quote_amount,
+        "quoted_atomic_amount": atomic_amount,
+        "settled_atomic_amount": None,
+        "settled_atomic_amount_source": "not_reported",
+        "known_provider_cost": "0",
+        "actual_payment_cost": None,
+        "actual_aion_operating_cost": None,
+        "configured_payment_fee_allowance": _money_text(maximum_payment_fee),
+        "budgeted_contribution_after_fee_allowance": _money_text(budgeted_contribution),
+        "budgeted_margin_bps_after_fee_allowance": budgeted_margin_bps,
+        "fee_allowance_is_not_observed_cost": True,
+        "exact_contribution_margin_available": False,
+        "unknown_cost_reasons": [
+            "aion_operating_cost_not_metered",
+            "facilitator_settlement_contract_has_no_payment_fee_field",
+        ],
+        "settlement_recorded": False,
+    }
 
 
 def _validated_request(payload: object):
@@ -170,6 +211,11 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
         pay_to=offer["pay_to"],
         atomic_amount=offer["atomic_amount"],
         payment_requirements_digest=_digest(requirements),
+        accounting_evidence=_accounting_evidence(
+            quote_amount=offer["quote_amount"],
+            atomic_amount=offer["atomic_amount"],
+            currency=offer["quote_currency"],
+        ),
         state="prepared",
         prepared_at=now,
         expires_at=now + timedelta(seconds=PREPARATION_TTL_SECONDS),
@@ -350,6 +396,7 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
             "currency": row.quote_currency,
             "atomic_amount": row.atomic_amount,
         },
+        "accounting": row.accounting_evidence,
         "idempotent_replay": idempotent_replay,
         "aion_membership_created": False,
         "commercial_proof_created": False,
@@ -505,6 +552,17 @@ def settle_and_release(db: Session, payload: object, payment_signature: str) -> 
         row.transaction_id = settlement["transaction"]
         row.payer = settlement["payer"]
         row.settlement_response_digest = _digest(settlement.get("response") or settlement)
+        accounting = dict(row.accounting_evidence or {})
+        response = settlement.get("response")
+        reported_amount = response.get("amount") if isinstance(response, dict) else None
+        accounting["settled_atomic_amount"] = (
+            str(reported_amount) if reported_amount is not None else None
+        )
+        accounting["settled_atomic_amount_source"] = (
+            "facilitator_reported" if reported_amount is not None else "not_reported"
+        )
+        accounting["settlement_recorded"] = True
+        row.accounting_evidence = accounting
         row.state = "entitled"
         row.entitled_at = row.updated_at
         row.failure_code = None

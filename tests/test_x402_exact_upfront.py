@@ -95,7 +95,10 @@ def _configure(monkeypatch, *, real_money=True):
     monkeypatch.setenv(MAX_TIMEOUT_SECONDS_ENV, "60")
     monkeypatch.setenv(ASSET_TRANSFER_METHOD_ENV, "eip3009")
     monkeypatch.setenv("CDP_API_KEY_ID", "fixture-key-id")
-    monkeypatch.setenv("CDP_API_KEY_SECRET", "fixture-not-used-because-settlement-is-mocked")
+    monkeypatch.setenv(
+        "CDP_API_KEY_SECRET",
+        base64.b64encode(bytes(range(64))).decode("ascii"),
+    )
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", real_money)
 
 
@@ -200,6 +203,12 @@ def _settled(transaction="0x" + "4" * 64):
 def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     readiness = exact_upfront_readiness()
     assert readiness["launch_ready"] is False
+    assert readiness["activation_ready_except_master_gate"] is False
+    assert "route_intelligence_quote_not_configured" in readiness["blocking_reasons"]
+    assert "x402_exact_upfront_disabled" in readiness["blocking_reasons"]
+    assert "cdp_api_key_id_missing" in readiness["blocking_reasons"]
+    assert "cdp_api_key_secret_missing" in readiness["blocking_reasons"]
+    assert "real_money_execution_disabled" in readiness["blocking_reasons"]
     assert readiness["scheme"] == "exact"
     assert readiness["payment_flow"] == "upfront"
     assert readiness["asset_transfer_method"] == "eip3009"
@@ -207,6 +216,10 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     _configure(monkeypatch, real_money=True)
     ready = exact_upfront_readiness()
     assert ready["launch_ready"] is True
+    assert ready["activation_ready_except_master_gate"] is True
+    assert ready["blocking_reasons"] == []
+    assert ready["facilitator_credentials_locally_valid"] is True
+    assert ready["pay_to_address_configured"] is True
     assert ready["asset_code"] == "USDC"
     required = build_exact_payment_required()
     accepted = required["accepts"][0]
@@ -223,6 +236,22 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     monkeypatch.setenv(ASSET_TRANSFER_METHOD_ENV, "permit2")
     assert exact_upfront_readiness()["payment_offer_configured"] is False
     assert exact_upfront_readiness()["launch_ready"] is False
+    assert "asset_transfer_method_not_eip3009" in exact_upfront_readiness()["blocking_reasons"]
+
+
+def test_readiness_distinguishes_invalid_pay_to_and_invalid_credentials(monkeypatch):
+    _configure(monkeypatch, real_money=False)
+    monkeypatch.setenv(PAY_TO_ENV, "not-an-address")
+    monkeypatch.setenv("CDP_API_KEY_SECRET", "present-but-invalid")
+
+    readiness = exact_upfront_readiness()
+
+    assert readiness["pay_to_address_configured"] is False
+    assert readiness["facilitator_credentials_configured"] is True
+    assert readiness["facilitator_credentials_locally_valid"] is False
+    assert "pay_to_address_invalid" in readiness["blocking_reasons"]
+    assert "cdp_api_key_secret_invalid" in readiness["blocking_reasons"]
+    assert readiness["launch_ready"] is False
 
 
 def test_disabled_real_money_gate_returns_503_without_preparing_or_creating_membership(monkeypatch):
@@ -325,6 +354,27 @@ def test_settlement_releases_frozen_result_once_and_replay_returns_same_entitlem
         assert signature not in serialized
         assert row.payment_payload_digest.startswith("sha256:")
         assert row.transaction_id == "0x" + "4" * 64
+        assert row.accounting_evidence == {
+            "schema": "first_sat_accounting_v1",
+            "currency": "USDC",
+            "quoted_gross_revenue": "1.25",
+            "quoted_atomic_amount": "1250000",
+            "settled_atomic_amount": "1250000",
+            "known_provider_cost": "0",
+            "actual_payment_cost": None,
+            "actual_aion_operating_cost": None,
+            "configured_payment_fee_allowance": "0.1",
+            "budgeted_contribution_after_fee_allowance": "1.15",
+            "budgeted_margin_bps_after_fee_allowance": 9200,
+            "fee_allowance_is_not_observed_cost": True,
+            "settled_atomic_amount_source": "facilitator_reported",
+            "exact_contribution_margin_available": False,
+            "unknown_cost_reasons": [
+                "aion_operating_cost_not_metered",
+                "facilitator_settlement_contract_has_no_payment_fee_field",
+            ],
+            "settlement_recorded": True,
+        }
 
 
 def test_same_payment_identity_cannot_fund_a_different_need(monkeypatch):
@@ -405,6 +455,38 @@ def test_pending_settlement_releases_nothing_and_is_never_auto_retried(monkeypat
         row = db.scalar(select(RouteIntelligencePurchase))
         assert row.state == "settlement_pending"
         assert row.prepared_result == _route_result("research")
+        assert row.accounting_evidence["settlement_recorded"] is False
+        assert row.accounting_evidence["settled_atomic_amount"] is None
+
+
+def test_settlement_without_reported_amount_keeps_observed_amount_unknown(monkeypatch):
+    _configure(monkeypatch)
+    _mock_plan(monkeypatch)
+    settlement = _settled()
+    del settlement["response"]["amount"]
+    monkeypatch.setattr(
+        route_intelligence_purchase,
+        "settle_exact_upfront",
+        lambda payload, requirements: settlement,
+    )
+    assert client.post(
+        "/commercial/route-intelligence/purchase", json={"need": "research"}
+    ).status_code == 402
+
+    paid = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+        headers={"PAYMENT-SIGNATURE": _payment_header()},
+    )
+
+    assert paid.status_code == 200
+    payment_response = json.loads(base64.b64decode(paid.headers["PAYMENT-RESPONSE"]))
+    assert "amount" not in payment_response
+    with SessionLocal() as db:
+        row = db.scalar(select(RouteIntelligencePurchase))
+        assert row.accounting_evidence["settlement_recorded"] is True
+        assert row.accounting_evidence["settled_atomic_amount"] is None
+        assert row.accounting_evidence["settled_atomic_amount_source"] == "not_reported"
 
 
 def test_malformed_or_mismatched_signed_payment_never_contacts_facilitator(monkeypatch):

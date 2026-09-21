@@ -15,6 +15,7 @@ import re
 
 from ..public_origin import canonical_public_origin
 from . import economic_kernel
+from .cdp_x402_facilitator import facilitator_credential_readiness
 from .paid_route_intelligence import (
     ROUTE_INTELLIGENCE_SKU,
     configured_route_intelligence_plan,
@@ -210,11 +211,57 @@ def encode_exact_payment_required(payment_required: dict) -> str:
 def exact_upfront_readiness() -> dict:
     product = route_intelligence_readiness()
     offer = configured_exact_upfront_offer()
-    credentials_present = bool(
-        (os.getenv("CDP_API_KEY_ID") or "").strip()
-        and (os.getenv("CDP_API_KEY_SECRET") or "").strip()
-    )
+    credentials = facilitator_credential_readiness()
     configured = offer is not None
+    plan = configured_route_intelligence_plan()
+    network = (os.getenv(NETWORK_ENV) or "").strip()
+    asset_code = (os.getenv(ASSET_CODE_ENV) or "").strip()
+    token_name = (os.getenv(ASSET_NAME_ENV) or "").strip()
+    token_version = (os.getenv(ASSET_VERSION_ENV) or "").strip()
+    transfer_method = (os.getenv(ASSET_TRANSFER_METHOD_ENV) or "").strip()
+    reasons = []
+    if not product.get("quote_configured"):
+        reasons.append("route_intelligence_quote_not_configured")
+        reasons.extend(product.get("blocking_reasons") or [])
+    if os.getenv(EXACT_UPFRONT_ENABLE_ENV) != "1":
+        reasons.append("x402_exact_upfront_disabled")
+    if not _CAIP_EVM.fullmatch(network):
+        reasons.append("payment_network_missing_or_invalid")
+    if _address(ASSET_ENV) is None:
+        reasons.append("asset_address_missing_or_invalid")
+    if not _ASSET_CODE.fullmatch(asset_code):
+        reasons.append("asset_code_missing_or_invalid")
+    elif plan is not None and asset_code != plan.currency:
+        reasons.append("asset_code_quote_currency_mismatch")
+    if not _TOKEN_NAME.fullmatch(token_name):
+        reasons.append("asset_name_missing_or_invalid")
+    if not _TOKEN_VERSION.fullmatch(token_version):
+        reasons.append("asset_version_missing_or_invalid")
+    if _bounded_int(ASSET_DECIMALS_ENV, minimum=0, maximum=18) is None:
+        reasons.append("asset_decimals_missing_or_invalid")
+    elif plan is not None:
+        atomic_amount = _base_units(
+            plan.customer_price,
+            _bounded_int(ASSET_DECIMALS_ENV, minimum=0, maximum=18),
+        )
+        if atomic_amount is None or int(atomic_amount) <= 0:
+            reasons.append("quote_not_representable_in_asset_atomic_units")
+    if _address(PAY_TO_ENV) is None:
+        reasons.append("pay_to_address_invalid")
+    if _bounded_int(MAX_TIMEOUT_SECONDS_ENV, minimum=1, maximum=3600) is None:
+        reasons.append("payment_timeout_missing_or_invalid")
+    if transfer_method != "eip3009":
+        reasons.append("asset_transfer_method_not_eip3009")
+    reasons.extend(credentials["blocking_reasons"])
+    if not configured and not reasons:
+        reasons.append("payment_offer_not_configured")
+    activation_ready_except_master_gate = bool(
+        configured
+        and credentials["credentials_locally_valid"]
+        and LIVE_EXACT_SETTLEMENT_HANDLER_IMPLEMENTED
+    )
+    if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
+        reasons.append("real_money_execution_disabled")
     return {
         "product_sku": ROUTE_INTELLIGENCE_SKU,
         "protocol": "x402",
@@ -224,15 +271,20 @@ def exact_upfront_readiness() -> dict:
         "asset_transfer_method": "eip3009",
         "quote_configured": bool(product.get("quote_configured")),
         "payment_offer_configured": configured,
-        "facilitator_credentials_configured": credentials_present,
+        "facilitator_credentials_configured": bool(
+            credentials["key_id_present"] and credentials["secret_present"]
+        ),
+        "facilitator_credentials_locally_valid": credentials["credentials_locally_valid"],
+        "facilitator_remote_acceptance_verified": credentials["remote_acceptance_verified"],
+        "pay_to_address_configured": _address(PAY_TO_ENV) is not None,
         "live_payment_handler_implemented": LIVE_EXACT_SETTLEMENT_HANDLER_IMPLEMENTED,
         "real_money_execution_enabled": bool(economic_kernel.REAL_MONEY_EXECUTION_ENABLED),
+        "activation_ready_except_master_gate": activation_ready_except_master_gate,
         "launch_ready": bool(
-            configured
-            and credentials_present
-            and LIVE_EXACT_SETTLEMENT_HANDLER_IMPLEMENTED
+            activation_ready_except_master_gate
             and economic_kernel.REAL_MONEY_EXECUTION_ENABLED
         ),
+        "blocking_reasons": list(dict.fromkeys(reasons)),
         "asset_code": offer["asset_code"] if offer else None,
         "network": offer["network"] if offer else None,
         "purchase_endpoint": "/commercial/route-intelligence/purchase",
@@ -246,5 +298,6 @@ def exact_upfront_readiness() -> dict:
             "permit2_not_in_launch_scope": True,
             "server_enforces_envelope_purchase_and_result_binding": True,
             "eip3009_signature_does_not_sign_aion_purchase_metadata": True,
+            "credential_validation_is_local_shape_validation_not_remote_acceptance": True,
         },
     }

@@ -2,7 +2,7 @@
 
 ## Checkpoint
 
-Date: 2026-09-20
+Date: 2026-09-21
 
 Repository: `wisemankonstantin-droid/aion-agent-core`
 
@@ -41,15 +41,11 @@ Owner/control-plane gates remain separate for mutations of AION itself.
 
 Current verified GitHub `main`:
 
-`094077fb4f4d853714764c73a2890b157da7141d`
+`fcb2a62c9eeadafe53540eaaedc9c18962555a37`
 
-PR #14 state-sync is merged.
+PR #15 Package 6B is merged.
 
-Post-merge exact-main AION CI run #345 succeeded with locked install,
-dependency integrity, secret scan, full pytest, readiness, migration smoke and
-official MCP/A2A interoperability.
-
-Repository Alembic head and release identity:
+Production/main Alembic head and release identity:
 
 `0016_official_data_execution_v1`
 
@@ -66,18 +62,18 @@ Production service:
 
 Controlled production deploy:
 
-`dep-dao02e3tqb8s73dd9gc0`
+`dep-dao4k4uk1f9s73al5q3g`
 
 Live production application commit:
 
-`094077fb4f4d853714764c73a2890b157da7141d`
+`fcb2a62c9eeadafe53540eaaedc9c18962555a37`
 
-Deploy completed LIVE on 2026-09-20.
+The deployment identity above is the accepted Package 6C starting checkpoint;
+this branch performs no new live verification or deployment.
 
-Render build logs verify checkout of the exact approved SHA and successful
-locked dependency installation.
-
-Startup logs verify the configured command:
+For the earlier `094077fb4f4d853714764c73a2890b157da7141d` deployment,
+Render build logs verified exact checkout and locked dependency installation.
+Startup logs verified the configured command:
 
 `python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
@@ -99,7 +95,7 @@ changed. Real-money activation remains disabled.
 
 ### Exact live machine gate
 
-A post-deploy live gate against the public production URL passed for exact
+A historical post-deploy live gate against the public production URL passed for
 release SHA `094077fb4f4d853714764c73a2890b157da7141d` and schema
 `0016_official_data_execution_v1`.
 
@@ -134,41 +130,39 @@ paid purchase or settlement was created.
 
 ## Current payment-readiness work
 
-Production x402 exact/upfront purchase infrastructure is now schema-live but
-remains fail-closed for real money.
-
-Current main still has the global economic execution gate disabled in code.
-The active bounded branch
-`codex/package-6b-real-money-control-gate-v1` is preparing an explicit
-owner-controlled environment gate:
+Production x402 exact/upfront purchase infrastructure is schema-live and the
+explicit owner-controlled gate is merged, but real money remains disabled:
 
 `AION_REAL_MONEY_EXECUTION_ENABLED=1`
 
-Missing, malformed or loosely truthy values remain disabled. This branch does
-not set production environment variables, does not activate x402, does not
-contact a facilitator, does not move money and does not create settlement.
+Missing, malformed or loosely truthy values remain disabled.
 
-The bounded PR #15 correction keeps paid Route Intelligence discoverable
-through onboarding, the shared machine journey, ARD/AI Catalog, REST and
-OpenAPI while removing its purchase/settlement skill from the public A2A Agent
-Card. A2A remains guidance/discovery-only for this protected commercial path;
-it does not advertise payment, purchase, mark-paid or settlement mutation.
-The repository readiness check also recognizes the explicit fail-closed owner
-gate instead of requiring the superseded hardcoded-disabled assignment.
+The active bounded branch is
+`codex/package-6c-first-sat-activation-readiness-v1`, based on exact main SHA
+`fcb2a62c9eeadafe53540eaaedc9c18962555a37`.
 
-Local validation for this bounded correction:
+It adds:
 
-- focused A2A/payment/discovery/source-integrity matrix: 77 passed;
-- final full locked-environment suite: 653 passed, 23 PostgreSQL-only tests
-  skipped locally;
-- dependency integrity, 188-file secret scan, compileall, workflow YAML,
-  readiness and fresh SQLite migration to `0016_official_data_execution_v1`
-  passed; and
-- official MCP 2026-07-28 and A2A 1.0 interoperability passed against an
-  isolated local HTTPS server and disposable database.
+- detailed, secret-safe x402 configuration and blocker reporting;
+- local credential-shape validation without facilitator contact;
+- `python scripts/first_sat_preflight.py --expected-release-sha <approved-SHA>`,
+  a read-only exact-release/schema/activation preflight that returns nonzero
+  while blocked (database reads may use a network; it never contacts a
+  facilitator);
+- additive schema head `0017_first_sat_accounting_v1`, adding one nullable JSON
+  accounting-evidence column to existing purchase rows; and
+- durable first-SAT accounting that separates quoted amount from settlement,
+  knows zero direct provider cost, labels a configured fee allowance as a
+  budget assumption, and leaves unreported payment/AION operating costs and
+  exact contribution unknown instead of inventing profit.
 
-Independent exact-SHA AION CI and PostgreSQL release-gate evidence is required
-before this branch is merge-ready.
+This branch does not alter Render, set production environment variables,
+activate x402, contact the facilitator, move money, create settlement, deploy,
+run a production migration or merge itself. A2A remains discovery/guidance-only
+for the protected commercial path; REST/x402 remains the execution surface.
+
+Independent exact-SHA AION CI and PostgreSQL release-gate evidence remains
+required before this branch is merge-ready.
 
 ## World Bank executable path
 
@@ -342,8 +336,8 @@ Current sequence:
 
 The zero-cost executable agent path is production-live and verified.
 
-The next bounded engineering step is to finish and validate the explicit
-owner-controlled real-money activation gate without enabling it.
+The next bounded engineering step is to finish and validate first-SAT
+activation readiness without enabling the owner-controlled real-money gate.
 
 After that branch is ready, merge remains an owner gate. Any production
 configuration/secrets change, deploy containing payment activation behavior, or
