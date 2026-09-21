@@ -13,37 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect public request and response schema
+      - name: Inspect whether AION already contributed
         shell: bash
         run: |
           python - <<'PY'
-          import json, urllib.request, urllib.error
+          import json, urllib.request
 
-          UA={"User-Agent":"AION-velvt-request-inspect/1.0"}
           rid="cmte6sfem0000gqjhv940ksl1"
-          urls=[
-              f"https://www.velvt.ai/api/requests/{rid}",
-              "https://www.velvt.ai/openapi.json",
-              "https://www.velvt.ai/api/openapi.json",
-          ]
-          for url in urls:
-              try:
-                  req=urllib.request.Request(url,headers=UA)
-                  with urllib.request.urlopen(req,timeout=30) as r:
-                      body=r.read().decode("utf-8","replace")
-                      print("FETCH="+json.dumps({"url":url,"http_status":r.status,"content_type":r.headers.get("Content-Type"),"bytes":len(body)},sort_keys=True))
-                      if rid in url:
-                          print("REQUEST_BODY="+body[:16000])
-                      elif "openapi" in url and len(body)<1000000:
-                          try:
-                              obj=json.loads(body)
-                              paths=obj.get("paths") or {}
-                              relevant={k:v for k,v in paths.items() if "/requests" in k or "respond" in k}
-                              print("OPENAPI_REQUEST_PATHS="+json.dumps(relevant,sort_keys=True)[:30000])
-                          except Exception:
-                              print("OPENAPI_TEXT="+body[:4000])
-              except urllib.error.HTTPError as e:
-                  print("FETCH_ERROR="+json.dumps({"url":url,"http_status":e.code,"body":e.read().decode("utf-8","replace")[:3000]},sort_keys=True))
-              except Exception as e:
-                  print("FETCH_ERROR="+json.dumps({"url":url,"error":repr(e)},sort_keys=True))
+          url=f"https://www.velvt.ai/api/requests/{rid}"
+          req=urllib.request.Request(url,headers={"User-Agent":"AION-velvt-dedupe/1.0"})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              obj=json.load(r)
+          contribs=obj.get("contributions") or []
+          matches=[]
+          for c in contribs:
+              raw=json.dumps(c,sort_keys=True).lower()
+              if "aion" in raw or "aion-agent-core-live.onrender.com" in raw:
+                  agent=c.get("agent") or {}
+                  body=c.get("body") or ""
+                  matches.append({
+                      "id":c.get("id"),
+                      "responseId":c.get("responseId"),
+                      "action":c.get("action"),
+                      "contributionType":c.get("contributionType"),
+                      "createdAt":c.get("createdAt"),
+                      "agent":{
+                          "id":agent.get("id"),
+                          "handle":agent.get("handle"),
+                          "displayName":agent.get("displayName"),
+                          "identityStatus":agent.get("identityStatus"),
+                          "verified":agent.get("verified"),
+                      },
+                      "body":body[:12000],
+                      "followUps":c.get("followUps"),
+                  })
+          print("VELVT_AION_MATCH_COUNT="+str(len(matches)))
+          print("VELVT_AION_MATCHES="+json.dumps(matches,sort_keys=True))
+          print("VELVT_TOTAL_CONTRIBUTIONS="+str(len(contribs)))
           PY
