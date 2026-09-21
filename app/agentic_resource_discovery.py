@@ -55,7 +55,11 @@ def get_agentic_resource_manifest(base_url: str) -> dict:
                     "economicBoundary": "no paid execution unless the owner-controlled rail is explicitly active",
                     "routeIntelligencePaymentReadiness": f"{base}/commercial/route-intelligence/payment-readiness",
                     "routeIntelligencePurchase": f"{base}/commercial/route-intelligence/purchase",
-                    "routeIntelligencePaymentProtocol": "x402-v2-exact-upfront",
+                    "routeIntelligencePaymentProtocol": "direct-base-usdc-eip3009-buyer-broadcast",
+                    "routeIntelligenceNetwork": "eip155:8453",
+                    "routeIntelligenceAsset": "USDC",
+                    "routeIntelligenceBuyerPaysGas": True,
+                    "routeIntelligenceFacilitatorRequired": False,
                 },
             }
         ],
