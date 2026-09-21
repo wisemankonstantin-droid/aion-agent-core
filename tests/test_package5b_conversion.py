@@ -108,15 +108,24 @@ def _assert_truthful_journey(journey: dict) -> None:
     priced = payment["priced_route_intelligence"]
     assert priced["product_sku"] == "aion.verified.route_intelligence.v1"
     assert priced["membership_required"] is False
-    assert priced["protocol"] == "x402"
-    assert priced["scheme"] == "exact"
+    assert priced["payment_method"] == "direct_base_usdc_eip3009_buyer_broadcast"
     assert priced["payment_flow"] == "upfront"
+    assert priced["network"] == "eip155:8453"
+    assert priced["asset_code"] == "USDC"
+    assert priced["transfer_method"] == "eip3009_transferWithAuthorization"
+    assert priced["buyer_pays_gas"] is True
+    assert priced["aion_pays_gas"] is False
+    assert priced["facilitator_required"] is False
     assert priced["readiness"]["url"].endswith("/commercial/route-intelligence/payment-readiness")
     assert priced["readiness"]["must_report_launch_ready"] is True
     assert priced["purchase"]["url"].endswith("/commercial/route-intelligence/purchase")
-    assert priced["purchase"]["payment_requirement_header"] == "PAYMENT-REQUIRED"
-    assert priced["purchase"]["payment_submission_header"] == "PAYMENT-SIGNATURE"
+    assert priced["purchase"]["payment_instructions_location"] == "JSON body field payment_instructions"
+    assert priced["purchase"]["payment_submission_headers"] == {
+        "purchase_id": "X-AION-PURCHASE-ID",
+        "transaction_hash": "X-AION-PAYMENT-TX",
+    }
     assert priced["result_release_before_settlement"] is False
+    assert priced["aion_broadcasts_transaction"] is False
 
     legacy = journey["legacy_package5_telemetry"]
     assert legacy["blocks_utility"] is False
@@ -271,10 +280,13 @@ def test_skill_and_llms_are_complete_consistent_and_contain_no_real_credential()
         assert "operator review" in document.lower()
         assert "do not wait" in document.lower() or "not" in document.lower()
         assert "Human usefulness acknowledgement is optional feedback" in document
-        assert "PAYMENT-REQUIRED" in document
+        assert "purchase-bound EIP-3009 USDC on Base" in document
+        assert "X-AION-PURCHASE-ID" in document
+        assert "X-AION-PAYMENT-TX" in document
+        assert "PAYMENT-SIGNATURE" not in document
         assert "route-intelligence/payment-readiness" in document
         assert "route-intelligence/purchase" in document
-        assert "agent authorization, settlement and protected result release" in document
+        assert "buyer" in document.lower() and "gas" in document.lower()
         assert not re.search(r"aion_[A-Za-z0-9_-]{20,}", document)
 
 
@@ -288,8 +300,10 @@ def test_rest_and_mcp_join_next_actions_expose_existing_protected_sequence():
     assert "No Package 5 operator review is required" in rest_actions
     assert "POST /actions/verify-callability" in rest_actions
     assert "payment-readiness" in rest_actions
-    assert "PAYMENT-REQUIRED" in rest_actions
-    assert "PAYMENT-SIGNATURE" in rest_actions
+    assert "X-AION-PURCHASE-ID" in rest_actions
+    assert "X-AION-PAYMENT-TX" in rest_actions
+    assert "purchase-bound EIP-3009" in rest_actions
+    assert "PAYMENT-SIGNATURE" not in rest_actions
     assert "never in A2A message text" in rest_actions
 
     mcp = _mcp(
