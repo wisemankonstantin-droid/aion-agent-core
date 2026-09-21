@@ -201,9 +201,15 @@ def test_rest_onboarding_manifest_and_root_expose_the_same_truthful_journey():
     assert readiness_step["membership_required"] is False
     assert readiness_step["proceed_only_when"] == "launch_ready=true"
     assert purchase_step["membership_required"] is False
-    assert purchase_step["payment_protocol"] == "x402-v2-exact-upfront"
-    assert purchase_step["payment_required_header"] == "PAYMENT-REQUIRED"
-    assert purchase_step["payment_submission_header"] == "PAYMENT-SIGNATURE"
+    assert purchase_step["payment_method"] == "direct_base_usdc_eip3009_buyer_broadcast"
+    assert purchase_step["network"] == "eip155:8453"
+    assert purchase_step["asset"] == "USDC"
+    assert purchase_step["buyer_pays_gas"] is True
+    assert purchase_step["facilitator_required"] is False
+    assert purchase_step["payment_submission_headers"] == {
+        "purchase_id": "X-AION-PURCHASE-ID",
+        "transaction_hash": "X-AION-PAYMENT-TX",
+    }
     assert root["verified_callability_action"] == "POST /actions/verify-callability"
     assert root["package5_proof"] == "GET /proof/package-5"
     assert _agent_count() == before_agents
