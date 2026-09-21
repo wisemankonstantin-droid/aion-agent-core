@@ -484,7 +484,12 @@ def settle_direct_and_release(
     purchase_id: str,
     transaction_hash: str,
 ) -> dict:
-    """Verify one buyer-broadcast Base USDC transfer and release exactly once."""
+    """Verify buyer-broadcast EIP-3009 payment, then atomically entitle once.
+
+    Direct verification is read-only, so unverified evidence never claims a
+    purchase or transaction hash. This prevents a bad or observed tx hash from
+    being used to poison another buyer's legitimate purchase.
+    """
     if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
         raise RouteIntelligencePurchaseError(
             503,
@@ -521,7 +526,22 @@ def settle_direct_and_release(
         raise RouteIntelligencePurchaseError(
             409,
             "payment_method_mismatch",
-            "Prepared purchase does not use direct Base USDC settlement",
+            "Prepared purchase does not use direct Base USDC EIP-3009 settlement",
+        )
+
+    if row.state == "entitled":
+        if row.transaction_id == normalized_tx:
+            return _entitlement(row, idempotent_replay=True)
+        raise RouteIntelligencePurchaseError(
+            409,
+            "preparation_already_claimed",
+            "Prepared result is already entitled by another payment",
+        )
+    if row.state != "prepared":
+        raise RouteIntelligencePurchaseError(
+            409,
+            "preparation_already_claimed",
+            "Prepared result is not available for a new direct payment proof",
         )
 
     requirements = direct_payment_requirements(
@@ -537,92 +557,6 @@ def settle_direct_and_release(
             "Payment requirements changed after preparation",
         )
 
-    payment_digest = _digest(
-        {
-            "payment_method": DIRECT_PAYMENT_METHOD,
-            "transaction": normalized_tx,
-        }
-    )
-    existing_tx = _existing_by_transaction(db, normalized_tx)
-    if existing_tx is not None and existing_tx.purchase_id != row.purchase_id:
-        raise RouteIntelligencePurchaseError(
-            409,
-            "payment_replay_conflict",
-            "This transaction is already bound to another purchase",
-        )
-    if existing_tx is not None and existing_tx.state == "entitled":
-        return _entitlement(existing_tx, idempotent_replay=True)
-
-    now = _now()
-    if row.state == "prepared":
-        try:
-            claimed = db.execute(
-                update(RouteIntelligencePurchase)
-                .where(
-                    RouteIntelligencePurchase.id == row.id,
-                    RouteIntelligencePurchase.state == "prepared",
-                    RouteIntelligencePurchase.payment_payload_digest.is_(None),
-                    RouteIntelligencePurchase.transaction_id.is_(None),
-                )
-                .values(
-                    payment_payload_digest=payment_digest,
-                    transaction_id=normalized_tx,
-                    state="settlement_claimed",
-                    updated_at=now,
-                )
-            )
-            if claimed.rowcount != 1:
-                db.rollback()
-                fresh = _by_purchase_id(db, row.purchase_id)
-                if (
-                    fresh is not None
-                    and fresh.transaction_id == normalized_tx
-                    and fresh.payment_payload_digest == payment_digest
-                    and fresh.state
-                    in {"settlement_claimed", "settlement_pending", "settlement_ambiguous"}
-                ):
-                    row = fresh
-                elif fresh is not None and fresh.state == "entitled":
-                    return _entitlement(fresh, idempotent_replay=True)
-                else:
-                    raise RouteIntelligencePurchaseError(
-                        409,
-                        "preparation_already_claimed",
-                        "Prepared result was concurrently claimed",
-                    )
-            else:
-                db.commit()
-                row = _by_purchase_id(db, row.purchase_id)
-        except IntegrityError as exc:
-            db.rollback()
-            collision = _existing_by_transaction(db, normalized_tx)
-            if collision is not None and collision.purchase_id != normalized_purchase_id:
-                raise RouteIntelligencePurchaseError(
-                    409,
-                    "payment_replay_conflict",
-                    "Transaction is already bound to another purchase",
-                ) from exc
-            raise RouteIntelligencePurchaseError(
-                409, "payment_claim_conflict", "Concurrent payment claim conflict"
-            ) from exc
-    elif row.state == "entitled" and row.transaction_id == normalized_tx:
-        return _entitlement(row, idempotent_replay=True)
-    elif not (
-        row.state in {"settlement_claimed", "settlement_pending", "settlement_ambiguous"}
-        and row.transaction_id == normalized_tx
-        and row.payment_payload_digest == payment_digest
-    ):
-        raise RouteIntelligencePurchaseError(
-            409,
-            "payment_settlement_not_retryable",
-            "This purchase is already bound to different payment evidence",
-        )
-
-    if row is None:
-        raise RouteIntelligencePurchaseError(
-            409, "payment_claim_conflict", "Persisted payment claim is unavailable"
-        )
-
     authorization = requirements["authorization"]["message"]
     settlement = verify_direct_base_usdc_transfer(
         normalized_tx,
@@ -635,78 +569,128 @@ def settle_direct_and_release(
     )
 
     outcome = settlement.get("outcome")
-    row.updated_at = _now()
-    if outcome == "settled":
-        row.transaction_id = normalized_tx
-        row.payer = settlement["payer"]
-        row.settlement_response_digest = _digest(
-            settlement.get("response") or settlement
+    if outcome != "settled":
+        status = 503 if outcome in {"pending", "ambiguous"} else 402
+        raise RouteIntelligencePurchaseError(
+            status,
+            str(settlement.get("code") or "direct_payment_verification_failed")[:96],
+            "Payment was not verified as a releasable purchase-bound Base USDC settlement",
         )
-        accounting = dict(row.accounting_evidence or {})
-        accounting["settled_atomic_amount"] = str(settlement["amount"])
-        accounting["settled_atomic_amount_source"] = (
-            "onchain_base_usdc_eip3009_transfer"
+
+    if settlement.get("transaction") != normalized_tx:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "settlement_transaction_mismatch",
+            "Verified settlement transaction does not match submitted proof",
         )
-        accounting["actual_payment_cost"] = "0"
-        accounting["aion_blockchain_gas_cost"] = "0"
-        accounting["buyer_or_buyer_selected_broadcaster_paid_gas"] = True
-        accounting["purchase_bound_authorization_nonce"] = settlement.get(
-            "authorization_nonce"
+
+    collision = _existing_by_transaction(db, normalized_tx)
+    if collision is not None:
+        if collision.purchase_id == row.purchase_id and collision.state == "entitled":
+            return _entitlement(collision, idempotent_replay=True)
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_replay_conflict",
+            "This transaction is already bound to another purchase",
         )
-        accounting["settlement_finality"] = settlement.get("finality")
-        accounting["settlement_recorded"] = True
-        accounting["unknown_cost_reasons"] = [
-            reason
-            for reason in accounting.get("unknown_cost_reasons", [])
-            if reason != "facilitator_settlement_contract_has_no_payment_fee_field"
-        ]
-        row.accounting_evidence = accounting
-        row.state = "entitled"
-        row.entitled_at = row.updated_at
-        row.failure_code = None
-        row.failure_detail = None
-        db.add(row)
-        try:
-            db.commit()
-        except IntegrityError as exc:
+
+    payment_digest = _digest(
+        {
+            "payment_method": DIRECT_PAYMENT_METHOD,
+            "transaction": normalized_tx,
+            "authorization_nonce": authorization["nonce"],
+        }
+    )
+    now = _now()
+    accounting = dict(row.accounting_evidence or {})
+    accounting["settled_atomic_amount"] = str(settlement["amount"])
+    accounting["settled_atomic_amount_source"] = (
+        "onchain_base_usdc_eip3009_transfer"
+    )
+    accounting["actual_payment_cost"] = "0"
+    accounting["aion_blockchain_gas_cost"] = "0"
+    accounting["buyer_or_buyer_selected_broadcaster_paid_gas"] = True
+    accounting["purchase_bound_authorization_nonce"] = settlement.get(
+        "authorization_nonce"
+    )
+    accounting["settlement_finality"] = settlement.get("finality")
+    accounting["settlement_recorded"] = True
+    accounting["unknown_cost_reasons"] = [
+        reason
+        for reason in accounting.get("unknown_cost_reasons", [])
+        if reason != "facilitator_settlement_contract_has_no_payment_fee_field"
+    ]
+    settlement_digest = _digest(settlement.get("response") or settlement)
+
+    try:
+        entitled = db.execute(
+            update(RouteIntelligencePurchase)
+            .where(
+                RouteIntelligencePurchase.id == row.id,
+                RouteIntelligencePurchase.state == "prepared",
+                RouteIntelligencePurchase.payment_payload_digest.is_(None),
+                RouteIntelligencePurchase.transaction_id.is_(None),
+            )
+            .values(
+                payment_payload_digest=payment_digest,
+                transaction_id=normalized_tx,
+                payer=settlement["payer"],
+                settlement_response_digest=settlement_digest,
+                accounting_evidence=accounting,
+                state="entitled",
+                entitled_at=now,
+                updated_at=now,
+                failure_code=None,
+                failure_detail=None,
+            )
+        )
+        if entitled.rowcount != 1:
             db.rollback()
+            fresh = _by_purchase_id(db, row.purchase_id)
+            if (
+                fresh is not None
+                and fresh.state == "entitled"
+                and fresh.transaction_id == normalized_tx
+            ):
+                return _entitlement(fresh, idempotent_replay=True)
+            collision = _existing_by_transaction(db, normalized_tx)
+            if collision is not None and collision.purchase_id != row.purchase_id:
+                raise RouteIntelligencePurchaseError(
+                    409,
+                    "payment_replay_conflict",
+                    "Verified transaction was concurrently bound to another purchase",
+                )
             raise RouteIntelligencePurchaseError(
                 409,
-                "settlement_evidence_replay_conflict",
-                "Settlement transaction is already bound to another purchase",
-            ) from exc
-        db.refresh(row)
-        return _entitlement(row, idempotent_replay=False)
-
-    if outcome == "pending":
-        row.state = "settlement_pending"
-    elif outcome == "rejected":
-        row.state = "settlement_failed"
-    else:
-        row.state = "settlement_ambiguous"
-    row.failure_code = str(
-        settlement.get("code") or "direct_payment_verification_failed"
-    )[:96]
-    row.failure_detail = None
-    if settlement.get("response") is not None:
-        row.settlement_response_digest = _digest(settlement["response"])
-    db.add(row)
-    try:
+                "payment_claim_conflict",
+                "Prepared purchase changed before verified entitlement could commit",
+            )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        collision = _existing_by_transaction(db, normalized_tx)
+        if collision is not None:
+            if collision.purchase_id == row.purchase_id and collision.state == "entitled":
+                return _entitlement(collision, idempotent_replay=True)
+            raise RouteIntelligencePurchaseError(
+                409,
+                "payment_replay_conflict",
+                "Verified transaction is already bound to another purchase",
+            ) from exc
         raise RouteIntelligencePurchaseError(
             409,
-            "settlement_evidence_replay_conflict",
-            "Settlement evidence conflicts with another purchase",
+            "payment_claim_conflict",
+            "Verified entitlement conflicted with concurrent state",
         ) from exc
 
-    status = 503 if row.state in {"settlement_pending", "settlement_ambiguous"} else 402
-    raise RouteIntelligencePurchaseError(
-        status,
-        row.failure_code or row.state,
-        "Payment was not yet verified as a releasable Base USDC settlement",
-    )
+    fresh = _by_purchase_id(db, row.purchase_id)
+    if fresh is None or fresh.state != "entitled":
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_claim_conflict",
+            "Verified entitlement could not be reloaded after commit",
+        )
+    return _entitlement(fresh, idempotent_replay=False)
 
 
 def settle_and_release(db: Session, payload: object, payment_signature: str) -> dict:
