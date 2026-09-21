@@ -22,7 +22,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..payment_models import RouteIntelligencePurchase
+from . import economic_kernel
 from .cdp_x402_facilitator import FacilitatorSettlementError, settle_exact_upfront
+from .direct_base_usdc import (
+    configured_direct_base_usdc_offer,
+    direct_payment_requirements,
+    verify_direct_base_usdc_transfer,
+)
 from .paid_route_intelligence import ROUTE_INTELLIGENCE_SKU, configured_route_intelligence_plan
 from .x402_exact_upfront import (
     ExactUpfrontError,
@@ -42,6 +48,7 @@ _PURCHASE_ID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 _RESULT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_TX_HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
 class RouteIntelligencePurchaseError(Exception):
@@ -77,7 +84,13 @@ def _money_text(value: Decimal) -> str:
     return text or "0"
 
 
-def _accounting_evidence(*, quote_amount: str, atomic_amount: str, currency: str) -> dict:
+def _accounting_evidence(
+    *,
+    quote_amount: str,
+    atomic_amount: str,
+    currency: str,
+    payment_method: str = "x402_exact_upfront",
+) -> dict:
     plan = configured_route_intelligence_plan()
     if plan is None:  # Defensive: preparation already proved the plan exists.
         raise RouteIntelligencePurchaseError(
@@ -87,8 +100,14 @@ def _accounting_evidence(*, quote_amount: str, atomic_amount: str, currency: str
     maximum_payment_fee = Decimal(plan.payment_fee_allowance)
     budgeted_contribution = gross - maximum_payment_fee
     budgeted_margin_bps = int((budgeted_contribution / gross) * Decimal(10_000))
+    unknown_cost_reasons = ["aion_operating_cost_not_metered"]
+    if payment_method != "direct_base_usdc_transfer":
+        unknown_cost_reasons.append(
+            "facilitator_settlement_contract_has_no_payment_fee_field"
+        )
     return {
         "schema": "first_sat_accounting_v1",
+        "payment_method": payment_method,
         "currency": currency,
         "quoted_gross_revenue": quote_amount,
         "quoted_atomic_amount": atomic_amount,
@@ -102,10 +121,7 @@ def _accounting_evidence(*, quote_amount: str, atomic_amount: str, currency: str
         "budgeted_margin_bps_after_fee_allowance": budgeted_margin_bps,
         "fee_allowance_is_not_observed_cost": True,
         "exact_contribution_margin_available": False,
-        "unknown_cost_reasons": [
-            "aion_operating_cost_not_metered",
-            "facilitator_settlement_contract_has_no_payment_fee_field",
-        ],
+        "unknown_cost_reasons": unknown_cost_reasons,
         "settlement_recorded": False,
     }
 
@@ -171,13 +187,19 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
     ):
         return current
 
-    offer = configured_exact_upfront_offer()
-    if offer is None:
-        raise RouteIntelligencePurchaseError(
-            503,
-            "x402_exact_upfront_not_configured",
-            "Exact upfront payment offer is not fully configured",
-        )
+    direct_offer = configured_direct_base_usdc_offer()
+    if direct_offer is not None:
+        offer = direct_offer
+        payment_method = "direct_base_usdc_transfer"
+    else:
+        offer = configured_exact_upfront_offer()
+        payment_method = "x402_exact_upfront"
+        if offer is None:
+            raise RouteIntelligencePurchaseError(
+                503,
+                "payment_offer_not_configured",
+                "No launch payment offer is fully configured",
+            )
 
     from .commercial_router import plan_commercial_route
 
@@ -191,10 +213,19 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
 
     result_digest = _digest(prepared_result)
     purchase_id = str(uuid.uuid4())
-    try:
-        requirements = bound_exact_payment_requirements(purchase_id, result_digest)
-    except ExactUpfrontError as exc:
-        raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+    expires_at = now + timedelta(seconds=PREPARATION_TTL_SECONDS)
+    if payment_method == "direct_base_usdc_transfer":
+        requirements = direct_payment_requirements(
+            purchase_id=purchase_id,
+            result_digest=result_digest,
+            prepared_at=now,
+            expires_at=expires_at,
+        )
+    else:
+        try:
+            requirements = bound_exact_payment_requirements(purchase_id, result_digest)
+        except ExactUpfrontError as exc:
+            raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
 
     row = RouteIntelligencePurchase(
         purchase_id=purchase_id,
@@ -215,10 +246,11 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
             quote_amount=offer["quote_amount"],
             atomic_amount=offer["atomic_amount"],
             currency=offer["quote_currency"],
+            payment_method=payment_method,
         ),
         state="prepared",
         prepared_at=now,
-        expires_at=now + timedelta(seconds=PREPARATION_TTL_SECONDS),
+        expires_at=expires_at,
         updated_at=now,
     )
     db.add(row)
@@ -228,17 +260,32 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
 
 
 def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
-    try:
-        requirements = bound_exact_payment_requirements(row.purchase_id, row.result_digest)
-    except ExactUpfrontError as exc:
-        raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+    payment_method = (row.accounting_evidence or {}).get(
+        "payment_method", "x402_exact_upfront"
+    )
+    if payment_method == "direct_base_usdc_transfer":
+        requirements = direct_payment_requirements(
+            purchase_id=row.purchase_id,
+            result_digest=row.result_digest,
+            prepared_at=_aware(row.prepared_at),
+            expires_at=_aware(row.expires_at),
+        )
+        required = requirements
+    else:
+        try:
+            requirements = bound_exact_payment_requirements(
+                row.purchase_id, row.result_digest
+            )
+        except ExactUpfrontError as exc:
+            raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
+        required = build_exact_payment_required(requirements)
+
     if _digest(requirements) != row.payment_requirements_digest:
         raise RouteIntelligencePurchaseError(
             409,
             "payment_requirement_changed",
             "Payment requirements changed after the result was prepared; request a fresh preparation",
         )
-    required = build_exact_payment_required(requirements)
     return {
         "purchase_id": row.purchase_id,
         "product_sku": row.product_sku,
@@ -387,7 +434,15 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
         "prepared_result_digest": row.result_digest,
         "result": row.prepared_result,
         "payment": {
-            "scheme": "exact",
+            "method": (row.accounting_evidence or {}).get(
+                "payment_method", "x402_exact_upfront"
+            ),
+            "scheme": (
+                "direct_transfer"
+                if (row.accounting_evidence or {}).get("payment_method")
+                == "direct_base_usdc_transfer"
+                else "exact"
+            ),
             "payment_flow": "upfront",
             "network": row.network,
             "transaction": row.transaction_id,
@@ -405,9 +460,246 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
             "purchase_is_not_package5_vuo_or_adoption": True,
             "result_was_prepared_before_settlement": True,
             "payment_requirements_bound_to_purchase_and_result_digest": True,
-            "concurrent_claim_is_committed_before_facilitator_contact": True,
+            "concurrent_claim_is_committed_before_external_payment_check": True,
+            "buyer_pays_gas_when_direct_payment_method": True,
         },
     }
+
+
+def _existing_by_transaction(
+    db: Session, transaction_id: str
+) -> RouteIntelligencePurchase | None:
+    return db.scalar(
+        select(RouteIntelligencePurchase).where(
+            RouteIntelligencePurchase.transaction_id == transaction_id
+        )
+    )
+
+
+def settle_direct_and_release(
+    db: Session,
+    payload: object,
+    *,
+    purchase_id: str,
+    transaction_hash: str,
+) -> dict:
+    """Verify one buyer-broadcast Base USDC transfer and release exactly once."""
+    if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
+        raise RouteIntelligencePurchaseError(
+            503,
+            "real_money_adapter_disabled",
+            "Real-money execution is disabled",
+        )
+
+    normalized_purchase_id = str(purchase_id or "").strip().lower()
+    normalized_tx = str(transaction_hash or "").strip().lower()
+    if not _PURCHASE_ID.fullmatch(normalized_purchase_id):
+        raise RouteIntelligencePurchaseError(
+            400, "purchase_id_invalid", "X-AION-PURCHASE-ID is invalid"
+        )
+    if not _TX_HASH.fullmatch(normalized_tx):
+        raise RouteIntelligencePurchaseError(
+            400, "payment_transaction_hash_invalid", "X-AION-PAYMENT-TX is invalid"
+        )
+
+    request, request_evidence = _validated_request(payload)
+    _ = request
+    request_digest = _digest(request_evidence)
+    row = _by_purchase_id(db, normalized_purchase_id)
+    if row is None:
+        raise RouteIntelligencePurchaseError(
+            409, "payment_preparation_unknown", "Prepared purchase does not exist"
+        )
+    if row.request_digest != request_digest:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_request_binding_mismatch",
+            "Payment proof is bound to a different purchase request",
+        )
+    if (row.accounting_evidence or {}).get("payment_method") != "direct_base_usdc_transfer":
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_method_mismatch",
+            "Prepared purchase does not use direct Base USDC settlement",
+        )
+
+    requirements = direct_payment_requirements(
+        purchase_id=row.purchase_id,
+        result_digest=row.result_digest,
+        prepared_at=_aware(row.prepared_at),
+        expires_at=_aware(row.expires_at),
+    )
+    if row.payment_requirements_digest != _digest(requirements):
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_requirement_changed",
+            "Payment requirements changed after preparation",
+        )
+
+    payment_digest = _digest(
+        {
+            "payment_method": "direct_base_usdc_transfer",
+            "transaction": normalized_tx,
+        }
+    )
+    existing_tx = _existing_by_transaction(db, normalized_tx)
+    if existing_tx is not None and existing_tx.purchase_id != row.purchase_id:
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_replay_conflict",
+            "This transaction is already bound to another purchase",
+        )
+    if existing_tx is not None and existing_tx.state == "entitled":
+        return _entitlement(existing_tx, idempotent_replay=True)
+
+    now = _now()
+    if row.state == "prepared":
+        try:
+            claimed = db.execute(
+                update(RouteIntelligencePurchase)
+                .where(
+                    RouteIntelligencePurchase.id == row.id,
+                    RouteIntelligencePurchase.state == "prepared",
+                    RouteIntelligencePurchase.payment_payload_digest.is_(None),
+                    RouteIntelligencePurchase.transaction_id.is_(None),
+                )
+                .values(
+                    payment_payload_digest=payment_digest,
+                    transaction_id=normalized_tx,
+                    state="settlement_claimed",
+                    updated_at=now,
+                )
+            )
+            if claimed.rowcount != 1:
+                db.rollback()
+                fresh = _by_purchase_id(db, row.purchase_id)
+                if (
+                    fresh is not None
+                    and fresh.transaction_id == normalized_tx
+                    and fresh.payment_payload_digest == payment_digest
+                    and fresh.state
+                    in {"settlement_claimed", "settlement_pending", "settlement_ambiguous"}
+                ):
+                    row = fresh
+                elif fresh is not None and fresh.state == "entitled":
+                    return _entitlement(fresh, idempotent_replay=True)
+                else:
+                    raise RouteIntelligencePurchaseError(
+                        409,
+                        "preparation_already_claimed",
+                        "Prepared result was concurrently claimed",
+                    )
+            else:
+                db.commit()
+                row = _by_purchase_id(db, row.purchase_id)
+        except IntegrityError as exc:
+            db.rollback()
+            collision = _existing_by_transaction(db, normalized_tx)
+            if collision is not None and collision.purchase_id != normalized_purchase_id:
+                raise RouteIntelligencePurchaseError(
+                    409,
+                    "payment_replay_conflict",
+                    "Transaction is already bound to another purchase",
+                ) from exc
+            raise RouteIntelligencePurchaseError(
+                409, "payment_claim_conflict", "Concurrent payment claim conflict"
+            ) from exc
+    elif row.state == "entitled" and row.transaction_id == normalized_tx:
+        return _entitlement(row, idempotent_replay=True)
+    elif not (
+        row.state in {"settlement_claimed", "settlement_pending", "settlement_ambiguous"}
+        and row.transaction_id == normalized_tx
+        and row.payment_payload_digest == payment_digest
+    ):
+        raise RouteIntelligencePurchaseError(
+            409,
+            "payment_settlement_not_retryable",
+            "This purchase is already bound to different payment evidence",
+        )
+
+    if row is None:
+        raise RouteIntelligencePurchaseError(
+            409, "payment_claim_conflict", "Persisted payment claim is unavailable"
+        )
+
+    settlement = verify_direct_base_usdc_transfer(
+        normalized_tx,
+        expected_asset=row.asset,
+        expected_pay_to=row.pay_to,
+        expected_atomic_amount=row.atomic_amount,
+        not_before=_aware(row.prepared_at),
+        not_after=_aware(row.expires_at),
+    )
+
+    outcome = settlement.get("outcome")
+    row.updated_at = _now()
+    if outcome == "settled":
+        row.transaction_id = normalized_tx
+        row.payer = settlement["payer"]
+        row.settlement_response_digest = _digest(
+            settlement.get("response") or settlement
+        )
+        accounting = dict(row.accounting_evidence or {})
+        accounting["settled_atomic_amount"] = str(settlement["amount"])
+        accounting["settled_atomic_amount_source"] = (
+            "onchain_base_usdc_transfer_event"
+        )
+        accounting["actual_payment_cost"] = "0"
+        accounting["buyer_paid_gas"] = True
+        accounting["settlement_finality"] = settlement.get("finality")
+        accounting["settlement_recorded"] = True
+        accounting["unknown_cost_reasons"] = [
+            reason
+            for reason in accounting.get("unknown_cost_reasons", [])
+            if reason != "facilitator_settlement_contract_has_no_payment_fee_field"
+        ]
+        row.accounting_evidence = accounting
+        row.state = "entitled"
+        row.entitled_at = row.updated_at
+        row.failure_code = None
+        row.failure_detail = None
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise RouteIntelligencePurchaseError(
+                409,
+                "settlement_evidence_replay_conflict",
+                "Settlement transaction is already bound to another purchase",
+            ) from exc
+        db.refresh(row)
+        return _entitlement(row, idempotent_replay=False)
+
+    if outcome == "pending":
+        row.state = "settlement_pending"
+    elif outcome == "rejected":
+        row.state = "settlement_failed"
+    else:
+        row.state = "settlement_ambiguous"
+    row.failure_code = str(
+        settlement.get("code") or "direct_payment_verification_failed"
+    )[:96]
+    row.failure_detail = None
+    if settlement.get("response") is not None:
+        row.settlement_response_digest = _digest(settlement["response"])
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise RouteIntelligencePurchaseError(
+            409,
+            "settlement_evidence_replay_conflict",
+            "Settlement evidence conflicts with another purchase",
+        ) from exc
+
+    status = 503 if row.state in {"settlement_pending", "settlement_ambiguous"} else 402
+    raise RouteIntelligencePurchaseError(
+        status,
+        row.failure_code or row.state,
+        "Payment was not yet verified as a releasable Base USDC settlement",
+    )
 
 
 def settle_and_release(db: Session, payload: object, payment_signature: str) -> dict:
