@@ -262,7 +262,7 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
 
     serialized_skills = json.dumps(card["skills"]).lower()
     assert "mark-paid" not in serialized_skills
-    assert "a2a provides discovery/guidance only" in serialized_skills
+    assert "a2a provides guidance only" in serialized_skills
 
     onboarding = client.get("/onboarding").json()
     priced = onboarding["verified_outcome_journey"]["machine_payment_when_required"][
