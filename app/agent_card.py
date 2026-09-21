@@ -5,7 +5,7 @@ def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for public utility, qualified external-supply discovery, verified route planning through REST/MCP, and truthful outcome evidence.",
+        "description": "A2A 1.0 gateway for external-agent discovery, provider selection, commercial routing and paid Route Intelligence. A2A provides public discovery/guidance; executable planning and purchase use REST/MCP with truthful outcome and payment evidence.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
@@ -61,13 +61,31 @@ def get_agent_card(base_url: str):
             },
             {
                 "id": "aion_commercial_route_planning",
-                "name": "AION commercial route planning",
+                "name": "AION Route Intelligence, provider selection and commercial routing",
                 "description": (
                     COMMERCIAL_ROUTE_VALUE_PROPOSITION
-                    + " Authenticated planning is available through REST/MCP; A2A provides guidance only and does not execute the route."
+                    + " AION also exposes paid Route Intelligence for external-agent discovery and provider selection. "
+                    + "Check REST GET /commercial/route-intelligence/payment-readiness, then purchase through "
+                    + "REST POST /commercial/route-intelligence/purchase when launch_ready=true. "
+                    + "Payment is direct Base USDC with buyer-paid gas and no facilitator. "
+                    + "A2A provides discovery/guidance only and does not execute or settle the paid route."
                 ),
-                "tags": ["aion", "commercial-routing", "planning", "cross-interface"],
-                "examples": ['{"action":"onboarding"}'],
+                "tags": [
+                    "aion",
+                    "route-intelligence",
+                    "provider-selection",
+                    "agent-discovery",
+                    "commercial-routing",
+                    "paid",
+                    "base-usdc",
+                    "buyer-pays-gas",
+                    "cross-interface",
+                ],
+                "examples": [
+                    "Find a provider for this bounded agent need",
+                    "I need verified Route Intelligence and provider selection",
+                    '{"action":"onboarding"}',
+                ],
             },
             {
                 "id": "discover_aion_agents",
