@@ -81,8 +81,19 @@ MCP_VERSION = "2026-07-28"
 MAX_MACHINE_REQUEST_BYTES = 64 * 1024
 MAX_WRITE_REQUEST_BYTES = 256 * 1024
 
+
+def _app_title() -> str:
+    base = "AION Agent Core"
+    proof = (os.environ.get("AION_PUBLIC_CLAIM_PROOF") or "").strip()
+    if not proof:
+        return base
+    if len(proof) > 128 or not all(ch.isalnum() or ch in "-_." for ch in proof):
+        return base
+    return f"{base} [{proof}]"
+
+
 app = FastAPI(
-    title="AION Agent Core",
+    title=_app_title(),
     version=APP_VERSION,
     description=(
         "AION turns a bounded agent need into a qualified commercial route with "
