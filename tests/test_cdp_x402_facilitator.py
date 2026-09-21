@@ -5,7 +5,7 @@ import json
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 
 from app.services import cdp_x402_facilitator, economic_kernel
 from app.services.cdp_x402_facilitator import (
@@ -122,6 +122,24 @@ def test_real_money_gate_blocks_before_credentials_or_network(monkeypatch):
         settle_exact_upfront(_payload(), _requirements())
     assert error.value.code == "real_money_adapter_disabled"
     assert network_calls == []
+
+
+def test_non_p256_ec_secret_is_not_locally_ready_or_signed_as_es256(monkeypatch):
+    private = ec.generate_private_key(ec.SECP256K1())
+    secret = private.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode("ascii")
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+
+    readiness = cdp_x402_facilitator.facilitator_credential_readiness()
+    assert readiness["credentials_locally_valid"] is False
+    assert "cdp_api_key_secret_invalid" in readiness["blocking_reasons"]
+    with pytest.raises(FacilitatorSettlementError) as error:
+        generate_cdp_request_jwt()
+    assert error.value.code == "invalid_cdp_api_key_secret"
 
 
 def test_settlement_uses_fixed_endpoint_one_attempt_and_documented_base_alias(monkeypatch):

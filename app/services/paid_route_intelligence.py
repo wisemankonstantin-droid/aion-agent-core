@@ -120,12 +120,25 @@ def register_paid_route_intelligence_profile() -> bool:
 def route_intelligence_readiness() -> dict:
     plan = configured_route_intelligence_plan()
     if plan is None:
+        reasons = []
+        if os.getenv(QUOTE_ENABLE_ENV) != "1":
+            reasons.append("route_intelligence_quote_disabled")
+        if _configured_currency() is None:
+            reasons.append("route_intelligence_currency_missing_or_invalid")
+        price = _configured_money(PRICE_ENV)
+        if price is None or Decimal(price) <= 0:
+            reasons.append("route_intelligence_price_missing_invalid_or_nonpositive")
+        if _configured_money(MAX_PAYMENT_FEE_ENV) is None:
+            reasons.append("route_intelligence_maximum_payment_fee_missing_or_invalid")
+        if not reasons:
+            reasons.append("route_intelligence_quote_economically_ineligible")
         return {
             "product_sku": ROUTE_INTELLIGENCE_SKU,
             "quote_configured": False,
             "real_money_execution_enabled": bool(economic_kernel.REAL_MONEY_EXECUTION_ENABLED),
             "provider_execution_enabled": False,
             "reason": "trusted_asset_price_or_max_payment_fee_missing_or_economically_ineligible",
+            "blocking_reasons": reasons,
         }
     evaluated = evaluate_plan(
         plan,
@@ -146,4 +159,5 @@ def route_intelligence_readiness() -> dict:
         "provider_execution_enabled": False,
         "commercial_rights_scope": "aion_owned_route_and_verification_intelligence_only",
         "fx_assumption_used": False,
+        "blocking_reasons": [],
     }

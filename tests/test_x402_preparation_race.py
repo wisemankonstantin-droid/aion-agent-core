@@ -77,7 +77,7 @@ def _configure(monkeypatch):
     monkeypatch.setenv(MAX_TIMEOUT_SECONDS_ENV, "60")
     monkeypatch.setenv(ASSET_TRANSFER_METHOD_ENV, "eip3009")
     monkeypatch.setenv("CDP_API_KEY_ID", "fixture-key-id")
-    monkeypatch.setenv("CDP_API_KEY_SECRET", "fixture-not-used")
+    monkeypatch.setenv("CDP_API_KEY_SECRET", base64.b64encode(bytes(range(64))).decode("ascii"))
     monkeypatch.setenv("AION_PUBLIC_URL", "https://aion.example")
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
 

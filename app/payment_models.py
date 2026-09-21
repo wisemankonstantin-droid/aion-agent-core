@@ -80,6 +80,7 @@ class RouteIntelligencePurchase(Base):
     transaction_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     payer: Mapped[str | None] = mapped_column(String(160), nullable=True)
     settlement_response_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    accounting_evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(96), nullable=True)
     failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
