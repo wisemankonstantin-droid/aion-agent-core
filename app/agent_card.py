@@ -68,7 +68,7 @@ def get_agent_card(base_url: str):
                     + "Check REST GET /commercial/route-intelligence/payment-readiness, then purchase through "
                     + "REST POST /commercial/route-intelligence/purchase when launch_ready=true. "
                     + "Payment is direct Base USDC with buyer-paid gas and no facilitator. "
-                    + "A2A provides discovery/guidance only; it does not execute the paid route or move funds."
+                    + "A2A provides guidance only for this paid capability; it does not execute the paid route or move funds."
                 ),
                 "tags": [
                     "aion",
