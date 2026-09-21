@@ -64,11 +64,11 @@ def get_agent_card(base_url: str):
                 "name": "AION Route Intelligence, provider selection and commercial routing",
                 "description": (
                     COMMERCIAL_ROUTE_VALUE_PROPOSITION
-                    + " AION also exposes paid Route Intelligence for external-agent discovery and provider selection. "
+                    + " AION also exposes paid Route Intelligence for external-agent discovery and provider selection through REST/MCP. "
                     + "Check REST GET /commercial/route-intelligence/payment-readiness, then purchase through "
                     + "REST POST /commercial/route-intelligence/purchase when launch_ready=true. "
                     + "Payment is direct Base USDC with buyer-paid gas and no facilitator. "
-                    + "A2A provides discovery/guidance only and does not execute or settle the paid route."
+                    + "A2A provides discovery/guidance only; it does not execute the paid route or move funds."
                 ),
                 "tags": [
                     "aion",
