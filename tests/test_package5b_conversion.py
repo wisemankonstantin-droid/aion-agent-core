@@ -228,15 +228,41 @@ def test_agent_card_advertises_guidance_without_false_a2a_action_capability():
     assert "verify_external_callability" not in skills
     assert "submit_package5_vuo" not in skills
     assert "aion_paid_route_intelligence" not in skills
-    serialized_skills = json.dumps(card["skills"]).lower()
-    assert "route-intelligence/payment-readiness" not in serialized_skills
-    assert "route-intelligence/purchase" not in serialized_skills
-    assert "mark-paid" not in serialized_skills
-    assert "settlement" not in serialized_skills
 
     route_guidance = skills["aion_commercial_route_planning"]
-    assert "a2a provides guidance only" in route_guidance["description"].lower()
-    assert route_guidance["examples"] == ['{"action":"onboarding"}']
+    route_description = route_guidance["description"].lower()
+    route_tags = set(route_guidance["tags"])
+    assert "route intelligence" in card["description"].lower()
+    assert "provider selection" in card["description"].lower()
+    assert "commercial routing" in card["description"].lower()
+    assert "paid route intelligence" in route_description
+    assert "external-agent discovery" in route_description
+    assert "provider selection" in route_description
+    assert "route-intelligence/payment-readiness" in route_description
+    assert "route-intelligence/purchase" in route_description
+    assert "direct base usdc" in route_description
+    assert "buyer-paid gas" in route_description
+    assert "no facilitator" in route_description
+    assert "rest/mcp" in route_description
+    assert "a2a provides guidance only" in route_description
+    assert "does not execute the route or move funds" in route_description
+    assert "settle" not in route_description
+    assert {
+        "route-intelligence",
+        "provider-selection",
+        "agent-discovery",
+        "commercial-routing",
+        "paid",
+        "base-usdc",
+        "buyer-pays-gas",
+    }.issubset(route_tags)
+    assert "Find a provider for this bounded agent need" in route_guidance["examples"]
+    assert "I need verified Route Intelligence and provider selection" in route_guidance["examples"]
+    assert '{"action":"onboarding"}' in route_guidance["examples"]
+
+    serialized_skills = json.dumps(card["skills"]).lower()
+    assert "mark-paid" not in serialized_skills
+    assert "a2a provides guidance only" in serialized_skills
 
     onboarding = client.get("/onboarding").json()
     priced = onboarding["verified_outcome_journey"]["machine_payment_when_required"][
