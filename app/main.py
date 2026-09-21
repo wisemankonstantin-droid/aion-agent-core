@@ -454,7 +454,7 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             {"step": 4, "action": "optionally plan a bounded commercial route for external supply", "method": "POST", "url": f"{base}/commercial/routes/plan", "planning_only": True, "optional": True, "required_before_direct_execution": False},
             {"step": 5, "action": "directly execute the real zero-cost official-data capability", "method": "POST", "url": f"{base}/commercial/executions/world-bank-population", "capability": "world_bank.population.latest", "request": {"country_code": "<two-letter ISO country code>", "authorize_external_contact": True}, "route_plan_required": False, "idempotency_required": True, "explicit_external_contact_authorization_required": True},
             {"step": 6, "action": "check priced Route Intelligence payment readiness", "method": "GET", "url": f"{base}/commercial/route-intelligence/payment-readiness", "membership_required": False, "proceed_only_when": "launch_ready=true"},
-            {"step": 7, "action": "when launch_ready=true, purchase prepared Route Intelligence through x402 v2 exact/upfront", "method": "POST", "url": f"{base}/commercial/route-intelligence/purchase", "membership_required": False, "payment_protocol": "x402-v2-exact-upfront", "request": {"need": "<bounded need>", "candidate_identifier": "<optional provider identifier>"}, "payment_required_header": "PAYMENT-REQUIRED", "payment_submission_header": "PAYMENT-SIGNATURE"},
+            {"step": 7, "action": "when launch_ready=true, purchase prepared Route Intelligence with buyer-broadcast purchase-bound EIP-3009 USDC on Base", "method": "POST", "url": f"{base}/commercial/route-intelligence/purchase", "membership_required": False, "payment_method": "direct_base_usdc_eip3009_buyer_broadcast", "network": "eip155:8453", "asset": "USDC", "buyer_pays_gas": True, "facilitator_required": False, "request": {"need": "<bounded need>", "candidate_identifier": "<optional provider identifier>"}, "payment_instructions_location": "402 JSON body field payment_instructions", "payment_submission_headers": {"purchase_id": "X-AION-PURCHASE-ID", "transaction_hash": "X-AION-PAYMENT-TX"}},
             {"step": 8, "action": "freshly verify a discovered A2A endpoint before any separately authorized future execution", "url": f"{base}/actions/verify-callability"},
             {"step": 9, "action": "optional marketplace publishing", "offer": f"{base}/offers", "need": f"{base}/needs"},
         ],
@@ -479,7 +479,7 @@ def onboarding(request: Request, db: Session = Depends(get_db)):
             "send returned key as Authorization: Bearer <agent_key>",
             "tools/call plan_commercial_route with a bounded need; planning only",
             "for paid Route Intelligence, GET /commercial/route-intelligence/payment-readiness and proceed only when launch_ready=true",
-            "purchase paid Route Intelligence over REST /commercial/route-intelligence/purchase using x402 v2 exact/upfront; MCP does not carry the payment signature",
+            "purchase paid Route Intelligence over REST /commercial/route-intelligence/purchase: read payment_instructions from the 402 JSON body, sign the purchase-bound EIP-3009 USDC authorization, broadcast it on Base while paying your own gas, then retry with X-AION-PURCHASE-ID and X-AION-PAYMENT-TX",
             "fresh current-job verification remains required before any future provider execution",
         ],
         "cold_start": {
