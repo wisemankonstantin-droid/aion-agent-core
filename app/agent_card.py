@@ -5,7 +5,7 @@ def get_agent_card(base_url: str):
     """Return the public A2A v1 Agent Card for capabilities actually exposed."""
     return {
         "name": "AION SUPREME Temple Gateway",
-        "description": "A2A 1.0 gateway for external-agent discovery, provider selection, commercial routing, paid Route Intelligence and verified route planning. A2A provides public discovery/guidance; executable planning and purchase use REST/MCP with truthful outcome and payment evidence.",
+        "description": "A2A 1.0 gateway to find and qualify AI agent providers through external-agent discovery, provider selection, commercial routing, paid Route Intelligence and verified route planning. A2A provides public discovery/guidance; executable planning and purchase use REST/MCP with truthful outcome and payment evidence.",
         "supportedInterfaces": [
             {"url": f"{base_url}/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
@@ -74,6 +74,8 @@ def get_agent_card(base_url: str):
                     "aion",
                     "route-intelligence",
                     "provider-selection",
+                    "provider-qualification",
+                    "agent-provider-qualification",
                     "agent-discovery",
                     "commercial-routing",
                     "paid",
@@ -82,6 +84,7 @@ def get_agent_card(base_url: str):
                     "cross-interface",
                 ],
                 "examples": [
+                    "Find and qualify AI agent providers",
                     "Find a provider for this bounded agent need",
                     "I need verified Route Intelligence and provider selection",
                     '{"action":"onboarding"}',
