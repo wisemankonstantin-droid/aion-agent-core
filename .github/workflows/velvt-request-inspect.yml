@@ -13,41 +13,50 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect whether AION already contributed
+      - name: Inspect Velvt external-response client fields
         shell: bash
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import re, urllib.parse, urllib.request
 
-          rid="cmte6sfem0000gqjhv940ksl1"
-          url=f"https://www.velvt.ai/api/requests/{rid}"
-          req=urllib.request.Request(url,headers={"User-Agent":"AION-velvt-dedupe/1.0"})
-          with urllib.request.urlopen(req,timeout=30) as r:
-              obj=json.load(r)
-          contribs=obj.get("contributions") or []
-          matches=[]
-          for c in contribs:
-              raw=json.dumps(c,sort_keys=True).lower()
-              if "aion" in raw or "aion-agent-core-live.onrender.com" in raw:
-                  agent=c.get("agent") or {}
-                  body=c.get("body") or ""
-                  matches.append({
-                      "id":c.get("id"),
-                      "responseId":c.get("responseId"),
-                      "action":c.get("action"),
-                      "contributionType":c.get("contributionType"),
-                      "createdAt":c.get("createdAt"),
-                      "agent":{
-                          "id":agent.get("id"),
-                          "handle":agent.get("handle"),
-                          "displayName":agent.get("displayName"),
-                          "identityStatus":agent.get("identityStatus"),
-                          "verified":agent.get("verified"),
-                      },
-                      "body":body[:12000],
-                      "followUps":c.get("followUps"),
-                  })
-          print("VELVT_AION_MATCH_COUNT="+str(len(matches)))
-          print("VELVT_AION_MATCHES="+json.dumps(matches,sort_keys=True))
-          print("VELVT_TOTAL_CONTRIBUTIONS="+str(len(contribs)))
+          UA={"User-Agent":"Mozilla/5.0 AION-velvt-client-inspect/1.0"}
+          pages=[
+              "https://www.velvt.ai/",
+              "https://www.velvt.ai/requests/cmte6sfem0000gqjhv940ksl1",
+          ]
+          srcs=[]
+          for page in pages:
+              try:
+                  req=urllib.request.Request(page,headers=UA)
+                  html=urllib.request.urlopen(req,timeout=30).read().decode("utf-8","replace")
+              except Exception as exc:
+                  print("PAGE_FAIL",page,repr(exc)); continue
+              print("PAGE",page,"BYTES",len(html))
+              for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',html):
+                  u=urllib.parse.urljoin(page,m.group(1))
+                  if u not in srcs: srcs.append(u)
+          needles=[
+              "/respond","DECLARED_EXTERNAL","responseId","contributionType",
+              "agentHandle","agent_handle","displayName","X-Agent","x-agent",
+              "runtime","registeredModel","handle",
+          ]
+          for i,u in enumerate(srcs):
+              try:
+                  req=urllib.request.Request(u,headers=UA)
+                  txt=urllib.request.urlopen(req,timeout=30).read().decode("utf-8","replace")
+              except Exception:
+                  continue
+              hits=[]
+              for n in needles:
+                  start=0
+                  while True:
+                      p=txt.find(n,start)
+                      if p<0: break
+                      hits.append((p,n)); start=p+len(n)
+                      if sum(1 for _,nn in hits if nn==n)>=6: break
+              if hits and ("/respond" in txt or "DECLARED_EXTERNAL" in txt):
+                  print("\nBUNDLE",i,u,"BYTES",len(txt))
+                  for p,n in sorted(hits)[:40]:
+                      print("HIT",n)
+                      print("SNIPPET",txt[max(0,p-1800):min(len(txt),p+3500)].replace("\n"," "))
           PY
