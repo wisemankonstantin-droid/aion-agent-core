@@ -163,10 +163,14 @@ def verified_outcome_journey(base_url: str) -> dict:
             "priced_route_intelligence": {
                 "product_sku": "aion.verified.route_intelligence.v1",
                 "membership_required": False,
-                "protocol": "x402",
-                "x402_version": 2,
-                "scheme": "exact",
+                "payment_method": "direct_base_usdc_eip3009_buyer_broadcast",
                 "payment_flow": "upfront",
+                "network": "eip155:8453",
+                "asset_code": "USDC",
+                "transfer_method": "eip3009_transferWithAuthorization",
+                "buyer_pays_gas": True,
+                "aion_pays_gas": False,
+                "facilitator_required": False,
                 "readiness": {
                     "method": "GET",
                     "url": f"{base}/commercial/route-intelligence/payment-readiness",
@@ -180,13 +184,21 @@ def verified_outcome_journey(base_url: str) -> dict:
                         "candidate_identifier": "<optional provider identifier>",
                     },
                     "first_response_when_active": "402 payment_required",
-                    "payment_requirement_header": "PAYMENT-REQUIRED",
-                    "payment_submission_header": "PAYMENT-SIGNATURE",
+                    "payment_instructions_location": "JSON body field payment_instructions",
+                    "buyer_action": (
+                        "Sign the returned purchase-bound EIP-3009 authorization, "
+                        "broadcast it on Base and pay the transaction gas."
+                    ),
+                    "payment_submission_headers": {
+                        "purchase_id": "X-AION-PURCHASE-ID",
+                        "transaction_hash": "X-AION-PAYMENT-TX",
+                    },
                     "success_header": "PAYMENT-RESPONSE",
                 },
                 "result_release_before_settlement": False,
-                "raw_payment_signature_persisted": False,
+                "aion_broadcasts_transaction": False,
                 "ordinary_agent_human_approval_required": False,
+                "legacy_x402_exact_upfront_is_optional_compatibility": True,
             },
         },
         "legacy_package5_telemetry": {
@@ -378,7 +390,7 @@ def post_join_next_actions() -> list[str]:
         "For world_bank.population.latest, POST /commercial/executions/world-bank-population with a two-letter country_code, authorize_external_contact=true and Idempotency-Key. AION invokes the official World Bank WDI provider, verifies the result and returns it at 0 USD.",
         "No Package 5 operator review is required before normal utility. Package 5 participation/VUO surfaces are legacy telemetry only.",
         "For provider callability, POST /actions/verify-callability or MCP verify_external_callability with explicit external-contact authorization and idempotency; inspect durable status with GET /actions/{action_id} or MCP get_action_status.",
-        "For priced Route Intelligence, first GET /commercial/route-intelligence/payment-readiness. Only when launch_ready=true, POST /commercial/route-intelligence/purchase with a bounded need; follow x402 v2 exact/upfront PAYMENT-REQUIRED and PAYMENT-SIGNATURE headers. Once the owner has enabled the rail, ordinary agent payment/settlement requires no AION human in the customer loop.",
+        "For priced Route Intelligence, first GET /commercial/route-intelligence/payment-readiness. Only when launch_ready=true, POST /commercial/route-intelligence/purchase with a bounded need. Read payment_instructions from the 402 JSON body, sign its purchase-bound EIP-3009 authorization, broadcast the USDC transaction on Base while paying your own gas, then retry the same request with X-AION-PURCHASE-ID and X-AION-PAYMENT-TX. Once the rail is enabled, ordinary agent payment/settlement requires no AION human in the customer loop.",
         "Optional marketplace path: PUT /agents/me/capabilities, POST /offers or POST /needs, then GET /agents/me/opportunities.",
     ]
 
@@ -394,8 +406,8 @@ def journey_text(base_url: str) -> str:
 5. Optional provider callability verification remains available through POST {base}/actions/verify-callability or MCP verify_external_callability; inspect it through GET {base}/actions/{{action_id}} or MCP get_action_status.
 6. Execute world_bank.population.latest through POST {base}/commercial/executions/world-bank-population with Bearer authentication, explicit provider-contact authorization and Idempotency-Key.
 7. Completion is machine-verifiable from execution state, provider/provenance checks and result contract. Human usefulness acknowledgement is optional feedback, not a completion requirement.
-8. For priced Route Intelligence, GET {base}/commercial/route-intelligence/payment-readiness. Proceed only when launch_ready=true, then POST {base}/commercial/route-intelligence/purchase and follow x402 v2 exact/upfront PAYMENT-REQUIRED and PAYMENT-SIGNATURE headers.
-9. After owner-level rail enablement, agent authorization, settlement and protected result release proceed without a human customer-flow gate.
+8. For priced Route Intelligence, GET {base}/commercial/route-intelligence/payment-readiness. Proceed only when launch_ready=true, then POST {base}/commercial/route-intelligence/purchase. Read payment_instructions from the 402 JSON body, sign the purchase-bound EIP-3009 USDC authorization, broadcast it on Base while paying your own gas, then retry with X-AION-PURCHASE-ID and X-AION-PAYMENT-TX.
+9. After owner-level rail enablement, the buyer-funded Base settlement, on-chain verification and protected result release proceed without a human customer-flow gate.
 10. Return later with the same logical identity for additional utility or paid transactions."""
 
 
@@ -409,5 +421,5 @@ def commercial_route_text(base_url: str) -> str:
 - One executable zero-cost capability exists at POST {base}/commercial/executions/world-bank-population: world_bank.population.latest through the official World Bank WDI API.
 - Successful completion is machine-verifiable; the acknowledgement endpoint is optional learning feedback and is not required for execution or launch.
 - A2A exposes discovery and guidance, not the authenticated commercial route-planning tool.
-- Priced Route Intelligence advertises readiness at GET {base}/commercial/route-intelligence/payment-readiness and, only when launch_ready=true, purchase at POST {base}/commercial/route-intelligence/purchase using x402 v2 exact/upfront.
-- Machine-readable payment requirements lead to agent authorization, settlement and protected result release once the owner has enabled the payment rail."""
+- Priced Route Intelligence advertises readiness at GET {base}/commercial/route-intelligence/payment-readiness and, only when launch_ready=true, purchase at POST {base}/commercial/route-intelligence/purchase using buyer-broadcast purchase-bound EIP-3009 USDC on Base.
+- The 402 JSON payment_instructions tell the buyer what to sign and broadcast; the buyer pays gas, then submits X-AION-PURCHASE-ID plus X-AION-PAYMENT-TX. AION only verifies settlement on-chain before protected result release."""

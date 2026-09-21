@@ -26,7 +26,11 @@ def test_ard_manifest_is_domain_anchored_and_truthful():
     assert "PaidRouteIntelligence" in entry["capabilities"]
     assert entry["metadata"]["routeIntelligencePaymentReadiness"] == f"{base}/commercial/route-intelligence/payment-readiness"
     assert entry["metadata"]["routeIntelligencePurchase"] == f"{base}/commercial/route-intelligence/purchase"
-    assert entry["metadata"]["routeIntelligencePaymentProtocol"] == "x402-v2-exact-upfront"
+    assert entry["metadata"]["routeIntelligencePaymentProtocol"] == "direct-base-usdc-eip3009-buyer-broadcast"
+    assert entry["metadata"]["routeIntelligenceNetwork"] == "eip155:8453"
+    assert entry["metadata"]["routeIntelligenceAsset"] == "USDC"
+    assert entry["metadata"]["routeIntelligenceBuyerPaysGas"] is True
+    assert entry["metadata"]["routeIntelligenceFacilitatorRequired"] is False
 
 
 def test_ard_and_ai_catalog_well_known_paths_are_identical():
