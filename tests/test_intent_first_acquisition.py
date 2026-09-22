@@ -164,6 +164,35 @@ def test_swarm_default_interval_is_launch_cadence():
     assert acquisition_swarm.MIN_INTERVAL_SECONDS == 15 * 60
 
 
+
+def test_swarm_rotates_discovery_queries_without_increasing_cycle_load():
+    bank = acquisition_swarm.INTENT_WORKERS["provider_selection"]
+    first = acquisition_swarm._queries_for_cycle(
+        "provider_selection", bank, now_seconds=0
+    )
+    second = acquisition_swarm._queries_for_cycle(
+        "provider_selection",
+        bank,
+        now_seconds=acquisition_swarm.DEFAULT_INTERVAL_SECONDS,
+    )
+
+    assert len(first) == acquisition_swarm.QUERIES_PER_WORKER_PER_CYCLE == 2
+    assert len(second) == 2
+    assert first != second
+    assert set(first).issubset(set(bank))
+    assert set(second).issubset(set(bank))
+
+
+def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
+    plan = acquisition_swarm._worker_daily_plan()
+
+    assert plan["new_unique_targets"] == 20
+    assert plan["unique_contact_attempts"] == 10
+    assert plan["valid_machine_responses"] == 2
+    assert plan["sales_quota"] is None
+    assert "first real SAT" in plan["sales_truth"]
+
+
 def test_swarm_response_snapshot_keeps_only_safe_routing_evidence():
     report = {
         "aggregate": {

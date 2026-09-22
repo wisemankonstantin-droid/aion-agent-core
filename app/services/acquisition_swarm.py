@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 from threading import Lock, Thread
 
 from sqlalchemy import func, select
@@ -29,22 +30,56 @@ from .ambassador import (
 
 
 INTENT_WORKERS: dict[str, tuple[str, ...]] = {
-    "provider_selection": ("provider selection", "tool selection"),
-    "paid_api_buyers": ("paid api", "x402 payments"),
-    "agent_wallets": ("agent wallet", "spend controls"),
-    "mcp_buyers": ("MCP paid tools", "MCP payments"),
-    "a2a_buyers": ("A2A agent", "agent collaboration"),
-    "data_buyers": ("data api", "search api"),
-    "automation_buyers": ("automation tools", "browser tools"),
-    "inference_buyers": ("inference api", "LLM gateway"),
-    "fallback_seekers": ("provider fallback", "provider reliability"),
-    "agent_commerce": ("agent procurement", "agent commerce"),
+    "provider_selection": (
+        "provider selection", "tool selection", "api vendor comparison",
+        "agent provider choice", "external tool procurement", "best provider for task",
+    ),
+    "paid_api_buyers": (
+        "paid api", "x402 payments", "metered api purchase",
+        "api billing agent", "pay per call api", "external api spend",
+    ),
+    "agent_wallets": (
+        "agent wallet", "spend controls", "agent budget approval",
+        "autonomous wallet policy", "machine payment limits", "agent treasury spend",
+    ),
+    "mcp_buyers": (
+        "MCP paid tools", "MCP payments", "paid MCP server",
+        "MCP tool pricing", "agent MCP purchase", "metered MCP tool",
+    ),
+    "a2a_buyers": (
+        "A2A agent", "agent collaboration", "paid A2A service",
+        "agent to agent purchase", "external agent service", "A2A provider selection",
+    ),
+    "data_buyers": (
+        "data api", "search api", "paid data provider",
+        "web search purchase", "research data spend", "data vendor selection",
+    ),
+    "automation_buyers": (
+        "automation tools", "browser tools", "paid browser agent",
+        "automation api purchase", "browser provider selection", "external automation service",
+    ),
+    "inference_buyers": (
+        "inference api", "LLM gateway", "paid inference provider",
+        "model api purchase", "LLM provider selection", "inference spend routing",
+    ),
+    "fallback_seekers": (
+        "provider fallback", "provider reliability", "api fallback route",
+        "tool outage alternative", "provider failover", "replacement api provider",
+    ),
+    "agent_commerce": (
+        "agent procurement", "agent commerce", "machine procurement",
+        "autonomous purchase", "agent buying service", "external spend agent",
+    ),
 }
 MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
 MAX_CONTACTS_PER_CYCLE = len(INTENT_WORKERS)
 DEFAULT_INTERVAL_SECONDS = 15 * 60
 MIN_INTERVAL_SECONDS = 15 * 60
 MAX_INTERVAL_SECONDS = 24 * 60 * 60
+QUERIES_PER_WORKER_PER_CYCLE = 2
+DAILY_NEW_TARGET_GOAL_PER_WORKER = 20
+DAILY_CONTACT_GOAL_PER_WORKER = 10
+DAILY_RESPONSE_GOAL_PER_WORKER = 2
 
 _START_LOCK = Lock()
 _STARTED = False
@@ -61,6 +96,128 @@ def _bounded_interval_seconds() -> int:
     except (TypeError, ValueError):
         value = DEFAULT_INTERVAL_SECONDS
     return max(MIN_INTERVAL_SECONDS, min(value, MAX_INTERVAL_SECONDS))
+
+
+def _queries_for_cycle(
+    lane: str,
+    query_bank: tuple[str, ...],
+    *,
+    now_seconds: float | None = None,
+) -> tuple[str, ...]:
+    """Rotate discovery phrases without increasing per-cycle registry load."""
+
+    if len(query_bank) <= QUERIES_PER_WORKER_PER_CYCLE:
+        return tuple(query_bank)
+    current = time.time() if now_seconds is None else float(now_seconds)
+    slot = int(current // DEFAULT_INTERVAL_SECONDS)
+    lane_offset = sum(ord(character) for character in lane)
+    start = (slot + lane_offset) % len(query_bank)
+    return tuple(
+        query_bank[(start + index) % len(query_bank)]
+        for index in range(QUERIES_PER_WORKER_PER_CYCLE)
+    )
+
+
+def _worker_daily_plan() -> dict:
+    return {
+        "new_unique_targets": DAILY_NEW_TARGET_GOAL_PER_WORKER,
+        "unique_contact_attempts": DAILY_CONTACT_GOAL_PER_WORKER,
+        "valid_machine_responses": DAILY_RESPONSE_GOAL_PER_WORKER,
+        "sales_quota": None,
+        "sales_truth": (
+            "A worker cannot guarantee buyer payment. The swarm is held accountable "
+            "for controllable funnel activity; the shared North Star is the first real SAT."
+        ),
+    }
+
+
+def _daily_worker_accountability(
+    db: Session,
+    lane: str,
+    *,
+    send_enabled: bool,
+    cycle_new_targets: int,
+    contact_attempted_this_cycle: bool,
+) -> dict:
+    day_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    campaign_ids = select(models.AmbassadorCampaign.id).where(
+        models.AmbassadorCampaign.name.like(_campaign_prefix(lane) + "%")
+    )
+    target_ids = select(models.AmbassadorTarget.id).where(
+        models.AmbassadorTarget.campaign_id.in_(campaign_ids)
+    )
+
+    new_targets = db.scalar(
+        select(func.count())
+        .select_from(models.AmbassadorTarget)
+        .where(
+            models.AmbassadorTarget.campaign_id.in_(campaign_ids),
+            models.AmbassadorTarget.created_at >= day_start,
+        )
+    ) or 0
+    contacts = db.scalar(
+        select(func.count())
+        .select_from(models.AmbassadorContactAttempt)
+        .where(
+            models.AmbassadorContactAttempt.target_id.in_(target_ids),
+            models.AmbassadorContactAttempt.created_at >= day_start,
+        )
+    ) or 0
+    responses = db.scalar(
+        select(func.count())
+        .select_from(models.AmbassadorContactAttempt)
+        .where(
+            models.AmbassadorContactAttempt.target_id.in_(target_ids),
+            models.AmbassadorContactAttempt.created_at >= day_start,
+            models.AmbassadorContactAttempt.response_received.is_(True),
+        )
+    ) or 0
+
+    plan = _worker_daily_plan()
+    if (
+        contacts >= DAILY_CONTACT_GOAL_PER_WORKER
+        and responses >= DAILY_RESPONSE_GOAL_PER_WORKER
+    ):
+        status = "PLAN_MET"
+        blocker = None
+        next_action = "continue_only_if_new_unique_intent_exists"
+    elif not send_enabled:
+        status = "BLOCKED"
+        blocker = "outbound_disabled"
+        next_action = "restore_authorized_outbound_gate"
+    elif cycle_new_targets == 0 and not contact_attempted_this_cycle:
+        status = "BEHIND_PLAN"
+        blocker = "discovery_pool_exhausted_or_duplicate"
+        next_action = "rotate_discovery_queries"
+    else:
+        status = "WORKING"
+        blocker = None
+        next_action = "continue_unique_intent_outreach"
+
+    return {
+        "status": status,
+        "blocker": blocker,
+        "plan": plan,
+        "today": {
+            "new_unique_targets": int(new_targets),
+            "unique_contact_attempts": int(contacts),
+            "valid_machine_responses": int(responses),
+        },
+        "remaining": {
+            "new_unique_targets": max(
+                0, DAILY_NEW_TARGET_GOAL_PER_WORKER - int(new_targets)
+            ),
+            "unique_contact_attempts": max(
+                0, DAILY_CONTACT_GOAL_PER_WORKER - int(contacts)
+            ),
+            "valid_machine_responses": max(
+                0, DAILY_RESPONSE_GOAL_PER_WORKER - int(responses)
+            ),
+        },
+        "next_action": next_action,
+    }
 
 
 def _campaign_prefix(lane: str) -> str:
@@ -173,6 +330,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "send_enabled": send_enabled,
         "contacts_attempted": 0,
         "contacts_delivered_or_responded": 0,
+        "daily_worker_plan": _worker_daily_plan(),
+        "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "truth": (
             "Workers are AION-operated acquisition infrastructure. Their traffic is not "
             "independent adoption, customer proof, SAT or revenue."
@@ -180,13 +339,16 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     }
 
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
-    for lane, queries in INTENT_WORKERS.items():
+    for lane, query_bank in INTENT_WORKERS.items():
+        queries = _queries_for_cycle(lane, query_bank)
         lane_report = {
             "worker_id": f"aion-intent-{lane}",
             "queries": list(queries),
+            "query_bank_size": len(query_bank),
             "scout_results": [],
             "contact": None,
             "response_intelligence": None,
+            "daily_accountability": None,
         }
         report["workers"][lane] = lane_report
 
@@ -219,33 +381,50 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 set_campaign_state(db, campaign.campaign_id, "ready")
                 db.refresh(campaign)
 
+            cycle_new_targets = sum(
+                len(item.get("created_target_ids") or [])
+                for item in lane_report["scout_results"]
+                if isinstance(item, dict)
+            )
             target = _qualified_unsent_target(db, campaign)
-            if target is None or not send_enabled or contacts_remaining <= 0:
-                continue
+            contact_attempted_this_cycle = False
+            if (
+                target is not None
+                and send_enabled
+                and contacts_remaining > 0
+            ):
+                report["contacts_attempted"] += 1
+                contacts_remaining -= 1
+                contact_attempted_this_cycle = True
+                try:
+                    result = prepare_and_send_operator_contact(
+                        db,
+                        target_id=target.target_id,
+                        idempotency_key=f"intent-{lane}-{target.target_id}",
+                    )
+                    lane_report["contact"] = {
+                        "target_id": target.target_id,
+                        "result_class": result.get("result_class"),
+                        "http_status": result.get("http_status"),
+                        "response_received": result.get("response_received"),
+                    }
+                    if result.get("result_class") in {"delivered", "response_received"}:
+                        report["contacts_delivered_or_responded"] += 1
+                except AmbassadorError as exc:
+                    lane_report["contact"] = {
+                        "target_id": target.target_id,
+                        "error": exc.code,
+                    }
 
-            report["contacts_attempted"] += 1
-            contacts_remaining -= 1
-            try:
-                result = prepare_and_send_operator_contact(
-                    db,
-                    target_id=target.target_id,
-                    idempotency_key=f"intent-{lane}-{target.target_id}",
-                )
-                lane_report["contact"] = {
-                    "target_id": target.target_id,
-                    "result_class": result.get("result_class"),
-                    "http_status": result.get("http_status"),
-                    "response_received": result.get("response_received"),
-                }
-                if result.get("result_class") in {"delivered", "response_received"}:
-                    report["contacts_delivered_or_responded"] += 1
-            except AmbassadorError as exc:
-                lane_report["contact"] = {
-                    "target_id": target.target_id,
-                    "error": exc.code,
-                }
             lane_report["response_intelligence"] = _campaign_response_snapshot(
                 db, campaign.campaign_id
+            )
+            lane_report["daily_accountability"] = _daily_worker_accountability(
+                db,
+                lane,
+                send_enabled=send_enabled,
+                cycle_new_targets=cycle_new_targets,
+                contact_attempted_this_cycle=contact_attempted_this_cycle,
             )
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
