@@ -194,6 +194,7 @@ def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
 
 
 def test_federated_discovery_uses_multiple_public_agent_indexes(monkeypatch):
+    monkeypatch.delenv("AION_DISABLE_EXTERNAL_DISCOVERY", raising=False)
     calls = []
 
     def fake_read_json(method, url, *args, **kwargs):
