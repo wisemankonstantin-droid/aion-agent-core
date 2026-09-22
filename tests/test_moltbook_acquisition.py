@@ -121,6 +121,39 @@ def test_moltbook_policy_allows_official_cdn_dns_fanout_within_global_bound():
     assert policy.max_attempts == 1
 
 
+def test_moltbook_candidate_uses_expanded_url_validation_only_for_moltbook(monkeypatch):
+    calls = []
+
+    def fake_canonical(value, *, max_addresses=4):
+        calls.append((value, max_addresses))
+        return value
+
+    class FakeDB:
+        def scalar(self, statement):
+            return object()
+
+    monkeypatch.setattr(ambassador, "_canonical_public_url", fake_canonical)
+    row, outcome = ambassador._insert_candidate(
+        FakeDB(),
+        object(),
+        {
+            "source": "moltbook",
+            "identifier": "moltbook:BuyerBot",
+            "url": "https://www.moltbook.com/post/post-123",
+            "interaction_url": (
+                "https://www.moltbook.com/api/v1/posts/post-123/comments"
+            ),
+        },
+    )
+
+    assert outcome == "duplicate_target_fingerprint"
+    assert row is not None
+    assert calls == [
+        ("https://www.moltbook.com/post/post-123", 32),
+        ("https://www.moltbook.com/api/v1/posts/post-123/comments", 32),
+    ]
+
+
 def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
     monkeypatch.delenv("MOLTBOOK_API_KEY", raising=False)
 
