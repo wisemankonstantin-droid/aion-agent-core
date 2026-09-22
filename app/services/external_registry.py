@@ -590,7 +590,7 @@ def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
     return _discover_external_agents_resolved_with_status(query, limit, budget).results
 
 
-_AION_RESOLVED_DISCOVER = _discover_federated_with_status
+_AION_RESOLVED_DISCOVER = _discover_external_agents_resolved_with_status
 
 
 def _interface(card):
@@ -814,3 +814,72 @@ def discover_external_agents(query: str, limit: int = 5):
     """Compatibility surface: return only the candidate list."""
 
     return discover_external_agents_with_status(query, limit).results
+
+
+def discover_acquisition_agents_with_status(
+    query: str, limit: int = 5
+) -> DiscoveryResult:
+    """Federated public discovery used only by acquisition/outreach.
+
+    Commercial Router continues to use discover_external_agents_with_status so
+    widening buyer discovery cannot silently change provider routing.
+    """
+
+    normalized_query = _normalized_query(query)
+    normalized_limit = _normalized_limit(limit)
+    if normalized_query is None or normalized_limit is None:
+        return DiscoveryResult(
+            [], "unavailable", "unavailable", _discovery_bounds(_OutboundBudget())
+        )
+    if os.getenv("AION_DISABLE_EXTERNAL_DISCOVERY") == "1":
+        return DiscoveryResult(
+            [], "unavailable", "unavailable", _discovery_bounds(_OutboundBudget())
+        )
+    if not _allow_discovery():
+        return DiscoveryResult(
+            [], "rate_limited", "rate_limited", _discovery_bounds(_OutboundBudget())
+        )
+
+    budget = _OutboundBudget()
+    resolved = _discover_federated_with_status(
+        normalized_query, normalized_limit, budget
+    )
+    results = []
+    failure_class = resolved.failure_class
+    validation_failure = None
+    for row in resolved.results[:normalized_limit]:
+        if budget.remaining <= 0:
+            failure_class = failure_class or "unavailable"
+            break
+        validated = _validate_external(row, budget)
+        results.append(validated)
+        if validated.get("failure_reason") == "outbound_budget_exhausted":
+            failure_class = failure_class or "unavailable"
+        elif validated.get("failure_reason") == "http_429":
+            failure_class = "rate_limited"
+        elif not validated.get("manifest_reachable") and validated.get(
+            "failure_reason"
+        ) not in {None, "no_manifest_url"}:
+            reason = str(validated["failure_reason"])
+            validation_failure = (
+                "unavailable"
+                if reason in {"response_too_large", "content_encoding_rejected"}
+                else "endpoint_unreachable"
+            )
+
+    if (
+        failure_class is None
+        and validation_failure is not None
+        and not any(result.get("manifest_reachable") for result in results)
+    ):
+        failure_class = validation_failure
+
+    resource_bounds = _discovery_bounds(budget)
+    for result in results:
+        result["resource_bounds"] = dict(resource_bounds)
+    return DiscoveryResult(
+        results,
+        failure_class or "success",
+        failure_class,
+        resource_bounds,
+    )
