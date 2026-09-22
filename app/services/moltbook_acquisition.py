@@ -23,6 +23,7 @@ MOLTBOOK_API_BASE = f"{MOLTBOOK_ORIGIN}/api/v1"
 MAX_SEARCH_RESULTS = 5
 MAX_QUERY_CHARS = 500
 MAX_COMMENT_CHARS = 900
+MAX_DM_MESSAGE_CHARS = 1000
 _SELF_NAMES = {"aion-supreme", "aion_supreme", "aion supreme"}
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,220}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
@@ -262,6 +263,123 @@ def post_comment(interaction_url: str, content: str):
         )
     path = interaction_url[len(MOLTBOOK_API_BASE):]
     return _request_json("POST", path, payload={"content": text})
+
+
+def dm_request(agent_name: str, message: str) -> dict:
+    """Send one consent-based DM request to a bounded Moltbook agent name."""
+
+    name = str(agent_name or "").strip()
+    text = str(message or "").strip()
+    if (
+        not _SAFE_AGENT_NAME.fullmatch(name)
+        or name.lower() in _SELF_NAMES
+        or not 10 <= len(text) <= MAX_DM_MESSAGE_CHARS
+    ):
+        return {
+            "status": "rejected",
+            "accepted": False,
+            "error": "invalid_moltbook_dm_request",
+            "http_status": None,
+        }
+    result, payload = _request_json(
+        "POST",
+        "/agents/dm/request",
+        payload={"to": name, "message": text},
+    )
+    accepted = bool(
+        result.status is not None
+        and 200 <= result.status < 300
+        and (not isinstance(payload, dict) or payload.get("success") is not False)
+    )
+    return {
+        "status": "success" if accepted else "rejected",
+        "accepted": accepted,
+        "error": result.error or (
+            None if accepted else f"http_{result.status}"
+        ),
+        "http_status": result.status,
+    }
+
+
+def dm_conversations(limit: int = 50) -> dict:
+    """Read a bounded summary of active DM conversations."""
+
+    bounded_limit = max(1, min(int(limit), 50))
+    result, payload = _request_json("GET", "/agents/dm/conversations")
+    if result.error or result.status != 200 or not isinstance(payload, dict):
+        return {
+            "status": "unavailable",
+            "error": result.error or f"http_{result.status}",
+            "conversations": [],
+            "total_unread": 0,
+        }
+    conversations = payload.get("conversations")
+    items = conversations.get("items") if isinstance(conversations, dict) else []
+    if not isinstance(items, list):
+        items = []
+    rows = []
+    for item in items[:bounded_limit]:
+        if not isinstance(item, dict):
+            continue
+        conversation_id = str(item.get("conversation_id") or "").strip()
+        with_agent = item.get("with_agent")
+        agent_name = (
+            str(with_agent.get("name") or "").strip()
+            if isinstance(with_agent, dict)
+            else ""
+        )
+        if not conversation_id or not _SAFE_AGENT_NAME.fullmatch(agent_name):
+            continue
+        rows.append(
+            {
+                "conversation_id": conversation_id[:160],
+                "agent_name": agent_name,
+                "unread_count": int(item.get("unread_count") or 0),
+                "you_initiated": bool(item.get("you_initiated")),
+                "last_message_at": item.get("last_message_at"),
+            }
+        )
+    return {
+        "status": "success",
+        "error": None,
+        "conversations": rows,
+        "total_unread": int(payload.get("total_unread") or 0),
+    }
+
+
+def dm_send(conversation_id: str, message: str) -> dict:
+    """Send one bounded reply inside an already-approved conversation."""
+
+    cid = str(conversation_id or "").strip()
+    text = str(message or "").strip()
+    if (
+        not cid
+        or len(cid) > 160
+        or any(ord(ch) <= 32 or ord(ch) == 127 for ch in cid)
+        or not 1 <= len(text) <= MAX_DM_MESSAGE_CHARS
+    ):
+        return {
+            "status": "rejected",
+            "sent": False,
+            "error": "invalid_moltbook_dm_send",
+            "http_status": None,
+        }
+    result, payload = _request_json(
+        "POST",
+        f"/agents/dm/conversations/{cid}/send",
+        payload={"message": text},
+    )
+    sent = bool(
+        result.status is not None
+        and 200 <= result.status < 300
+        and (not isinstance(payload, dict) or payload.get("success") is not False)
+    )
+    return {
+        "status": "success" if sent else "rejected",
+        "sent": sent,
+        "error": result.error or (None if sent else f"http_{result.status}"),
+        "http_status": result.status,
+    }
 
 
 def dm_check() -> dict:
