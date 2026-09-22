@@ -102,6 +102,7 @@ DAILY_CONTACT_GOAL_PER_WORKER = 10
 DAILY_RESPONSE_GOAL_PER_WORKER = 2
 MOLTBOOK_DAILY_COMMENT_LIMIT = 50
 MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
+MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
@@ -345,6 +346,25 @@ def _moltbook_comments_today(db: Session) -> int:
     return _moltbook_channel_contacts_today(db, dm=False)
 
 
+def _seconds_until_moltbook_comment_allowed(db: Session) -> float:
+    latest = db.scalar(
+        select(models.AmbassadorContactAttempt.created_at)
+        .join(models.AmbassadorTarget)
+        .where(
+            models.AmbassadorTarget.discovery_source == "moltbook",
+            ~models.AmbassadorContactAttempt.idempotency_key.like("dm-%"),
+        )
+        .order_by(models.AmbassadorContactAttempt.created_at.desc())
+        .limit(1)
+    )
+    if latest is None:
+        return 0.0
+    elapsed = (
+        datetime.now(timezone.utc) - _aware(latest)
+    ).total_seconds()
+    return max(0.0, MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS - elapsed)
+
+
 def _moltbook_dm_requests_today(db: Session) -> int:
     return _moltbook_channel_contacts_today(db, dm=True)
 
@@ -438,6 +458,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "today": moltbook_comments_today,
                 "remaining_today": moltbook_comments_remaining_today,
                 "max_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
+                "minimum_interval_seconds": MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS,
                 "attempted_this_cycle": 0,
             },
             "dm": {
@@ -559,6 +580,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     report["moltbook"]["contacts_attempted_this_cycle"] += 1
                     report["moltbook"]["comments"]["attempted_this_cycle"] += 1
                 try:
+                    if target.discovery_source == "moltbook":
+                        wait_seconds = _seconds_until_moltbook_comment_allowed(db)
+                        if wait_seconds > 0:
+                            time.sleep(wait_seconds)
                     result = prepare_and_send_operator_contact(
                         db,
                         target_id=target.target_id,
@@ -570,6 +595,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         "result_class": result.get("result_class"),
                         "http_status": result.get("http_status"),
                         "response_received": result.get("response_received"),
+                        "platform_error": result.get("platform_error"),
                     }
                     if result.get("result_class") in {"delivered", "response_received"}:
                         report["contacts_delivered_or_responded"] += 1
@@ -614,9 +640,17 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         if dm_result.get("http_status") == 429:
                             moltbook_dm_remaining_cycle = 0
                     except AmbassadorError as exc:
+                        # AmbassadorError occurs before any Moltbook DM network
+                        # attempt. Restore the per-cycle platform budget so a
+                        # later lane can still use it.
+                        report["contacts_attempted"] -= 1
+                        contacts_remaining += 1
+                        moltbook_dm_remaining_cycle += 1
+                        report["moltbook"]["dm"]["requests_attempted_this_cycle"] -= 1
                         lane_report["dm_contact"] = {
                             "target_id": dm_target.target_id,
                             "error": exc.code,
+                            "network_attempt_performed": False,
                         }
 
             lane_report["response_intelligence"] = _campaign_response_snapshot(
