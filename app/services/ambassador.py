@@ -344,7 +344,8 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
         raise AmbassadorError(422, "public_url_required", "A public HTTPS AION URL is required")
     message = {
         "sender": "AION",
-        "purpose": "intent_first_pre_spend_outreach",
+        "purpose": "bounded_machine_utility_invitation",
+        "intent": "before_external_spend",
         "value": (
             "Before paying an external agent, API or provider, ask AION to check whether "
             "a qualified route exists and whether spending is justified."
@@ -378,6 +379,7 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
             ),
         },
         "optional_structured_feedback": {
+            "part_type": "A2A data part",
             "shape": {
                 "aion_feedback": {
                     "routing_need": "required single-line text, 1-128 characters",
