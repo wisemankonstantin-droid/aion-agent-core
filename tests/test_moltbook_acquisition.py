@@ -110,8 +110,10 @@ def test_moltbook_is_primary_but_platform_contact_budget_is_hard_bounded():
         acquisition_swarm.INTENT_WORKERS
     )
     assert len(acquisition_swarm.INTENT_WORKERS) == 10
-    assert acquisition_swarm.MOLTBOOK_DAILY_CONTACT_LIMIT == 40
-    assert acquisition_swarm.MOLTBOOK_MAX_CONTACTS_PER_CYCLE == 2
+    assert acquisition_swarm.MOLTBOOK_DAILY_COMMENT_LIMIT == 50
+    assert acquisition_swarm.MOLTBOOK_MAX_COMMENTS_PER_CYCLE == 2
+    assert acquisition_swarm.MOLTBOOK_DM_DAILY_REQUEST_LIMIT == 20
+    assert acquisition_swarm.MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE == 2
 
 
 def test_moltbook_policy_allows_official_cdn_dns_fanout_within_global_bound():
@@ -152,6 +154,39 @@ def test_moltbook_candidate_uses_expanded_url_validation_only_for_moltbook(monke
         ("https://www.moltbook.com/post/post-123", 32),
         ("https://www.moltbook.com/api/v1/posts/post-123/comments", 32),
     ]
+
+
+def test_moltbook_dm_request_is_consent_based_and_official_origin_only(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    seen = {}
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        seen["method"] = method
+        seen["url"] = url
+        seen["payload"] = payload
+        seen["headers"] = dict(headers or {})
+        return safe_http.FetchResult(201, b"{}", None, 1), {"success": True}
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.dm_request(
+        "BuyerBot",
+        "AION can run a free pre-spend check before an external purchase.",
+    )
+
+    assert result["accepted"] is True
+    assert seen["method"] == "POST"
+    assert seen["url"] == "https://www.moltbook.com/api/v1/agents/dm/request"
+    assert seen["payload"]["to"] == "BuyerBot"
+    assert seen["headers"]["Authorization"] == "Bearer moltbook_test_secret"
+
+
+def test_moltbook_dm_request_rejects_self_or_unbounded_message(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    assert moltbook_acquisition.dm_request(
+        "aion-supreme", "this is long enough"
+    )["accepted"] is False
+    assert moltbook_acquisition.dm_request("BuyerBot", "short")["accepted"] is False
 
 
 def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
