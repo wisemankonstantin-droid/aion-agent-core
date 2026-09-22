@@ -10,8 +10,9 @@ import base64
 import json
 import sys
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -180,6 +181,126 @@ def install_commercial_payment_routes(app) -> None:
                 "Read-only truth surface. It creates no payment, entitlement, revenue, "
                 "VUO, membership or adoption evidence. Production-first semantics are "
                 "buyer-broadcast purchase-bound EIP-3009 Base USDC; x402 remains optional compatibility."
+            ),
+        )
+
+    if "/commercial/route-intelligence/preflight" not in existing:
+        def preflight_endpoint(
+            payload: dict,
+            db: Session = Depends(get_db),
+        ):
+            allowed = {"need", "candidate_identifier"}
+            if not isinstance(payload, dict) or set(payload) - allowed:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "code": "invalid_pre_spend_preflight",
+                        "message": "Preflight accepts only need and optional candidate_identifier",
+                        "membership_required": False,
+                        "payment_required": False,
+                    },
+                    headers={"Cache-Control": "private, no-store"},
+                )
+            try:
+                from .commercial_router import CommercialRoutePlanRequest, plan_commercial_route
+
+                request = CommercialRoutePlanRequest.model_validate(
+                    {
+                        "need": payload.get("need"),
+                        "candidate_identifier": payload.get("candidate_identifier"),
+                        "currency": "USD",
+                    }
+                )
+                plan = plan_commercial_route(
+                    db,
+                    requester_agent_id=0,
+                    payload=request,
+                )
+            except (ValidationError, HTTPException):
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "code": "invalid_pre_spend_preflight",
+                        "message": "Preflight request failed bounded validation",
+                        "membership_required": False,
+                        "payment_required": False,
+                    },
+                    headers={"Cache-Control": "private, no-store"},
+                )
+
+            selected = plan.get("selected_provider") is not None
+            state = str(plan.get("state") or "unknown")
+            qualified_count = sum(
+                1
+                for candidate in plan.get("candidates") or []
+                if candidate.get("qualification_state") == "declaration_qualified"
+            )
+            payment = direct_base_usdc_readiness()
+
+            if state == "discovery_unavailable":
+                decision = "HOLD"
+            elif selected and payment["launch_ready"]:
+                decision = "GO"
+            elif selected:
+                decision = "HOLD"
+            else:
+                decision = "STOP"
+
+            next_action = {
+                "action": (
+                    "purchase_route_intelligence"
+                    if decision == "GO"
+                    else "retry_or_refine_need"
+                    if decision == "HOLD"
+                    else "change_need_or_candidate"
+                ),
+                "method": "POST" if decision == "GO" else None,
+                "url": (
+                    "/commercial/route-intelligence/purchase"
+                    if decision == "GO"
+                    else None
+                ),
+                "same_request_body": decision == "GO",
+            }
+            return JSONResponse(
+                {
+                    "action": "aion_pre_spend_preflight",
+                    "decision": decision,
+                    "reason_code": state,
+                    "qualified_route_available": selected,
+                    "qualified_candidate_count": qualified_count,
+                    "route_details_released": False,
+                    "route_details_available_after_purchase": bool(selected),
+                    "membership_required": False,
+                    "payment_required": False,
+                    "paid_route_launch_ready": bool(payment["launch_ready"]),
+                    "next_action": next_action,
+                    "buyer_guide": (
+                        "https://github.com/wisemankonstantin-droid/"
+                        "aion-agent-core/blob/main/docs/FIRST_SAT_BUYER.md"
+                    ),
+                    "truth_boundaries": {
+                        "preflight_is_not_purchase": True,
+                        "preflight_creates_no_payment_or_entitlement": True,
+                        "provider_interaction_endpoint_contacted": False,
+                        "payment_rail_contacted": False,
+                        "public_registry_or_manifest_discovery_may_occur": True,
+                        "selected_provider_identity_withheld_until_paid_route_intelligence": True,
+                    },
+                },
+                headers={"Cache-Control": "private, no-store"},
+            )
+
+        app.add_api_route(
+            "/commercial/route-intelligence/preflight",
+            preflight_endpoint,
+            methods=["POST"],
+            include_in_schema=True,
+            summary="Check whether AION has a qualified route before external spend",
+            description=(
+                "Zero-price, no-membership pre-spend decision surface. It may perform bounded "
+                "public registry/manifest discovery, but never contacts a provider interaction "
+                "endpoint, creates a payment, or releases the selected paid route."
             ),
         )
 
