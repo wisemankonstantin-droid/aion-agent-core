@@ -2021,6 +2021,8 @@ class _AionA2AV1IngressCompat:
                     q=dict(part)
                     if "kind" in q:
                         q.pop("kind",None); changed=True
+                    if "type" in q:
+                        q.pop("type",None); changed=True
                     data=q.get("data")
                     if isinstance(data,dict) and data.get("action") and not any(k in q for k in ("text","raw","url")):
                         meta=q.get("metadata")
