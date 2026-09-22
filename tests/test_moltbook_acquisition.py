@@ -189,6 +189,32 @@ def test_moltbook_dm_request_rejects_self_or_unbounded_message(monkeypatch):
     assert moltbook_acquisition.dm_request("BuyerBot", "short")["accepted"] is False
 
 
+def test_moltbook_platform_error_summary_is_bounded_and_non_secret():
+    result = safe_http.FetchResult(403, b"", "http_403", 1)
+
+    summary = moltbook_acquisition.platform_error_summary(
+        result,
+        {"code": "comment_forbidden", "message": "Commenting is temporarily unavailable"},
+    )
+
+    assert summary == (
+        "code=comment_forbidden; "
+        "message=Commenting is temporarily unavailable"
+    )
+    assert len(summary) <= 400
+
+    redacted = moltbook_acquisition.platform_error_summary(
+        result,
+        {"message": "Bearer definitely-not-safe"},
+    )
+    assert redacted == "redacted_platform_error"
+
+
+def test_moltbook_comment_pacing_exceeds_official_twenty_second_floor():
+    assert acquisition_swarm.MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS == 21
+    assert acquisition_swarm.MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS > 20
+
+
 def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
     monkeypatch.delenv("MOLTBOOK_API_KEY", raising=False)
 
