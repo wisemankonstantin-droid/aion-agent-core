@@ -38,6 +38,11 @@ from .external_registry import (
     discover_acquisition_agents_with_status as discover_external_agents_with_status,
 )
 from .identity_resolution import logical_groups
+from .moltbook_acquisition import (
+    build_outreach_comment as build_moltbook_outreach_comment,
+    post_comment as post_moltbook_comment,
+    search_intent as search_moltbook_intent,
+)
 from .package5_proof import qualifying_return_identity_ids
 
 
@@ -195,7 +200,52 @@ def set_campaign_state(db: Session, campaign_id: str, state: str) -> dict:
 
 def _qualification(candidate: dict) -> tuple[str, list[str]]:
     reasons = []
+    source = str(candidate.get("source") or "").strip().lower()
     identifier = str(candidate.get("identifier") or candidate.get("name") or "").lower()
+
+    if source == "moltbook":
+        interaction_url = str(candidate.get("interaction_url") or "")
+        try:
+            parsed = urlsplit(interaction_url)
+            path = parsed.path.rstrip("/")
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname != "www.moltbook.com"
+                or not path.startswith("/api/v1/posts/")
+                or not path.endswith("/comments")
+            ):
+                reasons.append("moltbook_interaction_destination_invalid")
+        except Exception:
+            reasons.append("moltbook_interaction_destination_invalid")
+        if not candidate.get("interaction_url_validated"):
+            reasons.append("interaction_destination_not_validated")
+        if candidate.get("authentication_requirement") != "moltbook_bearer":
+            reasons.append("moltbook_auth_contract_invalid")
+        if candidate.get("payment_required"):
+            reasons.append("payment_required_initial_contact")
+        if any(
+            marker in identifier
+            for marker in (
+                "aion-agent-core",
+                "moltbook:aion-supreme",
+                "moltbook:aion_supreme",
+                "synthetic",
+                "fixture",
+                "test-agent",
+                "probe-test",
+            )
+        ):
+            reasons.append("self_or_test_target")
+        try:
+            canonical_aion_public_base_url()
+        except AmbassadorError:
+            reasons.append("trusted_public_origin_unavailable")
+        return (
+            ("qualified", ["qualified_moltbook_public_intent_thread"])
+            if not reasons
+            else ("rejected", sorted(set(reasons)))
+        )
+
     if not candidate.get("manifest_reachable"):
         reasons.append("agent_card_not_reachable")
     if not candidate.get("declared_a2a_v1_jsonrpc"):
@@ -238,7 +288,10 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
     try:
         card_url = _canonical_public_url(card_url)
         interaction_url = _canonical_public_url(interaction_url)
-        fingerprint = _target_fingerprint(interaction_url)
+        if str(candidate.get("source") or "").strip().lower() == "moltbook":
+            fingerprint = _digest_bytes(source_identifier.lower().encode("utf-8"))
+        else:
+            fingerprint = _target_fingerprint(interaction_url)
     except AmbassadorError as exc:
         return None, exc.code
     existing = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_fingerprint == fingerprint))
@@ -308,11 +361,62 @@ def scout_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
         }
 
 
+def scout_moltbook_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
+    """Discover semantic spend-intent on Moltbook without contacting during scout."""
+
+    with _guard(db):
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.campaign_id == campaign_id
+                ),
+                db,
+            )
+        )
+        if campaign is None:
+            raise AmbassadorError(404, "campaign_not_found", "Campaign not found")
+        if campaign.state not in {"draft", "ready"}:
+            raise AmbassadorError(
+                409, "campaign_not_scoutable", "Campaign is paused or closed"
+            )
+        current = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        remaining = campaign.maximum_targets - current
+        if remaining <= 0:
+            raise AmbassadorError(
+                409, "campaign_target_limit_reached", "Campaign target limit reached"
+            )
+        discovery = search_moltbook_intent(query, min(5, remaining))
+        outcomes = Counter()
+        target_ids = []
+        for candidate in discovery.get("candidates", [])[:remaining]:
+            row, outcome = _insert_candidate(db, campaign, candidate)
+            outcomes[outcome] += 1
+            if row is not None and outcome == "created":
+                target_ids.append(row.target_id)
+        campaign.updated_at = _now()
+        db.commit()
+        return {
+            "campaign_id": campaign_id,
+            "channel": "moltbook",
+            "discovery_status": discovery.get("status"),
+            "created_target_ids": target_ids,
+            "outcomes": dict(sorted(outcomes.items())),
+            "resource_bounds": discovery.get("resource_bounds") or {},
+            "outbound_contact_performed": False,
+            "error": discovery.get("error"),
+        }
+
+
 def qualify_target(db: Session, target_id: str) -> dict:
     target = db.scalar(_for_update(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id), db))
     if target is None:
         raise AmbassadorError(404, "target_not_found", "Target not found")
     candidate = {
+        "source": target.discovery_source,
         "identifier": target.source_identifier, "manifest_reachable": target.manifest_reachable,
         "declared_a2a_v1_jsonrpc": target.declared_a2a_v1_jsonrpc,
         "interaction_url_validated": target.interaction_url_validated,
@@ -693,14 +797,30 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     if os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1" or os.getenv("AION_AMBASSADOR_OPERATOR") != "1":
         raise AmbassadorError(403, "outbound_disabled", "Both Ambassador outbound and operator gates are required")
     key = _key(idempotency_key)
-    payload = _contact_payload(message, target_id=target_id, idempotency_key=key)
+
+    target_preview = db.scalar(
+        select(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.target_id == target_id
+        )
+    )
+    if target_preview is None:
+        raise AmbassadorError(404, "target_not_found", "Target not found")
+    is_moltbook = target_preview.discovery_source == "moltbook"
+    if is_moltbook:
+        comment = build_moltbook_outreach_comment(
+            public_base_url=canonical_aion_public_base_url()
+        )
+        payload = {"content": comment}
+    else:
+        payload = _contact_payload(message, target_id=target_id, idempotency_key=key)
     request_digest = _digest_json(payload)
+
     with _guard(db):
         target = db.scalar(_for_update(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id), db))
         if target is None:
             raise AmbassadorError(404, "target_not_found", "Target not found")
         campaign = db.scalar(_for_update(select(models.AmbassadorCampaign).where(models.AmbassadorCampaign.id == target.campaign_id), db))
-        token = _prepared_token_for_message(
+        _prepared_token_for_message(
             db, target=target, campaign=campaign, message=message, require_active=False
         )
         existing = db.scalar(select(models.AmbassadorContactAttempt).where(
@@ -764,20 +884,40 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         target.contact_state = "blocked"
         db.commit()
         raise
-    policy = safe_http.FetchPolicy(timeout_seconds=4.0, max_response_bytes=64_000, max_attempts=1, max_resolved_addresses=4, user_agent="AION-Ambassador-Pilot/0.8.0")
-    try:
-        result, response = safe_http.fetch_json("POST", target.interaction_url, payload=payload, headers={"A2A-Version": "1.0"}, policy=policy)
-    except Exception:
-        result, response = safe_http.FetchResult(None, None, "transport_exception", 0), None
+
+    if is_moltbook:
+        try:
+            result, response = post_moltbook_comment(
+                target.interaction_url,
+                str(payload["content"]),
+            )
+        except Exception:
+            result, response = safe_http.FetchResult(None, None, "transport_exception", 0), None
+        semantic_response = None
+        contact.response_received = False
+    else:
+        policy = safe_http.FetchPolicy(timeout_seconds=4.0, max_response_bytes=64_000, max_attempts=1, max_resolved_addresses=4, user_agent="AION-Ambassador-Pilot/0.8.0")
+        try:
+            result, response = safe_http.fetch_json("POST", target.interaction_url, payload=payload, headers={"A2A-Version": "1.0"}, policy=policy)
+        except Exception:
+            result, response = safe_http.FetchResult(None, None, "transport_exception", 0), None
+        contact.response_received = response is not None
+        semantic_response = _validated_semantic_response(response, str(payload["id"]))
+
     contact.http_status = result.status
     contact.completed_at = _now()
-    contact.response_received = response is not None
     contact.response_digest = _digest_json(response) if response is not None else None
-    semantic_response = _validated_semantic_response(response, str(payload["id"]))
+
     if result.status == 402 or result.error == "http_402":
         contact.result_class, target.contact_state = "payment_required", "blocked"
     elif result.status in {401, 403}:
         contact.result_class, target.contact_state = "credentials_required", "blocked"
+    elif is_moltbook and result.status is not None and 200 <= result.status < 300:
+        success = not isinstance(response, dict) or response.get("success") is not False
+        if success:
+            contact.result_class, target.contact_state = "delivered", "contacted"
+        else:
+            contact.result_class, target.contact_state = "rejected", "contacted"
     elif result.status is not None and 200 <= result.status < 300 and semantic_response is not None:
         contact.result_class, target.contact_state = "response_received", "response_received"
         if any(item.get("opt_out") is True for item in _semantic_data_objects(semantic_response)):
@@ -791,7 +931,10 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     target.updated_at = _now()
     contact_id = contact.contact_id
     db.commit()
-    conversation_capture_state = "no_response" if response is None else "invalid_protocol_response"
+
+    conversation_capture_state = "not_applicable_moltbook" if is_moltbook else (
+        "no_response" if response is None else "invalid_protocol_response"
+    )
     if semantic_response is not None:
         from .conversation_intelligence import capture_ambassador_response
         conversation_capture_state = capture_ambassador_response(
@@ -799,10 +942,16 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
             response=semantic_response,
         )
     return {
-        "contact_id": contact_id, "target_id": target.target_id,
-        "result_class": contact.result_class, "http_status": contact.http_status,
-        "response_received": contact.response_received, "transport_attempts": result.attempts,
-        "automatic_retry": False, "send_performed": True, "idempotent_replay": False,
+        "contact_id": contact_id,
+        "target_id": target.target_id,
+        "channel": "moltbook" if is_moltbook else "a2a",
+        "result_class": contact.result_class,
+        "http_status": contact.http_status,
+        "response_received": contact.response_received,
+        "transport_attempts": result.attempts,
+        "automatic_retry": False,
+        "send_performed": True,
+        "idempotent_replay": False,
         "conversation_capture_state": conversation_capture_state,
     }
 
