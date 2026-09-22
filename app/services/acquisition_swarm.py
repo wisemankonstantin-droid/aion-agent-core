@@ -24,11 +24,15 @@ from .ambassador import (
     MAX_CAMPAIGN_TARGETS,
     create_campaign,
     prepare_and_send_operator_contact,
+    prepare_and_send_operator_moltbook_dm,
     scout_campaign,
     scout_moltbook_campaign,
     set_campaign_state,
 )
-from .moltbook_acquisition import account_status as moltbook_account_status
+from .moltbook_acquisition import (
+    account_status as moltbook_account_status,
+    dm_check as moltbook_dm_check,
+)
 
 
 INTENT_WORKERS: dict[str, tuple[str, ...]] = {
@@ -96,8 +100,10 @@ QUERIES_PER_WORKER_PER_CYCLE = 2
 DAILY_NEW_TARGET_GOAL_PER_WORKER = 20
 DAILY_CONTACT_GOAL_PER_WORKER = 10
 DAILY_RESPONSE_GOAL_PER_WORKER = 2
-MOLTBOOK_DAILY_CONTACT_LIMIT = 40
-MOLTBOOK_MAX_CONTACTS_PER_CYCLE = 2
+MOLTBOOK_DAILY_COMMENT_LIMIT = 50
+MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
+MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
+MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
 _STARTED = False
@@ -311,22 +317,36 @@ def _qualified_unsent_target(
     )
 
 
-def _moltbook_contacts_today(db: Session) -> int:
+def _moltbook_channel_contacts_today(db: Session, *, dm: bool) -> int:
     day_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(models.AmbassadorContactAttempt)
-            .join(models.AmbassadorTarget)
-            .where(
-                models.AmbassadorTarget.discovery_source == "moltbook",
-                models.AmbassadorContactAttempt.created_at >= day_start,
-            )
+    statement = (
+        select(func.count())
+        .select_from(models.AmbassadorContactAttempt)
+        .join(models.AmbassadorTarget)
+        .where(
+            models.AmbassadorTarget.discovery_source == "moltbook",
+            models.AmbassadorContactAttempt.created_at >= day_start,
         )
-        or 0
     )
+    if dm:
+        statement = statement.where(
+            models.AmbassadorContactAttempt.idempotency_key.like("dm-%")
+        )
+    else:
+        statement = statement.where(
+            ~models.AmbassadorContactAttempt.idempotency_key.like("dm-%")
+        )
+    return int(db.scalar(statement) or 0)
+
+
+def _moltbook_comments_today(db: Session) -> int:
+    return _moltbook_channel_contacts_today(db, dm=False)
+
+
+def _moltbook_dm_requests_today(db: Session) -> int:
+    return _moltbook_channel_contacts_today(db, dm=True)
 
 
 def _safe_response_snapshot_from_report(report: dict) -> dict:
@@ -374,13 +394,27 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     )
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
-    moltbook_contacts_today = _moltbook_contacts_today(db)
-    moltbook_contacts_remaining_today = max(
-        0, MOLTBOOK_DAILY_CONTACT_LIMIT - moltbook_contacts_today
+    moltbook_dm_state = moltbook_dm_check() if moltbook_ready else {
+        "status": "unavailable",
+        "has_activity": False,
+        "pending_request_count": 0,
+        "unread_count": 0,
+    }
+    moltbook_comments_today = _moltbook_comments_today(db)
+    moltbook_comments_remaining_today = max(
+        0, MOLTBOOK_DAILY_COMMENT_LIMIT - moltbook_comments_today
     )
-    moltbook_contacts_remaining_cycle = min(
-        MOLTBOOK_MAX_CONTACTS_PER_CYCLE,
-        moltbook_contacts_remaining_today,
+    moltbook_comments_remaining_cycle = min(
+        MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
+        moltbook_comments_remaining_today,
+    )
+    moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
+    moltbook_dm_remaining_today = max(
+        0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
+    )
+    moltbook_dm_remaining_cycle = min(
+        MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
+        moltbook_dm_remaining_today,
     )
 
     report = {
@@ -399,10 +433,31 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "claimed": moltbook_ready,
             "status": moltbook_state.get("status"),
             "error": moltbook_state.get("error"),
-            "daily_contact_limit": MOLTBOOK_DAILY_CONTACT_LIMIT,
-            "contacts_today": moltbook_contacts_today,
-            "contacts_remaining_today": moltbook_contacts_remaining_today,
-            "max_contacts_per_cycle": MOLTBOOK_MAX_CONTACTS_PER_CYCLE,
+            "comments": {
+                "official_daily_limit": MOLTBOOK_DAILY_COMMENT_LIMIT,
+                "today": moltbook_comments_today,
+                "remaining_today": moltbook_comments_remaining_today,
+                "max_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
+                "attempted_this_cycle": 0,
+            },
+            "dm": {
+                "initial_daily_request_limit": MOLTBOOK_DM_DAILY_REQUEST_LIMIT,
+                "requests_today": moltbook_dm_requests_today,
+                "requests_remaining_today": moltbook_dm_remaining_today,
+                "max_requests_per_cycle": MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
+                "requests_attempted_this_cycle": 0,
+                "platform_numeric_daily_limit_published": False,
+                "activity_status": moltbook_dm_state.get("status"),
+                "pending_incoming_requests": int(
+                    moltbook_dm_state.get("pending_request_count") or 0
+                ),
+                "unread_messages": int(moltbook_dm_state.get("unread_count") or 0),
+            },
+            # Backward-compatible aliases for existing observability.
+            "daily_contact_limit": MOLTBOOK_DAILY_COMMENT_LIMIT,
+            "contacts_today": moltbook_comments_today,
+            "contacts_remaining_today": moltbook_comments_remaining_today,
+            "max_contacts_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
             "contacts_attempted_this_cycle": 0,
         },
         "truth": (
@@ -488,7 +543,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             target = _qualified_unsent_target(
                 db,
                 campaign,
-                allow_moltbook=moltbook_contacts_remaining_cycle > 0,
+                allow_moltbook=moltbook_comments_remaining_cycle > 0,
             )
             contact_attempted_this_cycle = False
             if (
@@ -500,8 +555,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 contacts_remaining -= 1
                 contact_attempted_this_cycle = True
                 if target.discovery_source == "moltbook":
-                    moltbook_contacts_remaining_cycle -= 1
+                    moltbook_comments_remaining_cycle -= 1
                     report["moltbook"]["contacts_attempted_this_cycle"] += 1
+                    report["moltbook"]["comments"]["attempted_this_cycle"] += 1
                 try:
                     result = prepare_and_send_operator_contact(
                         db,
@@ -522,6 +578,46 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         "target_id": target.target_id,
                         "error": exc.code,
                     }
+
+            lane_report["dm_contact"] = None
+            if (
+                moltbook_ready
+                and send_enabled
+                and contacts_remaining > 0
+                and moltbook_dm_remaining_cycle > 0
+            ):
+                dm_target = _qualified_unsent_target(
+                    db,
+                    campaign,
+                    allow_moltbook=True,
+                )
+                if dm_target is not None and dm_target.discovery_source == "moltbook":
+                    report["contacts_attempted"] += 1
+                    contacts_remaining -= 1
+                    moltbook_dm_remaining_cycle -= 1
+                    report["moltbook"]["dm"]["requests_attempted_this_cycle"] += 1
+                    try:
+                        dm_result = prepare_and_send_operator_moltbook_dm(
+                            db,
+                            target_id=dm_target.target_id,
+                            idempotency_key=f"dm-{lane}-{dm_target.target_id}",
+                        )
+                        lane_report["dm_contact"] = {
+                            "target_id": dm_target.target_id,
+                            "channel": "moltbook_dm",
+                            "result_class": dm_result.get("result_class"),
+                            "http_status": dm_result.get("http_status"),
+                            "platform_error": dm_result.get("platform_error"),
+                        }
+                        if dm_result.get("result_class") == "delivered":
+                            report["contacts_delivered_or_responded"] += 1
+                        if dm_result.get("http_status") == 429:
+                            moltbook_dm_remaining_cycle = 0
+                    except AmbassadorError as exc:
+                        lane_report["dm_contact"] = {
+                            "target_id": dm_target.target_id,
+                            "error": exc.code,
+                        }
 
             lane_report["response_intelligence"] = _campaign_response_snapshot(
                 db, campaign.campaign_id
