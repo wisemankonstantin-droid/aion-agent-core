@@ -34,8 +34,8 @@ class FetchPolicy:
             raise ValueError("max_response_bytes must be in (0, 2000000]")
         if not 0 < self.max_attempts <= 4:
             raise ValueError("max_attempts must be in [1, 4]")
-        if not 0 < self.max_resolved_addresses <= 8:
-            raise ValueError("max_resolved_addresses must be in [1, 8]")
+        if not 0 < self.max_resolved_addresses <= 32:
+            raise ValueError("max_resolved_addresses must be in [1, 32]")
         if not self.user_agent.strip():
             raise ValueError("user_agent must not be empty")
 
