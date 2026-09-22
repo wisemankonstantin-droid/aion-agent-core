@@ -36,6 +36,10 @@ The app reads process environment variables; local defaults use SQLite
 `./aion.db`. Render needs its managed DATABASE_URL and AION_REQUIRE_A2A=1.
 See DEPLOY_RENDER.md for the deployment safety gate.
 
+Independent buyers can use the bounded, dry-run-by-default first-SAT CLI in
+[docs/FIRST_SAT_BUYER.md](docs/FIRST_SAT_BUYER.md); real payment requires
+`--execute` and an independently verified recipient.
+
 requirements.in preserves direct pins; requirements.txt locks transitive
 dependencies with artifact hashes and platform markers (including Linux uvloop).
 To deliberately regenerate with uv 0.12.10, run:

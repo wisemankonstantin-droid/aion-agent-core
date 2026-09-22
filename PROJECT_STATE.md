@@ -8,6 +8,24 @@ Repository: `wisemankonstantin-droid/aion-agent-core`
 
 This file is the concise mutable repository checkpoint.
 
+## 2026-09-22 buyer-kit continuation
+
+The buyer-only first-SAT CLI was prepared on
+`codex/first-sat-buyer-kit-v1` from GitHub `main`
+`e081968cfa02250770636b80e3f05c3e4ab482a4`. It does not change AION's
+server-side payment semantics or production configuration. The local full
+suite passed (708 passed, 23 skipped); the final mock-only buyer suite passed
+(31 passed), local readiness reported all checks true, and the secret scan
+found zero matches. These are repository checks, not independent SAT evidence.
+A read-only
+production `GET /commercial/route-intelligence/payment-readiness` on
+2026-09-22 reported direct Base USDC `launch_ready=true`, with the real-money
+gate enabled. This is readiness, **not** evidence of a buyer, broadcast,
+settlement, released result, or first SAT. No payment was executed by Codex.
+
+The older Package 6C checkpoint below is retained as historical context;
+its `main` and production activation statements are not current evidence.
+
 If it conflicts with actual GitHub, CI, Render, database or production state:
 
 **ACTUAL VERIFIED STATE WINS.**
