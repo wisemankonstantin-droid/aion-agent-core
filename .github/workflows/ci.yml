@@ -18,7 +18,7 @@ jobs:
       - run: pip install --require-hashes -r requirements.txt
       - run: python -m pip check
       - run: python scripts/check_secrets.py
-      - run: python -m pytest -q
+      - run: python -m pytest -q --ignore=tests/test_first_sat_buyer.py
       - run: rm -f .aion-test.db && python scripts/readiness.py
       - name: Migration smoke
         run: |
@@ -58,3 +58,14 @@ jobs:
             /tmp/aion-mcp-sdk/bin/python scripts/mcp_official_interop.py
           AION_INTEROP_BASE_URL=https://127.0.0.1:8765 \
             python scripts/a2a_official_interop.py
+  first-sat-buyer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements.txt
+      - run: python -m pip install -r scripts/requirements-first-sat-buyer.txt
+      - run: python -m pip check
+      - run: python -m pytest -q tests/test_first_sat_buyer.py
