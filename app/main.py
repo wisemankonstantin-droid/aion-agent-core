@@ -65,6 +65,7 @@ from .services.ambassador_operator import (
     execute_operator_action,
     operator_campaign_status as ambassador_operator_campaign_status,
 )
+from .services.acquisition_swarm import start_acquisition_swarm_if_enabled
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import (
     COMMERCIAL_ROUTE_VALUE_PROPOSITION,
@@ -107,6 +108,11 @@ app = FastAPI(
         "evidence and fail-closed economic boundaries before execution."
     ),
 )
+
+@app.on_event("startup")
+def _start_intent_acquisition_workers():
+    start_acquisition_swarm_if_enabled()
+
 
 
 class _BoundMachineRequestBody:
