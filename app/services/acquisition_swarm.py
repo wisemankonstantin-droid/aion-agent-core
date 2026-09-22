@@ -25,8 +25,10 @@ from .ambassador import (
     create_campaign,
     prepare_and_send_operator_contact,
     scout_campaign,
+    scout_moltbook_campaign,
     set_campaign_state,
 )
+from .moltbook_acquisition import account_status as moltbook_account_status
 
 
 INTENT_WORKERS: dict[str, tuple[str, ...]] = {
@@ -71,6 +73,20 @@ INTENT_WORKERS: dict[str, tuple[str, ...]] = {
         "autonomous purchase", "agent buying service", "external spend agent",
     ),
 }
+
+MOLTBOOK_INTENT_QUERIES: dict[str, str] = {
+    "provider_selection": "I need to choose or pay an external API, agent, tool, or provider for a real task",
+    "paid_api_buyers": "I am about to pay for an API, metered service, or x402 resource",
+    "agent_wallets": "My AI agent needs to spend money and I need budget, approval, or provider controls",
+    "mcp_buyers": "I need a paid MCP tool or server and must decide whether to buy it",
+    "a2a_buyers": "I need to hire or pay another agent or A2A service for a real job",
+    "data_buyers": "I need to buy search, research, or data API access for a current task",
+    "automation_buyers": "I need to pay for browser automation or an external automation provider",
+    "inference_buyers": "I need to choose and pay an inference, model API, or LLM gateway provider",
+    "fallback_seekers": "My current API or provider is failing and I need a paid replacement or fallback",
+    "agent_commerce": "My autonomous agent needs to procure an external service before spending money",
+}
+
 MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
 MAX_CONTACTS_PER_CYCLE = len(INTENT_WORKERS)
 DEFAULT_INTERVAL_SECONDS = 15 * 60
@@ -80,6 +96,8 @@ QUERIES_PER_WORKER_PER_CYCLE = 2
 DAILY_NEW_TARGET_GOAL_PER_WORKER = 20
 DAILY_CONTACT_GOAL_PER_WORKER = 10
 DAILY_RESPONSE_GOAL_PER_WORKER = 2
+MOLTBOOK_DAILY_CONTACT_LIMIT = 40
+MOLTBOOK_MAX_CONTACTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
 _STARTED = False
@@ -264,9 +282,12 @@ def _campaign_for_lane(db: Session, lane: str) -> models.AmbassadorCampaign:
 
 
 def _qualified_unsent_target(
-    db: Session, campaign: models.AmbassadorCampaign
+    db: Session,
+    campaign: models.AmbassadorCampaign,
+    *,
+    allow_moltbook: bool,
 ) -> models.AmbassadorTarget | None:
-    return db.scalar(
+    base = (
         select(models.AmbassadorTarget)
         .where(
             models.AmbassadorTarget.campaign_id == campaign.id,
@@ -274,8 +295,37 @@ def _qualified_unsent_target(
             models.AmbassadorTarget.contact_state == "not_ready",
             models.AmbassadorTarget.suppressed.is_(False),
         )
+    )
+    if allow_moltbook:
+        moltbook = db.scalar(
+            base.where(models.AmbassadorTarget.discovery_source == "moltbook")
+            .order_by(models.AmbassadorTarget.id)
+            .limit(1)
+        )
+        if moltbook is not None:
+            return moltbook
+    return db.scalar(
+        base.where(models.AmbassadorTarget.discovery_source != "moltbook")
         .order_by(models.AmbassadorTarget.id)
         .limit(1)
+    )
+
+
+def _moltbook_contacts_today(db: Session) -> int:
+    day_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorContactAttempt)
+            .join(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.discovery_source == "moltbook",
+                models.AmbassadorContactAttempt.created_at >= day_start,
+            )
+        )
+        or 0
     )
 
 
@@ -322,6 +372,17 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         if send is None
         else bool(send)
     )
+    moltbook_state = moltbook_account_status()
+    moltbook_ready = bool(moltbook_state.get("claimed"))
+    moltbook_contacts_today = _moltbook_contacts_today(db)
+    moltbook_contacts_remaining_today = max(
+        0, MOLTBOOK_DAILY_CONTACT_LIMIT - moltbook_contacts_today
+    )
+    moltbook_contacts_remaining_cycle = min(
+        MOLTBOOK_MAX_CONTACTS_PER_CYCLE,
+        moltbook_contacts_remaining_today,
+    )
+
     report = {
         "action": "intent_acquisition_cycle",
         "workers": {},
@@ -332,6 +393,18 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "contacts_delivered_or_responded": 0,
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+        "primary_acquisition_channel": "moltbook",
+        "moltbook": {
+            "configured": bool(moltbook_state.get("configured")),
+            "claimed": moltbook_ready,
+            "status": moltbook_state.get("status"),
+            "error": moltbook_state.get("error"),
+            "daily_contact_limit": MOLTBOOK_DAILY_CONTACT_LIMIT,
+            "contacts_today": moltbook_contacts_today,
+            "contacts_remaining_today": moltbook_contacts_remaining_today,
+            "max_contacts_per_cycle": MOLTBOOK_MAX_CONTACTS_PER_CYCLE,
+            "contacts_attempted_this_cycle": 0,
+        },
         "truth": (
             "Workers are AION-operated acquisition infrastructure. Their traffic is not "
             "independent adoption, customer proof, SAT or revenue."
@@ -354,28 +427,54 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
 
         try:
             campaign = _campaign_for_lane(db, lane)
-            for query in queries:
-                current = db.scalar(
-                    select(func.count())
-                    .select_from(models.AmbassadorTarget)
-                    .where(models.AmbassadorTarget.campaign_id == campaign.id)
-                ) or 0
-                if current >= campaign.maximum_targets:
-                    break
+            moltbook_created = 0
+
+            if moltbook_ready:
                 try:
-                    lane_report["scout_results"].append(
-                        scout_campaign(
-                            db,
-                            campaign_id=campaign.campaign_id,
-                            query=query,
-                        )
+                    moltbook_result = scout_moltbook_campaign(
+                        db,
+                        campaign_id=campaign.campaign_id,
+                        query=MOLTBOOK_INTENT_QUERIES[lane],
+                    )
+                    lane_report["scout_results"].append(moltbook_result)
+                    moltbook_created = len(
+                        moltbook_result.get("created_target_ids") or []
                     )
                 except AmbassadorError as exc:
                     lane_report["scout_results"].append(
-                        {"query": query, "error": exc.code}
+                        {
+                            "channel": "moltbook",
+                            "query": MOLTBOOK_INTENT_QUERIES[lane],
+                            "error": exc.code,
+                        }
                     )
-                    if exc.code == "campaign_target_limit_reached":
+
+            # Registries are secondary. Use them when Moltbook is unavailable
+            # or this lane produced no fresh Moltbook target.
+            fallback_queries = queries if not moltbook_ready else queries[:1]
+            if not moltbook_ready or moltbook_created == 0:
+                for query in fallback_queries:
+                    current = db.scalar(
+                        select(func.count())
+                        .select_from(models.AmbassadorTarget)
+                        .where(models.AmbassadorTarget.campaign_id == campaign.id)
+                    ) or 0
+                    if current >= campaign.maximum_targets:
                         break
+                    try:
+                        lane_report["scout_results"].append(
+                            scout_campaign(
+                                db,
+                                campaign_id=campaign.campaign_id,
+                                query=query,
+                            )
+                        )
+                    except AmbassadorError as exc:
+                        lane_report["scout_results"].append(
+                            {"channel": "registry_fallback", "query": query, "error": exc.code}
+                        )
+                        if exc.code == "campaign_target_limit_reached":
+                            break
 
             if campaign.state != "ready":
                 set_campaign_state(db, campaign.campaign_id, "ready")
@@ -386,7 +485,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 for item in lane_report["scout_results"]
                 if isinstance(item, dict)
             )
-            target = _qualified_unsent_target(db, campaign)
+            target = _qualified_unsent_target(
+                db,
+                campaign,
+                allow_moltbook=moltbook_contacts_remaining_cycle > 0,
+            )
             contact_attempted_this_cycle = False
             if (
                 target is not None
@@ -396,6 +499,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 report["contacts_attempted"] += 1
                 contacts_remaining -= 1
                 contact_attempted_this_cycle = True
+                if target.discovery_source == "moltbook":
+                    moltbook_contacts_remaining_cycle -= 1
+                    report["moltbook"]["contacts_attempted_this_cycle"] += 1
                 try:
                     result = prepare_and_send_operator_contact(
                         db,
@@ -404,6 +510,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
+                        "channel": result.get("channel") or target.discovery_source,
                         "result_class": result.get("result_class"),
                         "http_status": result.get("http_status"),
                         "response_received": result.get("response_received"),
