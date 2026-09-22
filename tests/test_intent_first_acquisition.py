@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from app.db import SessionLocal
 from app.main import app
 from app.payment_models import RouteIntelligencePurchase
-from app.services import acquisition_swarm, ambassador, commercial_payment_routes, commercial_router
+from app.services import acquisition_swarm, ambassador, commercial_payment_routes, commercial_router, external_registry
 from app.services.external_registry import DiscoveryResult
 
 
@@ -191,6 +191,78 @@ def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
     assert plan["valid_machine_responses"] == 2
     assert plan["sales_quota"] is None
     assert "first real SAT" in plan["sales_truth"]
+
+
+def test_federated_discovery_uses_multiple_public_agent_indexes(monkeypatch):
+    calls = []
+
+    def fake_read_json(method, url, *args, **kwargs):
+        calls.append(url)
+        if url.startswith(external_registry.AGENSTRY_SEARCH):
+            return (
+                200,
+                {
+                    "results": [
+                        {
+                            "domain": "buyer-one.example",
+                            "name": "Buyer One",
+                            "description": "agent with external spend intent",
+                        }
+                    ]
+                },
+                None,
+            )
+        if url.startswith(external_registry.FINDAGENT_SEARCH):
+            return (
+                200,
+                [
+                    {
+                        "name": "Buyer Two",
+                        "url": "https://buyer-two.example/a2a/v1",
+                        "description": "public agent card shape",
+                    }
+                ],
+                None,
+            )
+        raise AssertionError(f"unexpected discovery URL: {url}")
+
+    monkeypatch.setattr(external_registry, "_read_json", fake_read_json)
+    budget = external_registry._OutboundBudget(maximum=18)
+
+    result = external_registry._discover_federated_with_status(
+        "provider selection",
+        2,
+        budget,
+    )
+
+    assert result.status == "success"
+    assert [row["source"] for row in result.results] == [
+        "agenstry",
+        "findagent",
+    ]
+    assert result.results[0]["url"] == (
+        "https://buyer-one.example/.well-known/agent-card.json"
+    )
+    assert result.results[1]["url"] == (
+        "https://buyer-two.example/.well-known/agent-card.json"
+    )
+    assert len(calls) == 2
+
+
+def test_federated_candidate_requires_direct_origin_manifest():
+    row = {
+        "name": "Buyer",
+        "provider": {"url": "https://agent.example/docs"},
+    }
+
+    candidate = external_registry._federated_candidate("agenstry", row)
+
+    assert candidate is not None
+    assert candidate["url"] == "https://agent.example/.well-known/agent-card.json"
+    assert (
+        candidate["evidence_state"]
+        == "federated_candidate_requires_direct_manifest_validation"
+    )
 
 
 def test_swarm_response_snapshot_keeps_only_safe_routing_evidence():
