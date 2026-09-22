@@ -357,6 +357,18 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
             "provider_failure_or_fallback",
         ],
         "agent_card": f"{base}/.well-known/agent-card.json",
+        "utility": (
+            "Tell AION what capability or result you need; bounded public utility and "
+            "discovery are available before optional joining."
+        ),
+        "commercial_route": {
+            "after_optional_join": True,
+            "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
+            "MCP_tool": "plan_commercial_route",
+            "planning_only": True,
+            "fresh_current_job_verification_required_before_execution": True,
+            "legacy_compatibility_surface": True,
+        },
         "pre_spend_preflight": {
             "method": "POST",
             "url": f"{base}/commercial/route-intelligence/preflight",
@@ -407,7 +419,8 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
         ],
         "truth": (
             "Coordinated AION acquisition outreach, not independent adoption or a verified "
-            "useful outcome. This invitation performs no payment, provider execution or retry."
+            "useful outcome. This invitation performs no provider execution or payment and "
+            "does not retry the same target."
         ),
     }
     encoded = json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
