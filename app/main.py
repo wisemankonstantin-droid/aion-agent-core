@@ -110,7 +110,7 @@ app = FastAPI(
 
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/commercial/executions/world-bank-population", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/commercial/executions/world-bank-population", "/commercial/route-intelligence/preflight", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
