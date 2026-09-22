@@ -156,3 +156,54 @@ def test_swarm_has_independent_intent_lanes_and_300_target_capacity(monkeypatch)
     assert "x402 payments" in flattened
     monkeypatch.delenv("AION_ACQUISITION_SWARM_ENABLED", raising=False)
     assert acquisition_swarm.start_acquisition_swarm_if_enabled() is False
+
+def test_swarm_default_interval_is_launch_cadence():
+    assert acquisition_swarm.DEFAULT_INTERVAL_SECONDS == 15 * 60
+    assert acquisition_swarm.MIN_INTERVAL_SECONDS == 15 * 60
+
+
+def test_swarm_response_snapshot_keeps_only_safe_routing_evidence():
+    report = {
+        "aggregate": {
+            "responses": 3,
+            "captured_conversations": 3,
+            "explicit_signal_distinct_target_counts": {"opt_out": 1},
+            "inferred_signal_distinct_target_counts": {
+                "positive_interest": 1,
+                "pricing_commercial_interest": 1,
+            },
+        },
+        "conversations": [
+            {
+                "safe_evidence": [
+                    {
+                        "kind": "routing_feedback_v1",
+                        "routing_need": "paid web research provider",
+                        "currency": "USD",
+                        "requester_max_price": "2.00",
+                        "candidate_identifier": "example.provider",
+                        "ignored_raw": "must not survive",
+                    }
+                ],
+                "raw_response": "must not survive",
+            },
+            {"safe_evidence": [{"kind": "other", "secret": "must not survive"}]},
+        ],
+    }
+
+    snapshot = acquisition_swarm._safe_response_snapshot_from_report(report)
+
+    assert snapshot["responses"] == 3
+    assert snapshot["captured_conversations"] == 3
+    assert snapshot["explicit_signal_counts"] == {"opt_out": 1}
+    assert snapshot["inferred_signal_counts"]["positive_interest"] == 1
+    assert snapshot["routing_feedback"] == [
+        {
+            "routing_need": "paid web research provider",
+            "currency": "USD",
+            "requester_max_price": "2.00",
+            "candidate_identifier": "example.provider",
+        }
+    ]
+    assert "must not survive" not in json.dumps(snapshot)
+
