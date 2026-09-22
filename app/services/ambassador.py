@@ -105,7 +105,7 @@ def _key(value: str | None) -> str:
     return key
 
 
-def _canonical_public_url(value: str) -> str:
+def _canonical_public_url(value: str, *, max_addresses: int = 4) -> str:
     text = str(value or "")
     if (
         not text
@@ -123,7 +123,10 @@ def _canonical_public_url(value: str) -> str:
     decoded_path = unquote(lexical.path)
     if _URL_SECRET_PATH.search(decoded_path) or _LONG_URL_TOKEN.search(decoded_path):
         raise AmbassadorError(422, "unsafe_public_destination", "credential_like_url_path")
-    parsed, addresses, reason = safe_http.resolve_public_https(value, max_addresses=4)
+    parsed, addresses, reason = safe_http.resolve_public_https(
+        value,
+        max_addresses=max_addresses,
+    )
     if reason or not addresses or parsed is None:
         raise AmbassadorError(422, "unsafe_public_destination", reason or "destination_not_public")
     try:
@@ -285,12 +288,20 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
         return None, "candidate_missing_bounded_identity"
     if len(card_url) > 1_000 or len(interaction_url) > 1_000:
         return None, "candidate_metadata_too_large"
+    source = str(candidate.get("source") or "").strip().lower()
     try:
-        card_url = _canonical_public_url(card_url)
-        interaction_url = _canonical_public_url(interaction_url)
-        if str(candidate.get("source") or "").strip().lower() == "moltbook":
+        if source == "moltbook":
+            card_url = _canonical_public_url(card_url, max_addresses=32)
+            interaction_url = _canonical_public_url(
+                interaction_url,
+                max_addresses=32,
+            )
             fingerprint = _digest_bytes(source_identifier.lower().encode("utf-8"))
         else:
+            # Preserve the legacy Ambassador call contract for every
+            # non-Moltbook source.
+            card_url = _canonical_public_url(card_url)
+            interaction_url = _canonical_public_url(interaction_url)
             fingerprint = _target_fingerprint(interaction_url)
     except AmbassadorError as exc:
         return None, exc.code
