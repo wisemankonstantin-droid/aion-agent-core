@@ -53,6 +53,11 @@ def _patch(monkeypatch):
     monkeypatch.setattr(safe_http._socket, "getaddrinfo", lambda *a, **k: PUBLIC)
 
 
+def test_safe_http_default_dns_bound_remains_narrow_but_opt_in_allows_cdn_fanout():
+    assert safe_http.FetchPolicy().max_resolved_addresses == 4
+    assert safe_http.FetchPolicy(max_resolved_addresses=32).max_resolved_addresses == 32
+
+
 def test_fetch_resolves_once_pins_peer_and_preserves_host(monkeypatch):
     _patch(monkeypatch)
     calls = []
