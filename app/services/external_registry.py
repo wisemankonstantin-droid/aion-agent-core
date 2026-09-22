@@ -14,10 +14,13 @@ from app.services import safe_http as _safe_http
 
 
 A2A_REGISTRY_SEARCH = "https://api.a2a-registry.org/public/agents"
+AGENSTRY_SEARCH = "https://agenstry.com/api/search"
+FINDAGENT_SEARCH = "https://findagent.cloud/api/search"
 
 _AION_MAX_EXTERNAL_CANDIDATES = 5
 _AION_MAX_EXTERNAL_QUERY_CHARS = 128
-_AION_OUTBOUND_ATTEMPT_BUDGET = 12
+_AION_OUTBOUND_ATTEMPT_BUDGET = 18
+_AION_FEDERATED_SOURCE_RESULT_LIMIT = 2
 _AION_EXTERNAL_TIMEOUT_SECONDS = 4.0
 _AION_EXTERNAL_MAX_ATTEMPTS = 2
 _AION_MAX_EXTERNAL_BYTES = 256_000
@@ -226,7 +229,217 @@ def _discovery_bounds(budget: _OutboundBudget) -> dict:
         "response_byte_limit": _AION_MAX_EXTERNAL_BYTES,
         "cache_max_entries": _AION_VALIDATION_CACHE_MAX_ENTRIES,
         "cache_ttl_seconds": _AION_VALIDATION_TTL,
+        "discovery_sources": [
+            "agenstry",
+            "findagent",
+            "global_a2a_registry",
+        ],
     }
+
+
+def _rows_from_search_payload(payload) -> list[dict]:
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("results", "agents", "items", "data"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+        if isinstance(rows, dict):
+            nested = _first(rows, "results", "agents", "items")
+            if isinstance(nested, list):
+                return [row for row in nested if isinstance(row, dict)]
+    return []
+
+
+def _candidate_manifest_url(row: dict) -> str | None:
+    explicit = _first(
+        row,
+        "manifest_url",
+        "manifestUrl",
+        "agent_card_url",
+        "agentCardUrl",
+        "card_url",
+        "cardUrl",
+    )
+    if explicit:
+        return str(explicit)
+
+    domain = _first(row, "domain", "host", "hostname")
+    if domain:
+        value = str(domain).strip()
+        if "://" not in value:
+            value = "https://" + value
+        try:
+            parsed = urlsplit(value)
+            if parsed.hostname:
+                host = parsed.hostname.lower()
+                display_host = f"[{host}]" if ":" in host else host
+                netloc = (
+                    display_host
+                    if parsed.port in (None, 443)
+                    else f"{display_host}:{parsed.port}"
+                )
+                return urlunsplit(
+                    ("https", netloc, "/.well-known/agent-card.json", "", "")
+                )
+        except ValueError:
+            return None
+
+    endpoint = _first(
+        row,
+        "interaction_url",
+        "interactionUrl",
+        "endpoint",
+        "url",
+        "provider_url",
+        "providerUrl",
+    )
+    if not endpoint and isinstance(row.get("provider"), dict):
+        endpoint = _first(row["provider"], "url", "endpoint")
+    if endpoint:
+        try:
+            parsed = urlsplit(str(endpoint))
+            if parsed.scheme == "https" and parsed.hostname:
+                host = parsed.hostname.lower()
+                display_host = f"[{host}]" if ":" in host else host
+                netloc = (
+                    display_host
+                    if parsed.port in (None, 443)
+                    else f"{display_host}:{parsed.port}"
+                )
+                return urlunsplit(
+                    ("https", netloc, "/.well-known/agent-card.json", "", "")
+                )
+        except ValueError:
+            return None
+    return None
+
+
+def _federated_candidate(source: str, row: dict) -> dict | None:
+    manifest_url = _candidate_manifest_url(row)
+    if not manifest_url:
+        return None
+    identifier = (
+        _first(row, "identifier", "id", "domain", "package_name", "name")
+        or manifest_url
+    )
+    description = _first(row, "description", "summary", "content", "bio") or ""
+    return {
+        "source": source,
+        "identifier": str(identifier)[:240],
+        "package_name": _first(row, "package_name", "package", "package_id"),
+        "name": _first(row, "name", "display_name", "title", "domain")
+        or str(identifier),
+        "description": str(description)[:2_000],
+        "url": manifest_url,
+        "registry_verified_claim": _first(
+            row, "verified", "trust_verified", "domain_verified", "is_verified"
+        ),
+        "raw_category": _first(row, "category", "target", "kind", "protocol"),
+        "resolution_status": "manifest_url_derived_from_federated_discovery",
+        "resolution_reason": None,
+        "evidence_state": "federated_candidate_requires_direct_manifest_validation",
+        "followable": True,
+    }
+
+
+def _discover_public_search_source(
+    *,
+    source: str,
+    base_url: str,
+    query: str,
+    limit: int,
+    budget: _OutboundBudget,
+) -> tuple[list[dict], str | None]:
+    if budget.remaining <= 0:
+        return [], "unavailable"
+    params = {"q": query}
+    if source == "findagent":
+        params["limit"] = min(limit, 25)
+    search_url = f"{base_url}?{urlencode(params)}"
+    status, payload, error = _read_json("GET", search_url, budget=budget)
+    if error or status != 200:
+        return [], _operational_failure(status, error)
+    candidates = []
+    for row in _rows_from_search_payload(payload):
+        candidate = _federated_candidate(source, row)
+        if candidate is not None:
+            candidates.append(candidate)
+        if len(candidates) >= limit:
+            break
+    return candidates, None
+
+
+def _discover_federated_with_status(
+    query: str, limit: int = 5, budget=None
+) -> DiscoveryResult:
+    query = _normalized_query(query)
+    limit = _normalized_limit(limit)
+    if (
+        query is None
+        or limit is None
+        or os.getenv("AION_DISABLE_EXTERNAL_DISCOVERY") == "1"
+    ):
+        return DiscoveryResult([], "unavailable", "unavailable", {})
+
+    budget = budget or _OutboundBudget()
+    collected = []
+    failures = []
+
+    for source, base_url in (
+        ("agenstry", AGENSTRY_SEARCH),
+        ("findagent", FINDAGENT_SEARCH),
+    ):
+        rows, failure = _discover_public_search_source(
+            source=source,
+            base_url=base_url,
+            query=query,
+            limit=min(_AION_FEDERATED_SOURCE_RESULT_LIMIT, limit),
+            budget=budget,
+        )
+        collected.extend(rows)
+        if failure:
+            failures.append(failure)
+
+    if len(collected) < limit and budget.remaining > 0:
+        a2a = _discover_external_agents_resolved_with_status(
+            query,
+            min(_AION_FEDERATED_SOURCE_RESULT_LIMIT, limit),
+            budget,
+        )
+        collected.extend(a2a.results)
+        if a2a.failure_class:
+            failures.append(a2a.failure_class)
+
+    deduped = []
+    seen = set()
+    for row in collected:
+        manifest = str(row.get("url") or "")
+        key = manifest.lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+        if len(deduped) >= limit:
+            break
+
+    failure_class = None
+    if not deduped and failures:
+        failure_class = (
+            "rate_limited"
+            if "rate_limited" in failures
+            else "endpoint_unreachable"
+            if "endpoint_unreachable" in failures
+            else "unavailable"
+        )
+    return DiscoveryResult(
+        deduped,
+        failure_class or "success",
+        failure_class,
+        _discovery_bounds(budget),
+    )
 
 
 def _discover_external_agents_resolved_with_status(
@@ -377,7 +590,7 @@ def _discover_external_agents_resolved(query: str, limit: int = 5, budget=None):
     return _discover_external_agents_resolved_with_status(query, limit, budget).results
 
 
-_AION_RESOLVED_DISCOVER = _discover_external_agents_resolved_with_status
+_AION_RESOLVED_DISCOVER = _discover_federated_with_status
 
 
 def _interface(card):
