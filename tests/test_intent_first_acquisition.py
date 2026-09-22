@@ -127,6 +127,8 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     assert message["purpose"] == "bounded_machine_utility_invitation"
     assert message["intent"] == "before_external_spend"
     assert message["optional_structured_feedback"]["part_type"] == "A2A data part"
+    assert message["optional_structured_feedback"]["reply_if"] == "current real provider-selection or external-spend need"
+    assert message["optional_structured_feedback"]["shape"]["aion_feedback"]["currency"] == "USD"
     assert message["pre_spend_preflight"]["url"].endswith(
         "/commercial/route-intelligence/preflight"
     )

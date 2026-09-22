@@ -379,9 +379,11 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
         },
         "optional_structured_feedback": {
             "part_type": "A2A data part",
+            "reply_if": "current real provider-selection or external-spend need",
             "shape": {
                 "aion_feedback": {
                     "routing_need": "1-128 chars",
+                    "currency": "USD",
                     "requester_max_price": "optional",
                     "candidate_identifier": "optional",
                 }
