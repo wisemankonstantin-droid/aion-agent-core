@@ -40,6 +40,7 @@ from .external_registry import (
 from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
     build_outreach_comment as build_moltbook_outreach_comment,
+    dm_request as request_moltbook_dm,
     post_comment as post_moltbook_comment,
     search_intent as search_moltbook_intent,
 )
@@ -1085,6 +1086,195 @@ def prepare_and_send_operator_contact(
             "raw_distribution_token_returned": False,
             "raw_prepared_message_returned": False,
         }
+
+
+def prepare_and_send_operator_moltbook_dm(
+    db: Session,
+    *,
+    target_id: str,
+    idempotency_key: str,
+) -> dict:
+    """Send one consent-based Moltbook DM request with durable one-target dedupe."""
+
+    if (
+        os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"
+        or os.getenv("AION_AMBASSADOR_OPERATOR") != "1"
+    ):
+        raise AmbassadorError(
+            403,
+            "outbound_disabled",
+            "Both Ambassador outbound and operator gates are required",
+        )
+    key = _key(idempotency_key)
+    with _guard(db):
+        target = db.scalar(
+            _for_update(
+                select(models.AmbassadorTarget).where(
+                    models.AmbassadorTarget.target_id == target_id
+                ),
+                db,
+            )
+        )
+        if target is None:
+            raise AmbassadorError(404, "target_not_found", "Target not found")
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.id == target.campaign_id
+                ),
+                db,
+            )
+        )
+        if (
+            target.discovery_source != "moltbook"
+            or not target.source_identifier.startswith("moltbook:")
+        ):
+            raise AmbassadorError(
+                409,
+                "target_not_moltbook",
+                "DM requests are only available for qualified Moltbook targets",
+            )
+        if campaign.state != "ready":
+            raise AmbassadorError(
+                409, "campaign_not_ready", "Campaign must be ready for contact"
+            )
+        if (
+            target.suppressed
+            or target.qualification_state != "qualified"
+            or target.contact_state != "not_ready"
+        ):
+            raise AmbassadorError(
+                409,
+                "target_not_contact_ready",
+                "Target must be qualified, unsuppressed and uncontacted",
+            )
+        if db.scalar(
+            select(models.AmbassadorContactAttempt).where(
+                models.AmbassadorContactAttempt.target_id == target.id
+            )
+        ) is not None:
+            raise AmbassadorError(
+                409, "target_already_contacted", "Target already has a contact attempt"
+            )
+        used = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorContactAttempt)
+            .join(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        if used >= campaign.maximum_contacts:
+            raise AmbassadorError(
+                409,
+                "campaign_contact_limit_reached",
+                "Campaign contact limit reached",
+            )
+        latest_contact = db.scalar(
+            select(models.AmbassadorContactAttempt.created_at)
+            .join(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+            .order_by(models.AmbassadorContactAttempt.created_at.desc())
+            .limit(1)
+        )
+        if latest_contact is not None and _aware(latest_contact) > _now() - timedelta(
+            seconds=MIN_CONTACT_INTERVAL_SECONDS
+        ):
+            raise AmbassadorError(
+                429,
+                "campaign_contact_rate_limited",
+                "Campaign contact interval has not elapsed",
+            )
+
+        author = target.source_identifier.split(":", 1)[1]
+        base = canonical_aion_public_base_url().rstrip("/")
+        message = (
+            "AION-operated outreach: if you have a current external-spend or "
+            "provider-selection need, AION can check it before you pay. "
+            f"Free preflight: POST {base}/commercial/route-intelligence/preflight. "
+            "If a qualified route exists, Verified Route Intelligence is offered "
+            "at the launch price of 1 USDC. No membership is required. "
+            "If this is not relevant, no reply is needed and AION will not re-request."
+        )
+        request_digest = _digest_json(
+            {"channel": "moltbook_dm", "to": author, "message": message}
+        )
+        contact = models.AmbassadorContactAttempt(
+            contact_id=str(uuid.uuid4()),
+            target_id=target.id,
+            idempotency_key=key,
+            outbound_request_digest=request_digest,
+            result_class="claimed",
+            http_status=None,
+            response_digest=None,
+            response_received=False,
+            created_at=_now(),
+            completed_at=None,
+        )
+        db.add(contact)
+        target.contact_state = "claimed"
+        target.updated_at = _now()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AmbassadorError(
+                409,
+                "target_already_contacted",
+                "Target already has its single contact attempt",
+            ) from exc
+
+    try:
+        outcome = request_moltbook_dm(author, message)
+    except Exception:
+        outcome = {
+            "accepted": False,
+            "http_status": None,
+            "error": "transport_exception",
+        }
+
+    target = db.scalar(
+        _for_update(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.id == target.id
+            ),
+            db,
+        )
+    )
+    contact = db.scalar(
+        _for_update(
+            select(models.AmbassadorContactAttempt).where(
+                models.AmbassadorContactAttempt.target_id == target.id
+            ),
+            db,
+        )
+    )
+    contact.http_status = outcome.get("http_status")
+    contact.completed_at = _now()
+    contact.response_digest = _digest_json(outcome)
+    if outcome.get("accepted"):
+        contact.result_class = "delivered"
+        target.contact_state = "contacted"
+    elif outcome.get("http_status") in {401, 403}:
+        contact.result_class = "credentials_required"
+        target.contact_state = "blocked"
+    elif outcome.get("http_status") is not None:
+        contact.result_class = "rejected"
+        target.contact_state = "contacted"
+    else:
+        contact.result_class = "ambiguous"
+        target.contact_state = "ambiguous"
+    target.updated_at = _now()
+    db.commit()
+    return {
+        "contact_id": contact.contact_id,
+        "target_id": target.target_id,
+        "channel": "moltbook_dm",
+        "result_class": contact.result_class,
+        "http_status": contact.http_status,
+        "response_received": False,
+        "send_performed": True,
+        "idempotent_replay": False,
+        "platform_error": outcome.get("error"),
+    }
 
 
 def _target_view(target: models.AmbassadorTarget) -> dict:
