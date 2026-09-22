@@ -249,6 +249,17 @@ def test_federated_discovery_uses_multiple_public_agent_indexes(monkeypatch):
     assert len(calls) == 2
 
 
+def test_federation_is_isolated_from_commercial_provider_discovery():
+    assert (
+        external_registry._AION_RESOLVED_DISCOVER
+        is external_registry._discover_external_agents_resolved_with_status
+    )
+    assert (
+        external_registry.discover_acquisition_agents_with_status
+        is not external_registry.discover_external_agents_with_status
+    )
+
+
 def test_federated_candidate_requires_direct_origin_manifest():
     row = {
         "name": "Buyer",
