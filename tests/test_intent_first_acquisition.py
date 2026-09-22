@@ -124,7 +124,9 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
         public_base_url="https://aion.example",
         distribution_token="aion_dist_" + "x" * 43,
     )
-    assert message["purpose"] == "intent_first_pre_spend_outreach"
+    assert message["purpose"] == "bounded_machine_utility_invitation"
+    assert message["intent"] == "before_external_spend"
+    assert message["optional_structured_feedback"]["part_type"] == "A2A data part"
     assert message["pre_spend_preflight"]["url"].endswith(
         "/commercial/route-intelligence/preflight"
     )
