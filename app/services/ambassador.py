@@ -34,7 +34,9 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..public_origin import PublicOriginError, canonical_public_origin
 from . import safe_http
-from .external_registry import discover_acquisition_agents_with_status
+from .external_registry import (
+    discover_acquisition_agents_with_status as discover_external_agents_with_status,
+)
 from .identity_resolution import logical_groups
 from .package5_proof import qualifying_return_identity_ids
 
@@ -289,7 +291,7 @@ def scout_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
         remaining = campaign.maximum_targets - current
         if remaining <= 0:
             raise AmbassadorError(409, "campaign_target_limit_reached", "Campaign target limit reached")
-        discovery = discover_acquisition_agents_with_status(query, min(5, remaining))
+        discovery = discover_external_agents_with_status(query, min(5, remaining))
         outcomes = Counter()
         target_ids = []
         for candidate in discovery.results[:remaining]:
