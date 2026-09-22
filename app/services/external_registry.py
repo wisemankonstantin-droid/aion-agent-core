@@ -19,7 +19,8 @@ FINDAGENT_SEARCH = "https://findagent.cloud/api/search"
 
 _AION_MAX_EXTERNAL_CANDIDATES = 5
 _AION_MAX_EXTERNAL_QUERY_CHARS = 128
-_AION_OUTBOUND_ATTEMPT_BUDGET = 18
+_AION_OUTBOUND_ATTEMPT_BUDGET = 12
+_AION_ACQUISITION_OUTBOUND_ATTEMPT_BUDGET = 18
 _AION_FEDERATED_SOURCE_RESULT_LIMIT = 2
 _AION_EXTERNAL_TIMEOUT_SECONDS = 4.0
 _AION_EXTERNAL_MAX_ATTEMPTS = 2
@@ -840,7 +841,7 @@ def discover_acquisition_agents_with_status(
             [], "rate_limited", "rate_limited", _discovery_bounds(_OutboundBudget())
         )
 
-    budget = _OutboundBudget()
+    budget = _OutboundBudget(maximum=_AION_ACQUISITION_OUTBOUND_ATTEMPT_BUDGET)
     resolved = _discover_federated_with_status(
         normalized_query, normalized_limit, budget
     )
