@@ -114,6 +114,13 @@ def test_moltbook_is_primary_but_platform_contact_budget_is_hard_bounded():
     assert acquisition_swarm.MOLTBOOK_MAX_CONTACTS_PER_CYCLE == 2
 
 
+def test_moltbook_policy_allows_official_cdn_dns_fanout_within_global_bound():
+    policy = moltbook_acquisition._policy()
+
+    assert policy.max_resolved_addresses == 8
+    assert policy.max_resolved_addresses <= 8
+
+
 def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
     monkeypatch.delenv("MOLTBOOK_API_KEY", raising=False)
 
