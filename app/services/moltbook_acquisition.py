@@ -42,7 +42,7 @@ def _policy() -> safe_http.FetchPolicy:
         timeout_seconds=7.0,
         max_response_bytes=256_000,
         max_attempts=1,
-        max_resolved_addresses=4,
+        max_resolved_addresses=8,
         user_agent="AION-Moltbook-Acquisition/0.8.0",
     )
 
