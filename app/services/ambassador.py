@@ -290,18 +290,18 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
         return None, "candidate_metadata_too_large"
     source = str(candidate.get("source") or "").strip().lower()
     try:
-        candidate_max_addresses = 32 if source == "moltbook" else 4
-        card_url = _canonical_public_url(
-            card_url,
-            max_addresses=candidate_max_addresses,
-        )
-        interaction_url = _canonical_public_url(
-            interaction_url,
-            max_addresses=candidate_max_addresses,
-        )
         if source == "moltbook":
+            card_url = _canonical_public_url(card_url, max_addresses=32)
+            interaction_url = _canonical_public_url(
+                interaction_url,
+                max_addresses=32,
+            )
             fingerprint = _digest_bytes(source_identifier.lower().encode("utf-8"))
         else:
+            # Preserve the legacy Ambassador call contract for every
+            # non-Moltbook source.
+            card_url = _canonical_public_url(card_url)
+            interaction_url = _canonical_public_url(interaction_url)
             fingerprint = _target_fingerprint(interaction_url)
     except AmbassadorError as exc:
         return None, exc.code
