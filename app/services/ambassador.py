@@ -41,6 +41,7 @@ from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
     build_outreach_comment as build_moltbook_outreach_comment,
     dm_request as request_moltbook_dm,
+    platform_error_summary as moltbook_platform_error_summary,
     post_comment as post_moltbook_comment,
     search_intent as search_moltbook_intent,
 )
@@ -919,10 +920,24 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     contact.http_status = result.status
     contact.completed_at = _now()
     contact.response_digest = _digest_json(response) if response is not None else None
+    platform_error = (
+        moltbook_platform_error_summary(result, response)
+        if is_moltbook and not (
+            result.status is not None and 200 <= result.status < 300
+        )
+        else None
+    )
 
     if result.status == 402 or result.error == "http_402":
         contact.result_class, target.contact_state = "payment_required", "blocked"
-    elif result.status in {401, 403}:
+    elif is_moltbook and result.status == 401:
+        contact.result_class, target.contact_state = "credentials_required", "blocked"
+    elif is_moltbook and result.status == 403:
+        # Moltbook uses 403 for platform/content policy states as well as auth.
+        # Account status/search are checked separately, so do not falsely label
+        # every 403 as an invalid API credential.
+        contact.result_class, target.contact_state = "rejected", "contacted"
+    elif not is_moltbook and result.status in {401, 403}:
         contact.result_class, target.contact_state = "credentials_required", "blocked"
     elif is_moltbook and result.status is not None and 200 <= result.status < 300:
         success = not isinstance(response, dict) or response.get("success") is not False
@@ -965,6 +980,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         "send_performed": True,
         "idempotent_replay": False,
         "conversation_capture_state": conversation_capture_state,
+        "platform_error": platform_error,
     }
 
 

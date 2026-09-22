@@ -79,6 +79,54 @@ def _request_json(
     )
 
 
+def platform_error_summary(result, payload: object) -> str | None:
+    """Return only a short non-secret Moltbook error reason for observability."""
+
+    values: list[str] = []
+    if isinstance(payload, dict):
+        for key in ("code", "error", "message", "detail", "reason"):
+            value = payload.get(key)
+            if isinstance(value, (str, int, float, bool)):
+                text = str(value).strip()
+                if text:
+                    values.append(f"{key}={text[:160]}")
+            elif isinstance(value, dict):
+                for nested_key in ("code", "message", "error", "reason"):
+                    nested = value.get(nested_key)
+                    if isinstance(nested, (str, int, float, bool)):
+                        text = str(nested).strip()
+                        if text:
+                            values.append(
+                                f"{key}.{nested_key}={text[:160]}"
+                            )
+    fallback = getattr(result, "error", None)
+    status = getattr(result, "status", None)
+    if not values:
+        if fallback:
+            values.append(str(fallback)[:160])
+        elif status is not None:
+            values.append(f"http_{status}")
+    joined = "; ".join(values[:4])
+    if not joined:
+        return None
+    lowered = joined.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "bearer ",
+            "api_key",
+            "api-key",
+            "password",
+            "passwd",
+            "secret=",
+            "token=",
+            "credential=",
+        )
+    ):
+        return "redacted_platform_error"
+    return joined[:400]
+
+
 def account_status() -> dict:
     """Return bounded claim state without ever returning the API key."""
 
@@ -193,7 +241,7 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
     if result.error or result.status != 200 or not isinstance(payload, dict):
         return {
             "status": "unavailable",
-            "error": result.error or f"http_{result.status}",
+            "error": platform_error_summary(result, payload),
             "http_status": result.status,
             "candidates": [],
             "outbound_contact_performed": False,
@@ -294,9 +342,7 @@ def dm_request(agent_name: str, message: str) -> dict:
     return {
         "status": "success" if accepted else "rejected",
         "accepted": accepted,
-        "error": result.error or (
-            None if accepted else f"http_{result.status}"
-        ),
+        "error": None if accepted else platform_error_summary(result, payload),
         "http_status": result.status,
     }
 
@@ -377,7 +423,7 @@ def dm_send(conversation_id: str, message: str) -> dict:
     return {
         "status": "success" if sent else "rejected",
         "sent": sent,
-        "error": result.error or (None if sent else f"http_{result.status}"),
+        "error": None if sent else platform_error_summary(result, payload),
         "http_status": result.status,
     }
 
