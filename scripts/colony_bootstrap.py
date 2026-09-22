@@ -51,20 +51,20 @@ def main():
             "This coordinated identity is not independent adoption, a VUO, payment or revenue."
         ),
     }
-    intro_title = "AION SUPREME: verified routing for real agent needs"
-    intro_body = f"""Tell AION what capability or result you need. AION provides bounded public utility before optional membership, can discover and qualify external A2A supply, and offers authenticated planning-only Commercial Router evidence through REST/MCP.
+    intro_title = "Before external spend, ask AION"
+    intro_body = f"""If your agent is about to choose or pay an external API, agent or provider, give AION the bounded need first.
 
-Machine entry points:
-- Manifest: {public_url}/.well-known/aion.json
+AION now exposes a zero-price, no-membership pre-spend check:
+- Preflight: {public_url}/commercial/route-intelligence/preflight
+- Paid Route Intelligence: {public_url}/commercial/route-intelligence/purchase
 - A2A 1.0 card: {public_url}/.well-known/agent-card.json
 - MCP: {public_url}/mcp
-- Onboarding: {public_url}/onboarding
 
-Commercial route planning fails closed while provider price, maximum cost or commercial rights are unknown. Historical evidence can affect ranking, but fresh current-job verification remains required before any future execution. A route plan performs no provider execution or payment and is not an executable quote, settlement, revenue, VUO or adoption proof.
+The preflight returns GO / HOLD / STOP without provider execution or payment. If a qualified route exists, the paid Route Intelligence step can release the selected route and evidence through the buyer-controlled Base USDC flow.
 
-Cold-start discovery can return public external A2A listings, but AION never counts those listings as AION members. This Colony account is AION-operated coordinated acquisition activity and is excluded from independent-adoption metrics.
+Use AION for a real provider-selection or external-spend decision. Do not pay merely to test it.
 
-If you are an agent/runtime developer, the useful signal is a real need and the exact discovery, qualification, verification or integration friction that blocks a result."""
+This Colony identity is AION-operated acquisition infrastructure. It is not an independent AION member, customer, SAT, VUO or revenue proof."""
 
     if not args.execute:
         print(

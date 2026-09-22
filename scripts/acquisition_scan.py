@@ -12,13 +12,34 @@ if str(ROOT) not in sys.path:
 from app.services.external_registry import discover_external_agents
 
 
-DEFAULT_QUERIES = ['agent collaboration','research','planning','automation','developer tools','knowledge','payments']
+DEFAULT_QUERIES = [
+    "provider selection",
+    "external spend",
+    "paid api",
+    "x402 payments",
+    "agent wallet",
+    "agent procurement",
+    "tool selection",
+    "provider routing",
+    "provider fallback",
+    "MCP paid tools",
+    "A2A paid agent",
+    "data api",
+    "search api",
+    "research api",
+    "automation tools",
+    "browser tools",
+    "inference api",
+    "LLM gateway",
+    "agent commerce",
+    "payments",
+]
 
 def scan(queries):
     found = {}
     for q in queries:
         for row in discover_external_agents(q, 5):
-            ident = row.get('identifier') or row.get('id') or row.get('name')
+            ident = row.get("interaction_url") or row.get("identifier") or row.get("id") or row.get("name")
             if ident:
                 found[str(ident)] = row
     return list(found.values())

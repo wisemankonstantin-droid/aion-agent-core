@@ -65,6 +65,7 @@ from .services.ambassador_operator import (
     execute_operator_action,
     operator_campaign_status as ambassador_operator_campaign_status,
 )
+from .services.acquisition_swarm import start_acquisition_swarm_if_enabled
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import (
     COMMERCIAL_ROUTE_VALUE_PROPOSITION,
@@ -108,9 +109,14 @@ app = FastAPI(
     ),
 )
 
+@app.on_event("startup")
+def _start_intent_acquisition_workers():
+    start_acquisition_swarm_if_enabled()
+
+
 
 class _BoundMachineRequestBody:
-    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/commercial/executions/world-bank-population", "/mcp", "/a2a/v1"}
+    _PATHS = {"/utility/query", "/actions/verify-callability", "/learning/evidence", "/proof/package-5/vuos", "/payments/intents", "/economic/preflight", "/agents/me/referral-packets", "/commercial/executions/world-bank-population", "/commercial/route-intelligence/preflight", "/mcp", "/a2a/v1"}
 
     def __init__(self, app):
         self.app = app
