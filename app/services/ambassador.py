@@ -34,7 +34,9 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..public_origin import PublicOriginError, canonical_public_origin
 from . import safe_http
-from .external_registry import discover_external_agents_with_status
+from .external_registry import (
+    discover_acquisition_agents_with_status as discover_external_agents_with_status,
+)
 from .identity_resolution import logical_groups
 from .package5_proof import qualifying_return_identity_ids
 
