@@ -919,11 +919,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         else bool(send)
     )
     active_workers = _next_active_worker_specs()
-    recent_scan_worker_id = active_workers[0].id if active_workers else None
-    colony_scout_worker_ids = {
-        worker.id
-        for worker in active_workers[:MAX_COLONY_SCOUT_WORKERS_PER_CYCLE]
-    }
 
     colony_state = colony_account_status()
     colony_ready = bool(colony_state.get("authenticated"))
@@ -969,6 +964,40 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         send_enabled=send_enabled,
         fallback_queries_by_worker=fallback_queries_by_worker,
     )
+
+    active_mind_policies = {}
+    for worker in active_workers:
+        fallback = tuple(
+            fallback_queries_by_worker.get(worker.id)
+            or _queries_for_cycle(
+                worker.id,
+                INTENT_WORKERS[worker.intent_profile],
+            )
+        )
+        active_mind_policies[worker.id] = _mind_transport_policy(
+            mind_plans.get(worker.id),
+            fallback,
+        )
+
+    colony_candidates = [
+        worker.id
+        for worker in active_workers
+        if active_mind_policies[worker.id]["discover_allowed"]
+        and "colony" in active_mind_policies[worker.id]["channels"]
+    ]
+    colony_scout_worker_ids = set(
+        colony_candidates[:MAX_COLONY_SCOUT_WORKERS_PER_CYCLE]
+    )
+    moltbook_recent_scan_worker_id = next(
+        (
+            worker.id
+            for worker in active_workers
+            if active_mind_policies[worker.id]["discover_allowed"]
+            and "moltbook" in active_mind_policies[worker.id]["channels"]
+        ),
+        None,
+    )
+    colony_paid_scan_worker_id = next(iter(colony_scout_worker_ids), None)
     _runtime_cycle_start(active_workers)
 
     colony_comments_today = _colony_comments_today(db)
@@ -1009,7 +1038,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "acquisition_channel_strategy": "ai_minds_over_bounded_multichannel_transport",
         "mind_runtime": acquisition_mind_runtime_status(),
         "minds_planned_this_cycle": len(mind_plans),
-        "moltbook_recent_global_scan_worker": recent_scan_worker_id,
+        "moltbook_recent_global_scan_worker": moltbook_recent_scan_worker_id,
+        "colony_paid_task_scan_worker": colony_paid_scan_worker_id,
         "colony": {
             "configured": bool(colony_state.get("configured")),
             "authenticated": colony_ready,
@@ -1079,7 +1109,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             fallback_queries_by_worker.get(worker_id)
             or _queries_for_cycle(worker_id, query_bank)
         )
-        mind_policy = _mind_transport_policy(mind_plan, fallback_queries)
+        mind_policy = active_mind_policies[worker_id]
         queries = mind_policy["queries"]
         mind_channels = mind_policy["channels"]
         mind_controls_transport = mind_policy["model_controls_transport"]
@@ -1134,7 +1164,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             moltbook_created = 0
 
             if moltbook_ready and allow_moltbook_discovery:
-                if worker_id == recent_scan_worker_id:
+                if worker_id == moltbook_recent_scan_worker_id:
                     try:
                         recent_result = scout_moltbook_recent_campaign(
                             db,
@@ -1172,7 +1202,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     )
 
             if allow_colony_discovery:
-                if worker_id == recent_scan_worker_id:
+                if worker_id == colony_paid_scan_worker_id:
                     try:
                         colony_paid = scout_colony_paid_tasks_campaign(
                             db,
