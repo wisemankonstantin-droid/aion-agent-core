@@ -20,6 +20,11 @@ from .. import models
 from ..acquisition import WORKERS as ACQUISITION_WORKERS, WORKER_COUNT
 from ..db import SessionLocal
 from .conversation_intelligence import campaign_intelligence_report
+from .acquisition_agent_mind import (
+    record_worker_outcome,
+    refresh_all_minds,
+    runtime_status as acquisition_mind_runtime_status,
+)
 from .ambassador import (
     AmbassadorError,
     MAX_CAMPAIGN_TARGETS,
@@ -491,6 +496,55 @@ def _registry_queries_for_cycle(
     return tuple(queries[:1])
 
 
+def _mind_transport_policy(
+    mind_plan: dict | None,
+    fallback_queries: tuple[str, ...],
+) -> dict:
+    """Translate an AI plan into bounded executor permissions.
+
+    A model plan can narrow the existing executor but can never expand its
+    contact, dedupe, authentication, platform or payment authority.
+    """
+
+    if not mind_plan:
+        return {
+            "model_controls_transport": False,
+            "queries": tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
+            "channels": {"moltbook", "colony", "federated_a2a"},
+            "discover_allowed": True,
+            "contact_allowed": True,
+        }
+
+    channels = {
+        str(channel)
+        for channel in (mind_plan.get("channel_priority") or [])
+        if str(channel) in {"moltbook", "colony", "federated_a2a", "hold"}
+    }
+    contact_policy = str(mind_plan.get("contact_policy") or "discover_only")
+    hard_hold = "hold" in channels or contact_policy == "hold"
+    if hard_hold:
+        return {
+            "model_controls_transport": True,
+            "queries": (),
+            "channels": set(),
+            "discover_allowed": False,
+            "contact_allowed": False,
+        }
+
+    queries = tuple(
+        str(query).strip()[:128]
+        for query in (mind_plan.get("search_queries") or fallback_queries)
+        if str(query).strip()
+    )[:QUERIES_PER_WORKER_PER_CYCLE]
+    return {
+        "model_controls_transport": True,
+        "queries": queries or tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
+        "channels": channels & {"moltbook", "colony", "federated_a2a"},
+        "discover_allowed": True,
+        "contact_allowed": contact_policy == "contact_one_if_qualified",
+    }
+
+
 def _worker_daily_plan() -> dict:
     return {
         "new_unique_targets": DAILY_NEW_TARGET_GOAL_PER_WORKER,
@@ -714,6 +768,7 @@ def _qualified_unsent_target(
     *,
     allow_moltbook: bool,
     allow_colony: bool = False,
+    allow_federated: bool = True,
 ) -> models.AmbassadorTarget | None:
     base = (
         select(models.AmbassadorTarget)
@@ -740,6 +795,8 @@ def _qualified_unsent_target(
         )
         if colony is not None:
             return colony
+    if not allow_federated:
+        return None
     return db.scalar(
         base.where(
             ~models.AmbassadorTarget.discovery_source.in_(("moltbook", "colony"))
@@ -862,20 +919,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         else bool(send)
     )
     active_workers = _next_active_worker_specs()
-    _runtime_cycle_start(active_workers)
-    recent_scan_worker_id = active_workers[0].id if active_workers else None
-    colony_scout_worker_ids = {
-        worker.id
-        for worker in active_workers[:MAX_COLONY_SCOUT_WORKERS_PER_CYCLE]
-    }
 
     colony_state = colony_account_status()
     colony_ready = bool(colony_state.get("authenticated"))
-    colony_comments_today = _colony_comments_today(db)
-    colony_comments_remaining_cycle = min(
-        MAX_COLONY_COMMENTS_PER_CYCLE,
-        max(0, MAX_COLONY_COMMENTS_PER_DAY - colony_comments_today),
-    )
 
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
@@ -885,6 +931,80 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "pending_request_count": 0,
         "unread_count": 0,
     }
+
+    current_moltbook_outbound = moltbook_outbound_status()
+    channel_health = {
+        "moltbook": {
+            "configured": bool(moltbook_state.get("configured")),
+            "claimed": moltbook_ready,
+            "suspended": bool(current_moltbook_outbound.get("suspended")),
+            "suspended_until": current_moltbook_outbound.get("suspended_until"),
+        },
+        "colony": {
+            "public_discovery": True,
+            "authenticated_write": colony_ready,
+        },
+        "federated_a2a": {
+            "public_discovery": True,
+            "one_contact_per_target": True,
+        },
+    }
+    fallback_queries_by_worker = {
+        worker.id: list(
+            _queries_for_cycle(
+                worker.id,
+                INTENT_WORKERS[worker.intent_profile],
+            )
+        )
+        for worker in ACQUISITION_WORKERS
+    }
+    mind_plans = refresh_all_minds(
+        tuple(ACQUISITION_WORKERS),
+        channel_health=channel_health,
+        send_enabled=send_enabled,
+        fallback_queries_by_worker=fallback_queries_by_worker,
+    )
+
+    active_mind_policies = {}
+    for worker in active_workers:
+        fallback = tuple(
+            fallback_queries_by_worker.get(worker.id)
+            or _queries_for_cycle(
+                worker.id,
+                INTENT_WORKERS[worker.intent_profile],
+            )
+        )
+        active_mind_policies[worker.id] = _mind_transport_policy(
+            mind_plans.get(worker.id),
+            fallback,
+        )
+
+    colony_candidates = [
+        worker.id
+        for worker in active_workers
+        if active_mind_policies[worker.id]["discover_allowed"]
+        and "colony" in active_mind_policies[worker.id]["channels"]
+    ]
+    colony_scout_worker_ids = set(
+        colony_candidates[:MAX_COLONY_SCOUT_WORKERS_PER_CYCLE]
+    )
+    moltbook_recent_scan_worker_id = next(
+        (
+            worker.id
+            for worker in active_workers
+            if active_mind_policies[worker.id]["discover_allowed"]
+            and "moltbook" in active_mind_policies[worker.id]["channels"]
+        ),
+        None,
+    )
+    colony_paid_scan_worker_id = colony_candidates[0] if colony_candidates else None
+    _runtime_cycle_start(active_workers)
+
+    colony_comments_today = _colony_comments_today(db)
+    colony_comments_remaining_cycle = min(
+        MAX_COLONY_COMMENTS_PER_CYCLE,
+        max(0, MAX_COLONY_COMMENTS_PER_DAY - colony_comments_today),
+    )
     moltbook_comments_today = _moltbook_comments_today(db)
     moltbook_comments_remaining_today = max(
         0, MOLTBOOK_DAILY_COMMENT_LIMIT - moltbook_comments_today
@@ -914,9 +1034,12 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "contacts_delivered_or_responded": 0,
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
-        "primary_acquisition_channel": "moltbook",
-        "acquisition_channel_strategy": "parallel_colony_moltbook_and_federated_a2a",
-        "moltbook_recent_global_scan_worker": recent_scan_worker_id,
+        "primary_acquisition_channel": "ai_selected_per_worker",
+        "acquisition_channel_strategy": "ai_minds_over_bounded_multichannel_transport",
+        "mind_runtime": acquisition_mind_runtime_status(),
+        "minds_planned_this_cycle": len(mind_plans),
+        "moltbook_recent_global_scan_worker": moltbook_recent_scan_worker_id,
+        "colony_paid_task_scan_worker": colony_paid_scan_worker_id,
         "colony": {
             "configured": bool(colony_state.get("configured")),
             "authenticated": colony_ready,
@@ -967,9 +1090,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         },
         "truth": (
             "The 100 workers are transparent AION-operated acquisition infrastructure. "
-            "Only the rotating active cohort receives external assignments in a cycle; "
-            "shared transport health, dedupe and platform limits govern network writes. "
-            "Worker count is not independent adoption, customer proof, SAT or revenue."
+            "When the model runtime is configured, all 100 independently plan from their "
+            "own safe durable memory each cycle; only the rotating active cohort can receive "
+            "bounded external transport slots. Shared transport health, dedupe and platform "
+            "limits remain authoritative. Worker count is not independent adoption, "
+            "customer proof, SAT or revenue."
         ),
     }
 
@@ -979,10 +1104,35 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         _runtime_worker_started(worker_id)
         lane = worker.intent_profile
         query_bank = INTENT_WORKERS[lane]
-        queries = _queries_for_cycle(worker_id, query_bank)
-        moltbook_query = _moltbook_query_for_cycle(
-            worker_id,
-            MOLTBOOK_INTENT_QUERIES[lane],
+        mind_plan = mind_plans.get(worker_id)
+        fallback_queries = tuple(
+            fallback_queries_by_worker.get(worker_id)
+            or _queries_for_cycle(worker_id, query_bank)
+        )
+        mind_policy = active_mind_policies[worker_id]
+        queries = mind_policy["queries"]
+        mind_channels = mind_policy["channels"]
+        mind_controls_transport = mind_policy["model_controls_transport"]
+        discover_allowed = mind_policy["discover_allowed"]
+        allow_moltbook_discovery = (
+            discover_allowed and "moltbook" in mind_channels
+        )
+        allow_colony_discovery = (
+            discover_allowed
+            and worker_id in colony_scout_worker_ids
+            and "colony" in mind_channels
+        )
+        allow_federated_discovery = (
+            discover_allowed and "federated_a2a" in mind_channels
+        )
+        contact_allowed_by_mind = mind_policy["contact_allowed"]
+        moltbook_query = (
+            queries[0]
+            if mind_controls_transport and queries
+            else _moltbook_query_for_cycle(
+                worker_id,
+                MOLTBOOK_INTENT_QUERIES[lane],
+            )
         )
         lane_report = {
             "worker_id": worker_id,
@@ -992,6 +1142,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "query_bank_size": len(query_bank),
             "moltbook_query": moltbook_query,
             "moltbook_query_bank_size": len(MOLTBOOK_INTENT_QUERIES[lane]),
+            "mind": {
+                "mode": "model_planned" if mind_plan is not None else "deterministic_fallback",
+                "plan": mind_plan,
+                "transport_guardrails_authoritative": True,
+            },
             "scout_results": [],
             "contact": None,
             "response_intelligence": None,
@@ -1008,8 +1163,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             )
             moltbook_created = 0
 
-            if moltbook_ready:
-                if worker_id == recent_scan_worker_id:
+            if moltbook_ready and allow_moltbook_discovery:
+                if worker_id == moltbook_recent_scan_worker_id:
                     try:
                         recent_result = scout_moltbook_recent_campaign(
                             db,
@@ -1046,8 +1201,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
-            if worker_id in colony_scout_worker_ids:
-                if worker_id == recent_scan_worker_id:
+            if allow_colony_discovery:
+                if worker_id == colony_paid_scan_worker_id:
                     try:
                         colony_paid = scout_colony_paid_tasks_campaign(
                             db,
@@ -1084,6 +1239,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 moltbook_outbound_blocked=moltbook_outbound_blocked,
                 moltbook_created=moltbook_created,
             )
+            if not allow_federated_discovery:
+                registry_queries = ()
             for query in registry_queries:
                 current = db.scalar(
                     select(func.count())
@@ -1111,11 +1268,26 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 set_campaign_state(db, campaign.campaign_id, "ready")
                 db.refresh(campaign)
 
-            cycle_new_targets = sum(
-                len(item.get("created_target_ids") or [])
+            cycle_target_ids = [
+                target_id
                 for item in lane_report["scout_results"]
                 if isinstance(item, dict)
-            )
+                for target_id in (item.get("created_target_ids") or [])
+            ]
+            cycle_new_targets = len(cycle_target_ids)
+            cycle_qualified_targets = 0
+            if cycle_target_ids:
+                cycle_qualified_targets = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(models.AmbassadorTarget)
+                        .where(
+                            models.AmbassadorTarget.target_id.in_(cycle_target_ids),
+                            models.AmbassadorTarget.qualification_state == "qualified",
+                        )
+                    )
+                    or 0
+                )
             outbound_state = moltbook_outbound_status()
             target = _qualified_unsent_target(
                 db,
@@ -1123,15 +1295,29 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 allow_moltbook=(
                     moltbook_comments_remaining_cycle > 0
                     and not bool(outbound_state.get("suspended"))
+                    and (
+                        not mind_controls_transport
+                        or "moltbook" in mind_channels
+                    )
                 ),
                 allow_colony=(
-                    colony_ready and colony_comments_remaining_cycle > 0
+                    colony_ready
+                    and colony_comments_remaining_cycle > 0
+                    and (
+                        not mind_controls_transport
+                        or "colony" in mind_channels
+                    )
+                ),
+                allow_federated=(
+                    not mind_controls_transport
+                    or "federated_a2a" in mind_channels
                 ),
             )
             contact_attempted_this_cycle = False
             if (
                 target is not None
                 and send_enabled
+                and contact_allowed_by_mind
                 and contacts_remaining > 0
             ):
                 report["contacts_attempted"] += 1
@@ -1176,6 +1362,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 and moltbook_dm_outbound_enabled()
                 and not bool(moltbook_outbound_status().get("suspended"))
                 and send_enabled
+                and contact_allowed_by_mind
+                and (
+                    not mind_controls_transport
+                    or "moltbook" in mind_channels
+                )
                 and contacts_remaining > 0
                 and moltbook_dm_remaining_cycle > 0
             ):
@@ -1183,6 +1374,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     db,
                     campaign,
                     allow_moltbook=True,
+                    allow_colony=False,
+                    allow_federated=False,
                 )
                 if dm_target is not None and dm_target.discovery_source == "moltbook":
                     report["contacts_attempted"] += 1
@@ -1227,6 +1420,24 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 send_enabled=send_enabled,
                 cycle_new_targets=cycle_new_targets,
                 contact_attempted_this_cycle=contact_attempted_this_cycle,
+            )
+            response_snapshot = lane_report.get("response_intelligence") or {}
+            contact_snapshot = lane_report.get("contact") or {}
+            record_worker_outcome(
+                worker_id,
+                {
+                    "new_targets": cycle_new_targets,
+                    "qualified_targets": cycle_qualified_targets,
+                    "contact_attempted": contact_attempted_this_cycle,
+                    "channel": contact_snapshot.get("channel"),
+                    "result_class": contact_snapshot.get("result_class"),
+                    "response_received": bool(
+                        contact_snapshot.get("response_received")
+                    ),
+                    "routing_feedback_count": len(
+                        response_snapshot.get("routing_feedback") or []
+                    ),
+                },
             )
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__

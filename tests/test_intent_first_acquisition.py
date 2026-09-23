@@ -505,6 +505,9 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "<canvas id=\"scene\"></canvas>" in response.text
     assert "/temple/live/state" in response.text
     assert "setInterval(refresh,5000)" in response.text
-    assert "working now" in response.text
-    assert "assigned" in response.text
-    assert "completed cycle" in response.text
+    assert "fill = transport" in response.text
+    assert "ring = AI mind" in response.text
+    assert "thinking" in response.text
+    assert "planned" in response.text
+    assert "learning" in response.text
+    assert "degraded" in response.text

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-EXPECTED_HEAD = "0017_first_sat_accounting_v1"
+EXPECTED_HEAD = "0018_acquisition_agent_minds_v1"
 
 
 def _alembic(root, database_url, *args):
@@ -163,6 +163,7 @@ def test_existing_0005_database_upgrades_to_live_utility_data_engine_head(tmp_pa
         "package5_participation_assessments",
         "package5_vuo_proofs",
         "route_intelligence_purchases",
+        "acquisition_agent_minds",
     } <= tables
     assert ("source_id",) in source_unique_index_columns
     assert ("observation_id",) in observation_unique_index_columns
@@ -224,6 +225,7 @@ def test_fresh_database_upgrades_to_live_utility_head(tmp_path):
         "package5_participation_assessments",
         "package5_vuo_proofs",
         "route_intelligence_purchases",
+        "acquisition_agent_minds",
     } <= tables
 
 

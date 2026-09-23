@@ -202,7 +202,7 @@ def test_package4_schema_and_postgres_legacy_jump_are_release_gates():
     identity = (ROOT / "app" / "release_identity.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "postgres-release-gate.yml").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "postgres_0004_release_proof.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_SCHEMA_REVISION = "0017_first_sat_accounting_v1"' in identity
+    assert 'EXPECTED_SCHEMA_REVISION = "0018_acquisition_agent_minds_v1"' in identity
     assert "upgrade 0004_reputation_idempotency" in workflow
     assert "postgres_0004_release_proof.py seed" in workflow
     assert "postgres_0004_release_proof.py verify" in workflow
@@ -312,7 +312,7 @@ def test_alembic_revision_ids_fit_version_table_storage():
     revisions = list(ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).walk_revisions())
     assert len(revisions) == len({revision.revision for revision in revisions})
     assert all(len(revision.revision) <= 32 for revision in revisions)
-    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0017_first_sat_accounting_v1"]
+    assert ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini"))).get_heads() == ["0018_acquisition_agent_minds_v1"]
 
 
 def test_package5d_is_one_bounded_operator_gated_distribution_boundary():
