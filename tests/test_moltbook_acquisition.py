@@ -267,6 +267,147 @@ def test_moltbook_dm_request_rejects_self_or_unbounded_message(monkeypatch):
     assert moltbook_acquisition.dm_request("BuyerBot", "short")["accepted"] is False
 
 
+def test_moltbook_dm_read_is_bounded_and_marks_self(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    seen = {}
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        seen["method"] = method
+        seen["url"] = url
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "messages": [
+                    {
+                        "from": {"name": "BuyerBot"},
+                        "message": "How much does the route check cost?",
+                        "created_at": "2026-09-23T00:00:00Z",
+                    },
+                    {
+                        "from": {"name": "aion_temple_herald"},
+                        "message": "Earlier reply",
+                        "created_at": "2026-09-23T00:00:01Z",
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.dm_read("conversation-123")
+
+    assert result["status"] == "success"
+    assert seen["method"] == "GET"
+    assert seen["url"] == (
+        "https://www.moltbook.com/api/v1/agents/dm/"
+        "conversations/conversation-123"
+    )
+    assert result["messages"][0]["from_self"] is False
+    assert result["messages"][1]["from_self"] is True
+
+
+def test_moltbook_routine_dm_reply_uses_live_config_and_respects_opt_out(monkeypatch):
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_CURRENCY", "USDC")
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_PRICE", "1.00")
+
+    reply = moltbook_acquisition.build_routine_dm_reply(
+        message="What does AION do and how much does it cost?",
+        public_base_url="https://aion.example",
+    )
+
+    assert reply["action"] == "reply"
+    assert "1.00 USDC" in reply["reply"]
+    assert "/commercial/route-intelligence/preflight" in reply["reply"]
+
+    stop = moltbook_acquisition.build_routine_dm_reply(
+        message="No thanks, do not contact me again.",
+        public_base_url="https://aion.example",
+    )
+    assert stop == {"action": "no_reply", "reason": "opt_out"}
+
+
+def test_moltbook_dm_conversation_cycle_replies_only_to_routine_inbound(monkeypatch):
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_dm_conversations",
+        lambda limit=20: {
+            "status": "success",
+            "conversations": [
+                {
+                    "conversation_id": "conv-1",
+                    "agent_name": "BuyerBot",
+                    "unread_count": 1,
+                },
+                {
+                    "conversation_id": "conv-2",
+                    "agent_name": "HumanGateBot",
+                    "unread_count": 1,
+                },
+            ],
+        },
+    )
+    reads = {
+        "conv-1": {
+            "status": "success",
+            "messages": [
+                {
+                    "from_name": "BuyerBot",
+                    "from_self": False,
+                    "message": "How much is the provider route?",
+                    "needs_human_input": False,
+                }
+            ],
+        },
+        "conv-2": {
+            "status": "success",
+            "messages": [
+                {
+                    "from_name": "HumanGateBot",
+                    "from_self": False,
+                    "message": "Ask your owner to approve a custom deal.",
+                    "needs_human_input": True,
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_dm_read",
+        lambda cid: reads[cid],
+    )
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "canonical_aion_public_base_url",
+        lambda: "https://aion.example",
+    )
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_build_routine_dm_reply",
+        lambda **kwargs: {
+            "action": "reply",
+            "reason": "routine_commercial_question",
+            "reply": "bounded reply",
+        },
+    )
+    sent = []
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_dm_send",
+        lambda cid, message: (
+            sent.append((cid, message))
+            or {"sent": True, "status": "success", "http_status": 200}
+        ),
+    )
+
+    report = acquisition_swarm._run_moltbook_dm_conversation_cycle(
+        send_enabled=True
+    )
+
+    assert sent == [("conv-1", "bounded reply")]
+    assert report["routine_replies_sent"] == 1
+    assert report["human_gates"] == 1
+    assert report["private_message_text_logged"] is False
+
+
 def test_moltbook_platform_error_summary_is_bounded_and_non_secret():
     result = safe_http.FetchResult(403, b"", "http_403", 1)
 
