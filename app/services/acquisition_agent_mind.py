@@ -21,6 +21,7 @@ import httpx
 from sqlalchemy import case, func, select
 
 from .. import models
+from ..conversation_models import ConversationEvidence, ConversationIntelligence
 from ..db import SessionLocal
 
 
@@ -280,6 +281,8 @@ def _build_observations(
             "delivered": 0,
             "responses": 0,
             "channels": {},
+            "response_signal_counts": {},
+            "routing_feedback_count": 0,
         }
         for worker_id in worker_ids
     }
@@ -424,9 +427,13 @@ def _build_observations(
                     .limit(1000)
                 )
             )
+            contact_worker = {}
             for contact, target, campaign in recent_rows:
                 worker_id = _worker_id_from_campaign(campaign.name)
-                if worker_id in worker_ids and latest[worker_id] is None:
+                if worker_id not in worker_ids:
+                    continue
+                contact_worker[contact.id] = worker_id
+                if latest[worker_id] is None:
                     latest[worker_id] = {
                         "channel": target.discovery_source,
                         "result_class": contact.result_class,
@@ -436,6 +443,56 @@ def _build_observations(
                             contact.completed_at or contact.created_at
                         ).isoformat(),
                     }
+
+            if contact_worker:
+                evidence_rows = list(
+                    db.scalars(
+                        select(ConversationEvidence).where(
+                            ConversationEvidence.ambassador_contact_id.in_(
+                                list(contact_worker)
+                            )
+                        )
+                    )
+                )
+                evidence_by_id = {row.id: row for row in evidence_rows}
+                latest_intelligence = {}
+                if evidence_by_id:
+                    for intelligence in db.scalars(
+                        select(ConversationIntelligence)
+                        .where(
+                            ConversationIntelligence.conversation_evidence_id.in_(
+                                list(evidence_by_id)
+                            )
+                        )
+                        .order_by(
+                            ConversationIntelligence.created_at.desc(),
+                            ConversationIntelligence.id.desc(),
+                        )
+                    ):
+                        latest_intelligence.setdefault(
+                            intelligence.conversation_evidence_id,
+                            intelligence,
+                        )
+                for evidence in evidence_rows:
+                    worker_id = contact_worker.get(evidence.ambassador_contact_id)
+                    if worker_id is None:
+                        continue
+                    for item in evidence.safe_evidence or []:
+                        if (
+                            isinstance(item, dict)
+                            and item.get("kind") == "routing_feedback_v1"
+                        ):
+                            totals[worker_id]["routing_feedback_count"] += 1
+                    intelligence = latest_intelligence.get(evidence.id)
+                    if intelligence is None:
+                        continue
+                    signals = set(intelligence.explicit_signals or [])
+                    signals.update(intelligence.inferred_signals or [])
+                    counts = totals[worker_id]["response_signal_counts"]
+                    for signal in sorted(signals):
+                        key = _clean_short(signal, 80)
+                        if key:
+                            counts[key] = int(counts.get(key) or 0) + 1
 
         observations = {}
         for worker in workers:
