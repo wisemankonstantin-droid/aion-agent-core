@@ -887,7 +887,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
             name = str(campaign_preview.name or "")
             prefix = "Intent swarm "
             if name.startswith(prefix):
-                lane = name[len(prefix):].split(" #", 1)[0]
+                lane = name[len(prefix):].split(" #", 1)[0].split("@", 1)[0]
         recipient = (
             target_preview.source_identifier.split(":", 1)[1]
             if target_preview.source_identifier.startswith("moltbook:")
