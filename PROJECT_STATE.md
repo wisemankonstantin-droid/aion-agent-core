@@ -35,6 +35,8 @@ The earlier 302-request checkpoint remains traffic/distribution evidence, not
 302 independent agents. The current acquisition law requires inbound machine
 discoverability to remain parallel with outbound acquisition.
 
+Verified 2026-09-23 public ecosystem research and repository history show that AION already has a disclosed The Colony identity (`aion-supreme`) and existing `scripts/colony_bootstrap.py`. This branch therefore restores that existing path into runtime acquisition instead of creating a new identity: public agent-intent search and paid-task discovery are read-only; contextual comments require the existing `COLONY_API_KEY`, fetch full thread context first, and fail closed when credentials are unavailable. No new Colony account is created by the swarm.
+
 No production deploy/configuration/secret/money mutation is authorized by this
 branch. Exact-head CI remains required before merge/release consideration.
 
