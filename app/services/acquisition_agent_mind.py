@@ -34,6 +34,7 @@ DEFAULT_MAX_CALLS_PER_CYCLE = 100
 DEFAULT_MAX_CONCURRENCY = 8
 DEFAULT_MAX_OUTPUT_TOKENS = 600
 MAX_OBSERVATION_BYTES = 12_000
+MAX_COLLECTIVE_OBSERVATION_BYTES = 24_000
 MAX_MEMORY_OUTCOMES = 8
 MAX_PLAN_QUERIES = 2
 MAX_PLAN_CHANNELS = 4
@@ -876,6 +877,103 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     }
 
 
+def _validate_temple_brain_plan(plan: object) -> dict:
+    if not isinstance(plan, dict):
+        raise RuntimeError("invalid_temple_brain_plan_shape")
+
+    channels = []
+    for value in plan.get("channel_priority") or []:
+        value = str(value)
+        if value in _ALLOWED_CHANNELS and value not in channels:
+            channels.append(value)
+    channels = channels[:MAX_PLAN_CHANNELS]
+
+    def clean_list(name: str, maximum_items: int, maximum_chars: int) -> list[str]:
+        result = []
+        for value in plan.get(name) or []:
+            cleaned = _clean_short(value, maximum_chars)
+            if cleaned and cleaned not in result:
+                result.append(cleaned)
+        return result[:maximum_items]
+
+    try:
+        confidence = int(plan.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0
+
+    return {
+        "collective_summary": _clean_short(plan.get("collective_summary"), 360),
+        "priority_hypotheses": clean_list(
+            "priority_hypotheses", MAX_SHARED_HYPOTHESES, 240
+        ),
+        "channel_priority": channels,
+        "search_motifs": clean_list("search_motifs", 8, 120),
+        "avoid_patterns": clean_list("avoid_patterns", 8, 180),
+        "peer_directives": clean_list("peer_directives", 8, 220),
+        "learning_agenda": clean_list("learning_agenda", 8, 220),
+        "memory_note": _clean_short(plan.get("memory_note"), 280),
+        "confidence": max(0, min(confidence, 100)),
+    }
+
+
+def _call_temple_brain(observation: dict) -> dict:
+    key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not key:
+        raise RuntimeError("openai_api_key_missing")
+    status = runtime_status()
+    encoded = json.dumps(
+        observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    if len(encoded.encode("utf-8")) > MAX_COLLECTIVE_OBSERVATION_BYTES:
+        raise RuntimeError("temple_brain_observation_too_large")
+
+    payload = {
+        "model": status["model"],
+        "reasoning": {"effort": status["reasoning_effort"]},
+        "instructions": _TEMPLE_BRAIN_INSTRUCTIONS,
+        "input": encoded,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "aion_temple_brain_plan",
+                "strict": True,
+                "schema": _TEMPLE_BRAIN_SCHEMA,
+            }
+        },
+        "max_output_tokens": _bounded_int(
+            "AION_TEMPLE_BRAIN_MAX_OUTPUT_TOKENS",
+            900,
+            300,
+            1600,
+        ),
+        "store": False,
+        "metadata": {
+            "aion_worker_id": TEMPLE_BRAIN_ID,
+            "aion_mind_version": MIND_VERSION,
+            "collective_cognition": "true",
+        },
+    }
+    timeout = float(
+        _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+    )
+    response = httpx.post(
+        RESPONSES_URL,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    if response.status_code == 429:
+        raise RuntimeError("model_rate_limited")
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"model_http_{response.status_code}")
+    data = response.json()
+    plan = json.loads(_extract_output_text(data))
+    return _validate_temple_brain_plan(plan)
+
+
 def _call_model(worker_id: str, observation: dict) -> dict:
     key = (os.getenv("OPENAI_API_KEY") or "").strip()
     if not key:
@@ -981,7 +1079,7 @@ def refresh_all_minds(
     send_enabled: bool,
     fallback_queries_by_worker: dict[str, list[str]],
 ) -> dict[str, dict]:
-    """Reason independently for up to all 100 workers, then return safe plans."""
+    """Run one shared Temple Brain synthesis plus independent reasoning for workers."""
 
     workers = tuple(workers)
     if not workers:
@@ -990,14 +1088,36 @@ def refresh_all_minds(
     if not enabled():
         state = "model_unconfigured" if not configured() else "mind_disabled"
         _ensure_rows(workers, state=state)
+        _ensure_temple_brain_row(state=state)
         return {}
 
     _ensure_rows(workers, state="thinking")
+    _ensure_temple_brain_row(state="thinking")
+
+    collective_observation = _build_collective_observation(
+        workers,
+        channel_health=channel_health,
+        send_enabled=send_enabled,
+    )
+    temple_brain = None
+    temple_brain_error = None
+    try:
+        temple_brain = _call_temple_brain(collective_observation)
+    except Exception as exc:
+        temple_brain_error = type(exc).__name__ + ":" + str(exc)
+    _persist_plan(
+        TEMPLE_BRAIN_ID,
+        observation=collective_observation,
+        plan=temple_brain,
+        error=temple_brain_error,
+    )
+
     observations = _build_observations(
         workers,
         channel_health=channel_health,
         send_enabled=send_enabled,
         fallback_queries_by_worker=fallback_queries_by_worker,
+        temple_brain=temple_brain,
     )
     maximum = runtime_status()["max_reasoning_calls_per_cycle"]
     selected = workers[:maximum]
