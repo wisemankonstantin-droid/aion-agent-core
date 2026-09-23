@@ -191,7 +191,7 @@ def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypat
     assert plan["contact_policy"] == "contact_one_if_qualified"
     assert seen["url"] == acquisition_agent_mind.RESPONSES_URL
     assert seen["headers"]["Authorization"] == "Bearer test-secret-header-only"
-    assert seen["json"]["model"] == "gpt-6-luna"
+    assert seen["json"]["model"] == "gpt-5.6-luna"
     assert seen["json"]["reasoning"] == {"effort": "low"}
     assert seen["json"]["store"] is False
     assert seen["json"]["text"]["format"]["type"] == "json_schema"
@@ -321,7 +321,7 @@ def test_live_temple_exposes_safe_separate_mind_and_transport_state(monkeypatch)
             models.AcquisitionAgentMind(
                 worker_id=worker.id,
                 mind_version="1",
-                model="gpt-6-luna",
+                model="gpt-5.6-luna",
                 cognitive_profile=acquisition_agent_mind.cognitive_profile(worker),
                 safe_memory={
                     "recent_outcomes": [],
@@ -347,7 +347,7 @@ def test_live_temple_exposes_safe_separate_mind_and_transport_state(monkeypatch)
     data = response.json()
     found = next(row for row in data["fleet"]["workers"] if row["id"] == worker.id)
     assert found["mind"]["state"] == "planned"
-    assert found["mind"]["model"] == "gpt-6-luna"
+    assert found["mind"]["model"] == "gpt-5.6-luna"
     assert found["mind"]["profile"]["strategy_fingerprint"]
     assert found["mind"]["plan"]["hypothesis"]
     assert found["mind"]["total_reasoning_calls"] == 7
