@@ -496,6 +496,55 @@ def _registry_queries_for_cycle(
     return tuple(queries[:1])
 
 
+def _mind_transport_policy(
+    mind_plan: dict | None,
+    fallback_queries: tuple[str, ...],
+) -> dict:
+    """Translate an AI plan into bounded executor permissions.
+
+    A model plan can narrow the existing executor but can never expand its
+    contact, dedupe, authentication, platform or payment authority.
+    """
+
+    if not mind_plan:
+        return {
+            "model_controls_transport": False,
+            "queries": tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
+            "channels": {"moltbook", "colony", "federated_a2a"},
+            "discover_allowed": True,
+            "contact_allowed": True,
+        }
+
+    channels = {
+        str(channel)
+        for channel in (mind_plan.get("channel_priority") or [])
+        if str(channel) in {"moltbook", "colony", "federated_a2a", "hold"}
+    }
+    contact_policy = str(mind_plan.get("contact_policy") or "discover_only")
+    hard_hold = "hold" in channels or contact_policy == "hold"
+    if hard_hold:
+        return {
+            "model_controls_transport": True,
+            "queries": (),
+            "channels": set(),
+            "discover_allowed": False,
+            "contact_allowed": False,
+        }
+
+    queries = tuple(
+        str(query).strip()[:128]
+        for query in (mind_plan.get("search_queries") or fallback_queries)
+        if str(query).strip()
+    )[:QUERIES_PER_WORKER_PER_CYCLE]
+    return {
+        "model_controls_transport": True,
+        "queries": queries or tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
+        "channels": channels & {"moltbook", "colony", "federated_a2a"},
+        "discover_allowed": True,
+        "contact_allowed": contact_policy == "contact_one_if_qualified",
+    }
+
+
 def _worker_daily_plan() -> dict:
     return {
         "new_unique_targets": DAILY_NEW_TARGET_GOAL_PER_WORKER,
@@ -1030,45 +1079,23 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             fallback_queries_by_worker.get(worker_id)
             or _queries_for_cycle(worker_id, query_bank)
         )
-        queries = tuple(
-            (mind_plan or {}).get("search_queries") or fallback_queries
-        )[:QUERIES_PER_WORKER_PER_CYCLE]
-        mind_channels = set((mind_plan or {}).get("channel_priority") or ())
-        mind_contact_policy = (mind_plan or {}).get(
-            "contact_policy",
-            "contact_one_if_qualified",
-        )
-        mind_controls_transport = mind_plan is not None
-        discover_allowed = (
-            not mind_controls_transport
-            or mind_contact_policy != "hold"
-        )
+        mind_policy = _mind_transport_policy(mind_plan, fallback_queries)
+        queries = mind_policy["queries"]
+        mind_channels = mind_policy["channels"]
+        mind_controls_transport = mind_policy["model_controls_transport"]
+        discover_allowed = mind_policy["discover_allowed"]
         allow_moltbook_discovery = (
-            discover_allowed
-            and (
-                not mind_controls_transport
-                or "moltbook" in mind_channels
-            )
+            discover_allowed and "moltbook" in mind_channels
         )
         allow_colony_discovery = (
             discover_allowed
             and worker_id in colony_scout_worker_ids
-            and (
-                not mind_controls_transport
-                or "colony" in mind_channels
-            )
+            and "colony" in mind_channels
         )
         allow_federated_discovery = (
-            discover_allowed
-            and (
-                not mind_controls_transport
-                or "federated_a2a" in mind_channels
-            )
+            discover_allowed and "federated_a2a" in mind_channels
         )
-        contact_allowed_by_mind = (
-            not mind_controls_transport
-            or mind_contact_policy == "contact_one_if_qualified"
-        )
+        contact_allowed_by_mind = mind_policy["contact_allowed"]
         moltbook_query = (
             queries[0]
             if mind_controls_transport and queries
