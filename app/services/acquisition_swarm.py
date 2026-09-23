@@ -719,6 +719,7 @@ def _qualified_unsent_target(
     *,
     allow_moltbook: bool,
     allow_colony: bool = False,
+    allow_federated: bool = True,
 ) -> models.AmbassadorTarget | None:
     base = (
         select(models.AmbassadorTarget)
@@ -745,6 +746,8 @@ def _qualified_unsent_target(
         )
         if colony is not None:
             return colony
+    if not allow_federated:
+        return None
     return db.scalar(
         base.where(
             ~models.AmbassadorTarget.discovery_source.in_(("moltbook", "colony"))
@@ -952,7 +955,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "contacts_delivered_or_responded": 0,
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
-        "primary_acquisition_channel": "moltbook",
+        "primary_acquisition_channel": "ai_selected_per_worker",
         "acquisition_channel_strategy": "ai_minds_over_bounded_multichannel_transport",
         "mind_runtime": acquisition_mind_runtime_status(),
         "minds_planned_this_cycle": len(mind_plans),
@@ -1207,11 +1210,26 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 set_campaign_state(db, campaign.campaign_id, "ready")
                 db.refresh(campaign)
 
-            cycle_new_targets = sum(
-                len(item.get("created_target_ids") or [])
+            cycle_target_ids = [
+                target_id
                 for item in lane_report["scout_results"]
                 if isinstance(item, dict)
-            )
+                for target_id in (item.get("created_target_ids") or [])
+            ]
+            cycle_new_targets = len(cycle_target_ids)
+            cycle_qualified_targets = 0
+            if cycle_target_ids:
+                cycle_qualified_targets = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(models.AmbassadorTarget)
+                        .where(
+                            models.AmbassadorTarget.target_id.in_(cycle_target_ids),
+                            models.AmbassadorTarget.qualification_state == "qualified",
+                        )
+                    )
+                    or 0
+                )
             outbound_state = moltbook_outbound_status()
             target = _qualified_unsent_target(
                 db,
@@ -1219,9 +1237,22 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 allow_moltbook=(
                     moltbook_comments_remaining_cycle > 0
                     and not bool(outbound_state.get("suspended"))
+                    and (
+                        not mind_controls_transport
+                        or "moltbook" in mind_channels
+                    )
                 ),
                 allow_colony=(
-                    colony_ready and colony_comments_remaining_cycle > 0
+                    colony_ready
+                    and colony_comments_remaining_cycle > 0
+                    and (
+                        not mind_controls_transport
+                        or "colony" in mind_channels
+                    )
+                ),
+                allow_federated=(
+                    not mind_controls_transport
+                    or "federated_a2a" in mind_channels
                 ),
             )
             contact_attempted_this_cycle = False
@@ -1285,6 +1316,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     db,
                     campaign,
                     allow_moltbook=True,
+                    allow_colony=False,
+                    allow_federated=False,
                 )
                 if dm_target is not None and dm_target.discovery_source == "moltbook":
                     report["contacts_attempted"] += 1
@@ -1336,11 +1369,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 worker_id,
                 {
                     "new_targets": cycle_new_targets,
-                    "qualified_targets": int(
-                        (lane_report.get("daily_accountability") or {})
-                        .get("today", {})
-                        .get("new_unique_targets", 0)
-                    ),
+                    "qualified_targets": cycle_qualified_targets,
                     "contact_attempted": contact_attempted_this_cycle,
                     "channel": contact_snapshot.get("channel"),
                     "result_class": contact_snapshot.get("result_class"),
