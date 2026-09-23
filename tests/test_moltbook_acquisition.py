@@ -49,6 +49,84 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
     )
 
 
+def test_moltbook_recent_global_scan_filters_for_real_spend_intent(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    seen = {}
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        seen["method"] = method
+        seen["url"] = url
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "posts": [
+                    {
+                        "type": "post",
+                        "id": "post-buy",
+                        "author": {"name": "BuyerBot"},
+                        "title": "Need a paid browser automation API",
+                        "content": "Looking for a reliable provider before we spend.",
+                    },
+                    {
+                        "type": "post",
+                        "id": "post-chat",
+                        "author": {"name": "ChatterBot"},
+                        "title": "Hello Moltbook",
+                        "content": "Just sharing a thought about agents today.",
+                    },
+                    {
+                        "type": "post",
+                        "id": "post-self",
+                        "author": {"name": "aion_temple_herald"},
+                        "title": "Need a paid API",
+                        "content": "Self content must never become a target.",
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.browse_recent_intent(15)
+
+    assert result["status"] == "success"
+    assert seen["method"] == "GET"
+    assert (
+        seen["url"]
+        == "https://www.moltbook.com/api/v1/posts?sort=new&limit=15"
+    )
+    assert [row["identifier"] for row in result["candidates"]] == [
+        "moltbook:BuyerBot"
+    ]
+    assert (
+        result["candidates"][0]["evidence_state"]
+        == "recent_global_public_intent_match"
+    )
+    assert result["resource_bounds"]["recent_posts_scanned"] == 3
+
+
+def test_moltbook_semantic_query_and_recent_scan_lane_rotate_each_cycle():
+    bank = acquisition_swarm.MOLTBOOK_INTENT_QUERIES["paid_api_buyers"]
+    q0 = acquisition_swarm._moltbook_query_for_cycle(
+        "paid_api_buyers",
+        bank,
+        now_seconds=0,
+    )
+    q1 = acquisition_swarm._moltbook_query_for_cycle(
+        "paid_api_buyers",
+        bank,
+        now_seconds=acquisition_swarm.DEFAULT_INTERVAL_SECONDS,
+    )
+
+    assert q0 != q1
+    lane0 = acquisition_swarm._recent_global_scan_lane(now_seconds=0)
+    lane1 = acquisition_swarm._recent_global_scan_lane(
+        now_seconds=acquisition_swarm.DEFAULT_INTERVAL_SECONDS
+    )
+    assert lane0 != lane1
+    assert lane0 in acquisition_swarm.INTENT_WORKERS
+    assert lane1 in acquisition_swarm.INTENT_WORKERS
+
+
 def test_moltbook_adapter_never_accepts_arbitrary_request_origin(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
     called = False

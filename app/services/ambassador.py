@@ -39,6 +39,7 @@ from .external_registry import (
 )
 from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
+    browse_recent_intent as browse_recent_moltbook_intent,
     build_outreach_comment as build_moltbook_outreach_comment,
     dm_request as request_moltbook_dm,
     platform_error_summary as moltbook_platform_error_summary,
@@ -415,6 +416,62 @@ def scout_moltbook_campaign(db: Session, *, campaign_id: str, query: str) -> dic
         return {
             "campaign_id": campaign_id,
             "channel": "moltbook",
+            "discovery_status": discovery.get("status"),
+            "created_target_ids": target_ids,
+            "outcomes": dict(sorted(outcomes.items())),
+            "resource_bounds": discovery.get("resource_bounds") or {},
+            "outbound_contact_performed": False,
+            "error": discovery.get("error"),
+        }
+
+
+def scout_moltbook_recent_campaign(
+    db: Session,
+    *,
+    campaign_id: str,
+    limit: int = 15,
+) -> dict:
+    """Discover fresh global Moltbook posts with bounded spend/provider intent."""
+
+    with _guard(db):
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.campaign_id == campaign_id
+                ),
+                db,
+            )
+        )
+        if campaign is None:
+            raise AmbassadorError(404, "campaign_not_found", "Campaign not found")
+        if campaign.state not in {"draft", "ready"}:
+            raise AmbassadorError(
+                409, "campaign_not_scoutable", "Campaign is paused or closed"
+            )
+        current = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        remaining = campaign.maximum_targets - current
+        if remaining <= 0:
+            raise AmbassadorError(
+                409, "campaign_target_limit_reached", "Campaign target limit reached"
+            )
+
+        discovery = browse_recent_moltbook_intent(min(int(limit), remaining))
+        outcomes = Counter()
+        target_ids = []
+        for candidate in discovery.get("candidates", [])[:remaining]:
+            row, outcome = _insert_candidate(db, campaign, candidate)
+            outcomes[outcome] += 1
+            if row is not None and outcome == "created":
+                target_ids.append(row.target_id)
+        campaign.updated_at = _now()
+        db.commit()
+        return {
+            "campaign_id": campaign_id,
+            "channel": "moltbook_recent_global",
             "discovery_status": discovery.get("status"),
             "created_target_ids": target_ids,
             "outcomes": dict(sorted(outcomes.items())),

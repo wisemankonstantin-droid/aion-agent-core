@@ -27,6 +27,7 @@ from .ambassador import (
     prepare_and_send_operator_moltbook_dm,
     scout_campaign,
     scout_moltbook_campaign,
+    scout_moltbook_recent_campaign,
     set_campaign_state,
 )
 from .moltbook_acquisition import (
@@ -78,17 +79,87 @@ INTENT_WORKERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-MOLTBOOK_INTENT_QUERIES: dict[str, str] = {
-    "provider_selection": "I need to choose or pay an external API, agent, tool, or provider for a real task",
-    "paid_api_buyers": "I am about to pay for an API, metered service, or x402 resource",
-    "agent_wallets": "My AI agent needs to spend money and I need budget, approval, or provider controls",
-    "mcp_buyers": "I need a paid MCP tool or server and must decide whether to buy it",
-    "a2a_buyers": "I need to hire or pay another agent or A2A service for a real job",
-    "data_buyers": "I need to buy search, research, or data API access for a current task",
-    "automation_buyers": "I need to pay for browser automation or an external automation provider",
-    "inference_buyers": "I need to choose and pay an inference, model API, or LLM gateway provider",
-    "fallback_seekers": "My current API or provider is failing and I need a paid replacement or fallback",
-    "agent_commerce": "My autonomous agent needs to procure an external service before spending money",
+MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
+    "provider_selection": (
+        "I need to choose an external API, agent, tool, or provider for a real task",
+        "Which provider should I use for this task before paying",
+        "Looking for a reliable external tool or service recommendation",
+        "Need to compare providers, vendors, or agent services before purchase",
+        "What is the best paid provider for this capability",
+        "Need a provider alternative with lower risk or cost",
+    ),
+    "paid_api_buyers": (
+        "I am about to pay for an API, metered service, or x402 resource",
+        "Looking for a paid API for a current production task",
+        "Need an API with pricing or pay per call billing",
+        "I need to buy API access for an agent workflow",
+        "Need a metered API provider with predictable cost",
+        "Comparing paid APIs before spending money",
+    ),
+    "agent_wallets": (
+        "My AI agent needs to spend money and I need budget or provider controls",
+        "Agent wallet needs approval before buying an external service",
+        "Need spending limits for an autonomous agent purchase",
+        "AI agent budget for paid tools or APIs",
+        "Machine wallet needs safe provider selection before payment",
+        "Need treasury controls for agent external spend",
+    ),
+    "mcp_buyers": (
+        "I need a paid MCP tool or server and must decide whether to buy it",
+        "Looking for a paid MCP server for a real task",
+        "Need MCP pricing before choosing a tool",
+        "Comparing paid MCP tools or metered MCP services",
+        "Need an MCP provider with billing or x402",
+        "Which MCP service should my agent pay for",
+    ),
+    "a2a_buyers": (
+        "I need to hire or pay another agent or A2A service for a real job",
+        "Looking for an external AI agent to perform a paid task",
+        "Need an A2A provider before paying another agent",
+        "Comparing agent services for a current job",
+        "Need to buy a result from another agent",
+        "Which external agent service should I use",
+    ),
+    "data_buyers": (
+        "I need to buy search, research, or data API access for a current task",
+        "Looking for a paid data provider or search API",
+        "Need research data and must choose a vendor",
+        "Comparing paid search or web data APIs",
+        "Need an external data service before spending",
+        "Which data API is worth paying for",
+    ),
+    "automation_buyers": (
+        "I need to pay for browser automation or an external automation provider",
+        "Looking for a paid browser automation API",
+        "Need an automation provider for a production task",
+        "Comparing browser agents or automation services before purchase",
+        "Need a paid external tool to automate this workflow",
+        "Which browser or automation provider should I buy",
+    ),
+    "inference_buyers": (
+        "I need to choose and pay an inference, model API, or LLM gateway provider",
+        "Looking for a paid inference API or LLM gateway",
+        "Need model API pricing before choosing a provider",
+        "Comparing inference providers for cost and reliability",
+        "Need a paid LLM API for an agent workflow",
+        "Which inference provider should I pay for",
+    ),
+    "fallback_seekers": (
+        "My current API or provider is failing and I need a paid replacement or fallback",
+        "Need an alternative provider because the current service is unreliable",
+        "Looking for a fallback API or replacement tool",
+        "Provider outage and I need another paid option",
+        "Need a reliable substitute for an external service",
+        "Looking to replace a failing API provider",
+    ),
+    "agent_commerce": (
+        "My autonomous agent needs to procure an external service before spending money",
+        "Agent needs to buy a tool or service for a current task",
+        "Machine procurement for an external API or provider",
+        "Autonomous purchase needs provider selection and price",
+        "Agent commerce workflow needs a qualified external route",
+        "Need to purchase an external capability for an AI agent",
+    ),
 }
 
 MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
@@ -141,6 +212,25 @@ def _queries_for_cycle(
         query_bank[(start + index) % len(query_bank)]
         for index in range(QUERIES_PER_WORKER_PER_CYCLE)
     )
+
+
+def _moltbook_query_for_cycle(
+    lane: str,
+    query_bank: tuple[str, ...],
+    *,
+    now_seconds: float | None = None,
+) -> str:
+    current = time.time() if now_seconds is None else float(now_seconds)
+    slot = int(current // DEFAULT_INTERVAL_SECONDS)
+    lane_offset = sum(ord(character) for character in lane)
+    return query_bank[(slot + lane_offset) % len(query_bank)]
+
+
+def _recent_global_scan_lane(*, now_seconds: float | None = None) -> str:
+    lanes = tuple(INTENT_WORKERS)
+    current = time.time() if now_seconds is None else float(now_seconds)
+    slot = int(current // DEFAULT_INTERVAL_SECONDS)
+    return lanes[slot % len(lanes)]
 
 
 def _worker_daily_plan() -> dict:
@@ -448,6 +538,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "moltbook",
+        "moltbook_recent_global_scan_lane": _recent_global_scan_lane(),
         "moltbook": {
             "configured": bool(moltbook_state.get("configured")),
             "claimed": moltbook_ready,
@@ -490,10 +581,16 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
     for lane, query_bank in INTENT_WORKERS.items():
         queries = _queries_for_cycle(lane, query_bank)
+        moltbook_query = _moltbook_query_for_cycle(
+            lane,
+            MOLTBOOK_INTENT_QUERIES[lane],
+        )
         lane_report = {
             "worker_id": f"aion-intent-{lane}",
             "queries": list(queries),
             "query_bank_size": len(query_bank),
+            "moltbook_query": moltbook_query,
+            "moltbook_query_bank_size": len(MOLTBOOK_INTENT_QUERIES[lane]),
             "scout_results": [],
             "contact": None,
             "response_intelligence": None,
@@ -506,21 +603,39 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             moltbook_created = 0
 
             if moltbook_ready:
+                if lane == report["moltbook_recent_global_scan_lane"]:
+                    try:
+                        recent_result = scout_moltbook_recent_campaign(
+                            db,
+                            campaign_id=campaign.campaign_id,
+                            limit=15,
+                        )
+                        lane_report["scout_results"].append(recent_result)
+                        moltbook_created += len(
+                            recent_result.get("created_target_ids") or []
+                        )
+                    except AmbassadorError as exc:
+                        lane_report["scout_results"].append(
+                            {
+                                "channel": "moltbook_recent_global",
+                                "error": exc.code,
+                            }
+                        )
                 try:
                     moltbook_result = scout_moltbook_campaign(
                         db,
                         campaign_id=campaign.campaign_id,
-                        query=MOLTBOOK_INTENT_QUERIES[lane],
+                        query=moltbook_query,
                     )
                     lane_report["scout_results"].append(moltbook_result)
-                    moltbook_created = len(
+                    moltbook_created += len(
                         moltbook_result.get("created_target_ids") or []
                     )
                 except AmbassadorError as exc:
                     lane_report["scout_results"].append(
                         {
                             "channel": "moltbook",
-                            "query": MOLTBOOK_INTENT_QUERIES[lane],
+                            "query": moltbook_query,
                             "error": exc.code,
                         }
                     )
