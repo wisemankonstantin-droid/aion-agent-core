@@ -31,6 +31,8 @@ DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_TEMPLE_BRAIN_MODEL = "gpt-5.6-sol"
 DEFAULT_REASONING_EFFORT = "low"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
+DEFAULT_REASONING_PROVIDER = "openai_responses"
+DEFAULT_CHAT_COMPLETIONS_BASE_URL = "https://foundation-models.api.cloud.ru/v1"
 DEFAULT_MAX_CALLS_PER_CYCLE = 100
 DEFAULT_MAX_CONCURRENCY = 8
 DEFAULT_MAX_OUTPUT_TOKENS = 600
@@ -244,8 +246,21 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
 
 
+def _reasoning_provider() -> str:
+    provider = (
+        os.getenv("AION_REASONING_PROVIDER") or DEFAULT_REASONING_PROVIDER
+    ).strip()
+    return provider or DEFAULT_REASONING_PROVIDER
+
+
+def _reasoning_api_key() -> str:
+    if _reasoning_provider() == "cloudru_chat_completions":
+        return (os.getenv("AION_REASONING_API_KEY") or "").strip()
+    return (os.getenv("OPENAI_API_KEY") or "").strip()
+
+
 def configured() -> bool:
-    return bool((os.getenv("OPENAI_API_KEY") or "").strip())
+    return bool(_reasoning_api_key())
 
 
 def enabled() -> bool:
@@ -256,7 +271,7 @@ def runtime_status() -> dict:
     return {
         "enabled": enabled(),
         "configured": configured(),
-        "provider": "openai_responses",
+        "provider": _reasoning_provider(),
         "model": (os.getenv("AION_AGENT_MODEL") or DEFAULT_MODEL).strip()
         or DEFAULT_MODEL,
         "temple_brain_model": (
@@ -847,6 +862,97 @@ def _extract_output_text(payload: dict) -> str:
     return "".join(pieces)
 
 
+def _extract_chat_completion_text(payload: dict) -> str:
+    choices = payload.get("choices") or []
+    if not choices or not isinstance(choices[0], dict):
+        raise RuntimeError("model_output_missing")
+    message = choices[0].get("message") or {}
+    text = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(text, str) or not text:
+        raise RuntimeError("model_output_missing")
+    return text
+
+
+def _call_structured_model(
+    *,
+    model: str,
+    instructions: str,
+    encoded_observation: str,
+    schema_name: str,
+    schema: dict,
+    max_output_tokens: int,
+    metadata: dict,
+    timeout: float,
+) -> dict:
+    key = _reasoning_api_key()
+    if not key:
+        error = (
+            "reasoning_api_key_missing"
+            if _reasoning_provider() == "cloudru_chat_completions"
+            else "openai_api_key_missing"
+        )
+        raise RuntimeError(error)
+
+    if _reasoning_provider() == "cloudru_chat_completions":
+        base_url = (
+            os.getenv("AION_REASONING_BASE_URL")
+            or DEFAULT_CHAT_COMPLETIONS_BASE_URL
+        ).strip().rstrip("/")
+        url = f"{base_url}/chat/completions"
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": encoded_observation},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": schema,
+                },
+            },
+            "max_tokens": max_output_tokens,
+        }
+        extract_text = _extract_chat_completion_text
+    else:
+        url = RESPONSES_URL
+        payload = {
+            "model": model,
+            "reasoning": {"effort": runtime_status()["reasoning_effort"]},
+            "instructions": instructions,
+            "input": encoded_observation,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            "max_output_tokens": max_output_tokens,
+            "store": False,
+            "metadata": metadata,
+        }
+        extract_text = _extract_output_text
+
+    response = httpx.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    if response.status_code == 429:
+        raise RuntimeError("model_rate_limited")
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"model_http_{response.status_code}")
+    return json.loads(extract_text(response.json()))
+
+
 def _clean_short(value: object, maximum: int) -> str:
     text = " ".join(str(value or "").split())
     return text[:maximum]
@@ -954,9 +1060,6 @@ def _validate_temple_brain_plan(plan: object) -> dict:
 
 
 def _call_temple_brain(observation: dict) -> dict:
-    key = (os.getenv("OPENAI_API_KEY") or "").strip()
-    if not key:
-        raise RuntimeError("openai_api_key_missing")
     status = runtime_status()
     encoded = json.dumps(
         observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -964,57 +1067,28 @@ def _call_temple_brain(observation: dict) -> dict:
     if len(encoded.encode("utf-8")) > MAX_COLLECTIVE_OBSERVATION_BYTES:
         raise RuntimeError("temple_brain_observation_too_large")
 
-    payload = {
-        "model": status["temple_brain_model"],
-        "reasoning": {"effort": status["reasoning_effort"]},
-        "instructions": _TEMPLE_BRAIN_INSTRUCTIONS,
-        "input": encoded,
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "aion_temple_brain_plan",
-                "strict": True,
-                "schema": _TEMPLE_BRAIN_SCHEMA,
-            }
-        },
-        "max_output_tokens": _bounded_int(
-            "AION_TEMPLE_BRAIN_MAX_OUTPUT_TOKENS",
-            900,
-            300,
-            1600,
+    plan = _call_structured_model(
+        model=status["temple_brain_model"],
+        instructions=_TEMPLE_BRAIN_INSTRUCTIONS,
+        encoded_observation=encoded,
+        schema_name="aion_temple_brain_plan",
+        schema=_TEMPLE_BRAIN_SCHEMA,
+        max_output_tokens=_bounded_int(
+            "AION_TEMPLE_BRAIN_MAX_OUTPUT_TOKENS", 900, 300, 1600
         ),
-        "store": False,
-        "metadata": {
+        metadata={
             "aion_worker_id": TEMPLE_BRAIN_ID,
             "aion_mind_version": MIND_VERSION,
             "collective_cognition": "true",
         },
-    }
-    timeout = float(
-        _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+        timeout=float(
+            _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+        ),
     )
-    response = httpx.post(
-        RESPONSES_URL,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=timeout,
-    )
-    if response.status_code == 429:
-        raise RuntimeError("model_rate_limited")
-    if response.status_code < 200 or response.status_code >= 300:
-        raise RuntimeError(f"model_http_{response.status_code}")
-    data = response.json()
-    plan = json.loads(_extract_output_text(data))
     return _validate_temple_brain_plan(plan)
 
 
 def _call_model(worker_id: str, observation: dict) -> dict:
-    key = (os.getenv("OPENAI_API_KEY") or "").strip()
-    if not key:
-        raise RuntimeError("openai_api_key_missing")
     status = runtime_status()
     encoded = json.dumps(
         observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -1022,49 +1096,26 @@ def _call_model(worker_id: str, observation: dict) -> dict:
     if len(encoded.encode("utf-8")) > MAX_OBSERVATION_BYTES:
         raise RuntimeError("mind_observation_too_large")
 
-    payload = {
-        "model": status["model"],
-        "reasoning": {"effort": status["reasoning_effort"]},
-        "instructions": _MIND_INSTRUCTIONS,
-        "input": encoded,
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "aion_acquisition_plan",
-                "strict": True,
-                "schema": _PLAN_SCHEMA,
-            }
-        },
-        "max_output_tokens": _bounded_int(
+    plan = _call_structured_model(
+        model=status["model"],
+        instructions=_MIND_INSTRUCTIONS,
+        encoded_observation=encoded,
+        schema_name="aion_acquisition_plan",
+        schema=_PLAN_SCHEMA,
+        max_output_tokens=_bounded_int(
             "AION_AGENT_MIND_MAX_OUTPUT_TOKENS",
             DEFAULT_MAX_OUTPUT_TOKENS,
             200,
             1200,
         ),
-        "store": False,
-        "metadata": {
+        metadata={
             "aion_worker_id": worker_id,
             "aion_mind_version": MIND_VERSION,
         },
-    }
-    timeout = float(
-        _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+        timeout=float(
+            _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+        ),
     )
-    response = httpx.post(
-        RESPONSES_URL,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=timeout,
-    )
-    if response.status_code == 429:
-        raise RuntimeError("model_rate_limited")
-    if response.status_code < 200 or response.status_code >= 300:
-        raise RuntimeError(f"model_http_{response.status_code}")
-    data = response.json()
-    plan = json.loads(_extract_output_text(data))
     return _validate_plan(plan, observation.get("fallback_queries") or [])
 
 
