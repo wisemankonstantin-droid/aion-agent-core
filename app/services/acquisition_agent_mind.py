@@ -23,6 +23,10 @@ from sqlalchemy import case, func, select
 from .. import models
 from ..conversation_models import ConversationEvidence, ConversationIntelligence
 from ..db import SessionLocal
+from ..payment_models import RouteIntelligencePurchase
+from . import economic_kernel
+from .direct_base_usdc import direct_base_usdc_readiness
+from .paid_route_intelligence import ROUTE_INTELLIGENCE_SKU, route_intelligence_readiness
 
 
 MIND_VERSION = "2"
@@ -177,6 +181,13 @@ commercial proof. Find current external-spend intent from real external agents.
 Prefer explicit buyer demand over seller listings, generic chatter or vanity
 traffic. Utility comes before membership: BEFORE EXTERNAL SPEND, ASK AION.
 
+Use the supplied commercial_knowledge as the only authority for AION product
+availability and price state. Never invent, negotiate, discount, or override a
+customer price. A paid product may be described as purchasable only when its
+commercial_knowledge entry says purchase_available=true; otherwise offer the
+zero-price preflight or say the paid offer is not currently available. The
+Economic Kernel, not you, owns pricing, margin, payment and settlement authority.
+
 Choose the next bounded discovery plan from the supplied safe observation.
 You may choose only the listed channels. The executor, not you, controls network
 writes, dedupe, one-contact-per-target, platform limits, channel suspension and
@@ -205,9 +216,13 @@ acquisition force. Produce a compact collective strategy that helps independent
 minds search wider, learn from one another, avoid repeated failures, and move
 genuine external buyer intent toward AION preflight and purchase.
 
-Use only the supplied aggregate facts and peer lessons. Do not invent demand,
-buyers, conversations, outcomes, URLs, credentials or payments. Do not expose
-chain-of-thought. Never recommend spam, duplicate contact, new fake identities,
+Use only the supplied aggregate facts and peer lessons. Treat commercial_knowledge
+as read-only deterministic commercial truth. Never invent a product, provider
+price, AION price, discount, payment readiness or settlement state. The Economic
+Kernel remains the sole pricing and financial authority; if price is unknown,
+keep it unknown and direct minds toward preflight rather than a fabricated quote.
+Do not invent demand, buyers, conversations, outcomes, URLs, credentials or payments.
+Do not expose chain-of-thought. Never recommend spam, duplicate contact, new fake identities,
 platform-limit evasion, self-payment, uncontrolled money movement, or contact
 that violates opt-out/channel health. A shared strategy may prioritize channels,
 buyer-intent motifs, hypotheses and experiments, but the bounded executor remains
@@ -244,6 +259,117 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         value = default
     return max(minimum, min(value, maximum))
+
+
+def commercial_knowledge_snapshot() -> dict:
+    """Return bounded read-only commercial truth for Temple Brain and worker minds.
+
+    This snapshot exposes only deterministic product/economic configuration and
+    safe aggregate purchase evidence. It never grants the model authority to set
+    prices, activate money movement, execute a provider call, or infer a missing
+    provider price.
+    """
+
+    route = route_intelligence_readiness()
+    payment = direct_base_usdc_readiness()
+    state_counts: dict[str, int] = {}
+    latest_entitled_quote = None
+
+    with SessionLocal() as db:
+        for state, count in db.execute(
+            select(
+                RouteIntelligencePurchase.state,
+                func.count(RouteIntelligencePurchase.id),
+            ).group_by(RouteIntelligencePurchase.state)
+        ):
+            state_counts[str(state)] = int(count or 0)
+
+        latest_entitled = db.scalar(
+            select(RouteIntelligencePurchase)
+            .where(RouteIntelligencePurchase.state == "entitled")
+            .order_by(
+                RouteIntelligencePurchase.entitled_at.desc(),
+                RouteIntelligencePurchase.id.desc(),
+            )
+            .limit(1)
+        )
+        if latest_entitled is not None:
+            entitled_at = latest_entitled.entitled_at
+            if entitled_at is not None:
+                entitled_at = (
+                    entitled_at.replace(tzinfo=timezone.utc)
+                    if entitled_at.tzinfo is None
+                    else entitled_at.astimezone(timezone.utc)
+                )
+            latest_entitled_quote = {
+                "product_sku": latest_entitled.product_sku,
+                "currency": latest_entitled.quote_currency,
+                "amount": latest_entitled.quote_amount,
+                "entitled_at": entitled_at.isoformat() if entitled_at is not None else None,
+            }
+
+    route_blockers = list(route.get("blocking_reasons") or [])
+    payment_blockers = list(payment.get("blocking_reasons") or [])
+    product = {
+        "product_sku": ROUTE_INTELLIGENCE_SKU,
+        "product_kind": "aion_owned_verified_route_intelligence",
+        "quote_configured": bool(route.get("quote_configured")),
+        "currency": route.get("currency"),
+        "customer_price": route.get("customer_price"),
+        "policy_eligible": bool(route.get("policy_eligible")),
+        "purchase_available": bool(payment.get("launch_ready")),
+        "payment_method": payment.get("payment_method"),
+        "payment_network": payment.get("network"),
+        "commercial_rights_scope": route.get("commercial_rights_scope"),
+        "blocking_reasons": list(dict.fromkeys(route_blockers + payment_blockers)),
+    }
+
+    return {
+        "snapshot_version": "commercial_knowledge_v1",
+        "free_entry_offer": {
+            "name": "aion_pre_spend_preflight",
+            "endpoint": "/commercial/route-intelligence/preflight",
+            "customer_price": "0",
+            "price_state": "fixed_zero",
+            "membership_required": False,
+            "purpose": "GO_HOLD_STOP_before_external_spend",
+        },
+        "paid_products": [product],
+        "margin_policy": {
+            "minimum_margin_bps": economic_kernel.MINIMUM_MARGIN_BPS,
+            "standard_target_margin_bps": economic_kernel.STANDARD_TARGET_MARGIN_BPS,
+            "unknown_cost_means_no_paid_execution": True,
+        },
+        "payment_readiness": {
+            "method": payment.get("payment_method"),
+            "network": payment.get("network"),
+            "payment_offer_configured": bool(payment.get("payment_offer_configured")),
+            "real_money_execution_enabled": bool(
+                payment.get("real_money_execution_enabled")
+            ),
+            "launch_ready": bool(payment.get("launch_ready")),
+            "blocking_reasons": payment_blockers,
+        },
+        "provider_pricing_policy": {
+            "state": "request_scoped_verified_only",
+            "trusted_provider_price_required_before_paid_execution": True,
+            "unknown_provider_price_must_remain_unknown": True,
+            "model_may_infer_or_override_provider_price": False,
+        },
+        "market_memory": {
+            "route_intelligence_purchase_state_counts": dict(sorted(state_counts.items())),
+            "settled_purchase_count": int(state_counts.get("entitled") or 0),
+            "latest_settled_quote": latest_entitled_quote,
+            "rejected_quote_evidence_available": False,
+        },
+        "authority": {
+            "model_financial_authority": False,
+            "model_may_set_customer_price": False,
+            "model_may_activate_payment": False,
+            "model_may_override_margin_policy": False,
+            "deterministic_economic_kernel_authoritative": True,
+        },
+    }
 
 
 def _reasoning_provider() -> str:
@@ -532,6 +658,7 @@ def _build_collective_observation(
         reverse=True,
     )[:MAX_SHARED_HYPOTHESES]
     recent_outcomes = recent_outcomes[-40:]
+    commercial_knowledge = commercial_knowledge_snapshot()
 
     return {
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
@@ -545,6 +672,7 @@ def _build_collective_observation(
         "peer_lessons": peer_lessons,
         "recent_safe_outcomes": recent_outcomes,
         "high_confidence_worker_hypotheses": plan_hypotheses,
+        "commercial_knowledge": commercial_knowledge,
         "hard_constraints": {
             "one_contact_per_target": True,
             "no_fake_agents": True,
@@ -552,6 +680,9 @@ def _build_collective_observation(
             "no_limit_evasion": True,
             "no_model_direct_network_write": True,
             "no_model_payment_authority": True,
+            "no_model_price_authority": True,
+            "no_model_product_catalog_authority": True,
+            "deterministic_economic_kernel_authoritative": True,
             "utility_before_membership": True,
             "pay_before_spend": True,
             "raw_private_responses_available": False,
@@ -800,6 +931,7 @@ def _build_observations(
                         {"worker_id": peer_id, "lesson": cleaned}
                     )
         shared_peer_lessons = shared_peer_lessons[-MAX_SHARED_PEER_LESSONS:]
+        commercial_knowledge = commercial_knowledge_snapshot()
 
         observations = {}
         for worker in workers:
@@ -819,6 +951,7 @@ def _build_observations(
                     dict(row.last_plan or {}) if row is not None and row.last_plan else None
                 ),
                 "temple_brain": temple_brain,
+                "commercial_knowledge": commercial_knowledge,
                 "peer_experience": [
                     item
                     for item in shared_peer_lessons
@@ -836,6 +969,9 @@ def _build_observations(
                     "no_limit_evasion": True,
                     "no_model_direct_network_write": True,
                     "no_model_payment_authority": True,
+                    "no_model_price_authority": True,
+                    "no_model_product_catalog_authority": True,
+                    "deterministic_economic_kernel_authoritative": True,
                     "utility_before_membership": True,
                     "pay_before_spend": True,
                 },
