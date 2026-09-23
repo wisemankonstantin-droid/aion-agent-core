@@ -1,8 +1,10 @@
 """Intent-first acquisition workers built on the existing Ambassador control plane.
 
 Workers are transparent AION-operated acquisition lanes, never external members.
-They discover public A2A endpoints, qualify them, and perform at most one
-Ambassador contact per target through the existing audited sender.
+They discover public buyer-intent surfaces and federated A2A supply. Only
+verified buyer-intent surfaces are eligible for acquisition contact; federated
+registry entries remain discovery/supply evidence unless future evidence proves
+a real requester-intent surface.
 """
 
 from __future__ import annotations
@@ -251,6 +253,9 @@ MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
 MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
+# Public A2A registries describe callable supply. A registry listing alone is not
+# evidence that the listed agent currently intends to buy an external service.
+FEDERATED_A2A_BUYER_CONTACT_ENABLED = False
 
 _START_LOCK = Lock()
 _RUNTIME_LOCK = Lock()
@@ -946,7 +951,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         },
         "federated_a2a": {
             "public_discovery": True,
+            "buyer_outbound_contact": FEDERATED_A2A_BUYER_CONTACT_ENABLED,
             "one_contact_per_target": True,
+            "truth": "registry_supply_is_not_verified_buyer_intent",
         },
     }
     fallback_queries_by_worker = {
@@ -1093,8 +1100,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "When the model runtime is configured, all 100 independently plan from their "
             "own safe durable memory each cycle; only the rotating active cohort can receive "
             "bounded external transport slots. Shared transport health, dedupe and platform "
-            "limits remain authoritative. Worker count is not independent adoption, "
-            "customer proof, SAT or revenue."
+            "limits remain authoritative. Federated A2A registry discovery is supply "
+            "evidence and is not treated as verified buyer intent. Worker count is not "
+            "independent adoption, customer proof, SAT or revenue."
         ),
     }
 
@@ -1308,10 +1316,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         or "colony" in mind_channels
                     )
                 ),
-                allow_federated=(
-                    not mind_controls_transport
-                    or "federated_a2a" in mind_channels
-                ),
+                # Federated A2A registries are supply discovery, not a verified
+                # requester-intent surface. Do not turn provider listings into
+                # unsolicited buyer acquisition contacts.
+                allow_federated=FEDERATED_A2A_BUYER_CONTACT_ENABLED,
             )
             contact_attempted_this_cycle = False
             if (
