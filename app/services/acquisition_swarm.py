@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock, Thread
 
 from sqlalchemy import func, select
@@ -176,6 +177,13 @@ MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
 MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
+MOLTBOOK_DM_404_BACKOFF_SECONDS = 6 * 60 * 60
+_MOLTBOOK_SUSPENSION_RE = re.compile(
+    r"suspended until ([0-9T:.+-]+Z)",
+    re.IGNORECASE,
+)
+_MOLTBOOK_SUSPENDED_UNTIL: datetime | None = None
+_MOLTBOOK_DM_BACKOFF_UNTIL: datetime | None = None
 
 _START_LOCK = Lock()
 _STARTED = False
@@ -200,6 +208,59 @@ def _bounded_interval_seconds() -> int:
     except (TypeError, ValueError):
         value = DEFAULT_INTERVAL_SECONDS
     return max(MIN_INTERVAL_SECONDS, min(value, MAX_INTERVAL_SECONDS))
+
+
+def _parse_moltbook_suspension_until(platform_error: str | None) -> datetime | None:
+    if not isinstance(platform_error, str):
+        return None
+    match = _MOLTBOOK_SUSPENSION_RE.search(platform_error)
+    if match is None:
+        return None
+    try:
+        value = datetime.fromisoformat(match.group(1).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return _aware(value)
+
+
+def _active_moltbook_suspension_until() -> datetime | None:
+    global _MOLTBOOK_SUSPENDED_UNTIL
+    if (
+        _MOLTBOOK_SUSPENDED_UNTIL is not None
+        and _MOLTBOOK_SUSPENDED_UNTIL <= datetime.now(timezone.utc)
+    ):
+        _MOLTBOOK_SUSPENDED_UNTIL = None
+    return _MOLTBOOK_SUSPENDED_UNTIL
+
+
+def _note_moltbook_suspension(platform_error: str | None) -> datetime | None:
+    global _MOLTBOOK_SUSPENDED_UNTIL
+    parsed = _parse_moltbook_suspension_until(platform_error)
+    if parsed is not None and parsed > datetime.now(timezone.utc):
+        if _MOLTBOOK_SUSPENDED_UNTIL is None or parsed > _MOLTBOOK_SUSPENDED_UNTIL:
+            _MOLTBOOK_SUSPENDED_UNTIL = parsed
+    return _active_moltbook_suspension_until()
+
+
+def _active_moltbook_dm_backoff_until() -> datetime | None:
+    global _MOLTBOOK_DM_BACKOFF_UNTIL
+    if (
+        _MOLTBOOK_DM_BACKOFF_UNTIL is not None
+        and _MOLTBOOK_DM_BACKOFF_UNTIL <= datetime.now(timezone.utc)
+    ):
+        _MOLTBOOK_DM_BACKOFF_UNTIL = None
+    return _MOLTBOOK_DM_BACKOFF_UNTIL
+
+
+def _note_moltbook_dm_http_status(http_status: int | None) -> datetime | None:
+    global _MOLTBOOK_DM_BACKOFF_UNTIL
+    if http_status == 404:
+        candidate = datetime.now(timezone.utc) + timedelta(
+            seconds=MOLTBOOK_DM_404_BACKOFF_SECONDS
+        )
+        if _MOLTBOOK_DM_BACKOFF_UNTIL is None or candidate > _MOLTBOOK_DM_BACKOFF_UNTIL:
+            _MOLTBOOK_DM_BACKOFF_UNTIL = candidate
+    return _active_moltbook_dm_backoff_until()
 
 
 def _queries_for_cycle(
@@ -512,27 +573,45 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     )
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
+    moltbook_suspended_until = _active_moltbook_suspension_until()
+    moltbook_contact_ready = (
+        moltbook_ready and moltbook_suspended_until is None
+    )
     moltbook_dm_state = moltbook_dm_check() if moltbook_ready else {
         "status": "unavailable",
         "has_activity": False,
         "pending_request_count": 0,
         "unread_count": 0,
     }
+    moltbook_dm_backoff_until = _active_moltbook_dm_backoff_until()
+    moltbook_dm_ready = (
+        moltbook_contact_ready
+        and moltbook_dm_backoff_until is None
+        and moltbook_dm_state.get("status") == "success"
+    )
     moltbook_comments_today = _moltbook_comments_today(db)
     moltbook_comments_remaining_today = max(
         0, MOLTBOOK_DAILY_COMMENT_LIMIT - moltbook_comments_today
     )
-    moltbook_comments_remaining_cycle = min(
-        MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
-        moltbook_comments_remaining_today,
+    moltbook_comments_remaining_cycle = (
+        min(
+            MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
+            moltbook_comments_remaining_today,
+        )
+        if moltbook_contact_ready
+        else 0
     )
     moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
     moltbook_dm_remaining_today = max(
         0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
     )
-    moltbook_dm_remaining_cycle = min(
-        MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
-        moltbook_dm_remaining_today,
+    moltbook_dm_remaining_cycle = (
+        min(
+            MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
+            moltbook_dm_remaining_today,
+        )
+        if moltbook_dm_ready
+        else 0
     )
 
     report = {
@@ -552,6 +631,12 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "claimed": moltbook_ready,
             "status": moltbook_state.get("status"),
             "error": moltbook_state.get("error"),
+            "contact_ready": moltbook_contact_ready,
+            "suspended_until": (
+                moltbook_suspended_until.isoformat()
+                if moltbook_suspended_until is not None
+                else None
+            ),
             "comments": {
                 "official_daily_limit": MOLTBOOK_DAILY_COMMENT_LIMIT,
                 "today": moltbook_comments_today,
@@ -568,6 +653,12 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "requests_attempted_this_cycle": 0,
                 "platform_numeric_daily_limit_published": False,
                 "activity_status": moltbook_dm_state.get("status"),
+                "contact_ready": moltbook_dm_ready,
+                "backoff_until": (
+                    moltbook_dm_backoff_until.isoformat()
+                    if moltbook_dm_backoff_until is not None
+                    else None
+                ),
                 "pending_incoming_requests": int(
                     moltbook_dm_state.get("pending_request_count") or 0
                 ),
@@ -722,6 +813,23 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     }
                     if result.get("result_class") in {"delivered", "response_received"}:
                         report["contacts_delivered_or_responded"] += 1
+                    if (
+                        target.discovery_source == "moltbook"
+                        and result.get("http_status") == 403
+                    ):
+                        suspension = _note_moltbook_suspension(
+                            result.get("platform_error")
+                        )
+                        if suspension is not None:
+                            moltbook_comments_remaining_cycle = 0
+                            moltbook_dm_remaining_cycle = 0
+                            report["moltbook"]["contact_ready"] = False
+                            report["moltbook"]["suspended_until"] = suspension.isoformat()
+                    if (
+                        target.discovery_source == "moltbook"
+                        and result.get("http_status") == 429
+                    ):
+                        moltbook_comments_remaining_cycle = 0
                 except AmbassadorError as exc:
                     lane_report["contact"] = {
                         "target_id": target.target_id,
@@ -760,6 +868,22 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                         if dm_result.get("result_class") == "delivered":
                             report["contacts_delivered_or_responded"] += 1
+                        dm_backoff = _note_moltbook_dm_http_status(
+                            dm_result.get("http_status")
+                        )
+                        if dm_backoff is not None:
+                            moltbook_dm_remaining_cycle = 0
+                            report["moltbook"]["dm"]["contact_ready"] = False
+                            report["moltbook"]["dm"]["backoff_until"] = dm_backoff.isoformat()
+                        if dm_result.get("http_status") == 403:
+                            suspension = _note_moltbook_suspension(
+                                dm_result.get("platform_error")
+                            )
+                            if suspension is not None:
+                                moltbook_comments_remaining_cycle = 0
+                                moltbook_dm_remaining_cycle = 0
+                                report["moltbook"]["contact_ready"] = False
+                                report["moltbook"]["suspended_until"] = suspension.isoformat()
                         if dm_result.get("http_status") == 429:
                             moltbook_dm_remaining_cycle = 0
                     except AmbassadorError as exc:
