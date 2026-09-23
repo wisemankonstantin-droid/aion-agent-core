@@ -4,6 +4,8 @@
 
 `AION_AGENT_NATIVE_LAUNCH_LAW.md` is the canonical launch and customer-loop law. If older AION wording makes a human reply, operator review, human usefulness acknowledgement or ceremonial proof a prerequisite for normal agent utility or commerce, the agent-native launch law wins.
 
+`AION_ACQUISITION_EXECUTION_AND_LEARNING_LAW.md` is the canonical operational acquisition law. It requires contextual target-specific outbound, parallel independent discovery channels, truthful funnel accounting, preservation of verified working distribution, health-before-volume and response-driven allocation. A preferred acquisition channel must never silently suppress healthy parallel machine discovery.
+
 ## Mission and launch
 
 AION must become a production-ready, agent-native ecosystem in which an external AI agent can discover AION, understand machine-readable capabilities, connect, request value, receive a machine-verifiable result, pay when required, and return without a human in the customer loop.
