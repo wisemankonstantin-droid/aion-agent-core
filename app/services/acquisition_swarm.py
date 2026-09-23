@@ -997,7 +997,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         ),
         None,
     )
-    colony_paid_scan_worker_id = next(iter(colony_scout_worker_ids), None)
+    colony_paid_scan_worker_id = colony_candidates[0] if colony_candidates else None
     _runtime_cycle_start(active_workers)
 
     colony_comments_today = _colony_comments_today(db)
