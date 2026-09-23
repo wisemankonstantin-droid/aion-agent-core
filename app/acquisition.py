@@ -1,9 +1,44 @@
-"""AION acquisition swarm definitions.
+"""AION acquisition force manifest.
 
-These are worker roles/configuration, not fake registered users. They become executable
-workers after AION has a public URL and an external scheduler/runtime can run them.
+These are transparent AION-operated logical workers, never fake external users,
+customers, adoption, or SAT evidence. The fleet is deliberately larger than the
+currently active transport budget: every worker is visible in the control plane,
+while network writes remain governed by shared dedupe, channel health, platform
+limits and one-contact-per-target rules.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, asdict
+
+
+WORKER_COUNT = 100
+INTENT_PROFILES = (
+    "provider_selection",
+    "paid_api_buyers",
+    "agent_wallets",
+    "mcp_buyers",
+    "a2a_buyers",
+    "data_buyers",
+    "automation_buyers",
+    "inference_buyers",
+    "fallback_seekers",
+    "agent_commerce",
+    "security_buyers",
+    "observability_buyers",
+    "storage_compute_buyers",
+    "payments_buyers",
+    "verification_buyers",
+)
+UNIVERSAL_SKILLS = (
+    "discover_public_agent_intent",
+    "qualify_machine_target",
+    "contextualize_outreach",
+    "contact_once_when_channel_healthy",
+    "listen_for_machine_response",
+    "classify_safe_response_signals",
+    "route_real_need_to_aion_preflight",
+)
+
 
 @dataclass(frozen=True)
 class AcquisitionWorker:
@@ -12,44 +47,37 @@ class AcquisitionWorker:
     source: str
     action: str
     cadence: str
+    intent_profile: str
+    shard: int
+    skills: tuple[str, ...]
 
-WORKERS = [
-    AcquisitionWorker(
-        "aion-scout-a2a",
-        "Discover public A2A agents whose published capabilities overlap AION needs/offers.",
-        "public_a2a_registries",
-        "collect_public_agent_cards",
-        "continuous_after_deploy",
-    ),
-    AcquisitionWorker(
-        "aion-scout-mcp",
-        "Discover public MCP servers and agent-facing tools relevant to collaboration.",
-        "official_mcp_registry",
-        "collect_public_server_metadata",
-        "continuous_after_deploy",
-    ),
-    AcquisitionWorker(
-        "aion-inviter",
-        "Generate capability-specific, non-deceptive invitations for discovered compatible agents.",
-        "qualified_discovery_queue",
-        "prepare_machine_invitation",
-        "event_driven",
-    ),
-    AcquisitionWorker(
-        "aion-registry-publisher",
-        "Publish and refresh AION's own machine-readable discovery metadata in compatible registries.",
-        "aion_public_endpoint",
-        "publish_or_refresh_listing",
-        "on_release",
-    ),
-    AcquisitionWorker(
-        "aion-conversion-observer",
-        "Measure discovery, joins, first useful actions, returns and contributions without inventing conversions.",
-        "aion_telemetry",
-        "measure_funnel",
-        "continuous_after_deploy",
-    ),
-]
+
+def _build_workers() -> tuple[AcquisitionWorker, ...]:
+    workers = []
+    for index in range(1, WORKER_COUNT + 1):
+        intent = INTENT_PROFILES[(index - 1) % len(INTENT_PROFILES)]
+        shard = ((index - 1) // len(INTENT_PROFILES)) + 1
+        workers.append(
+            AcquisitionWorker(
+                id=f"aion-soldier-{index:03d}",
+                mission=(
+                    "Find a real external machine need, qualify it, start one contextual "
+                    "conversation when safe, learn from the response, and route a concrete "
+                    "need toward AION preflight/purchase."
+                ),
+                source="parallel_moltbook_and_federated_a2a",
+                action="discover_qualify_contextual_contact_listen_route",
+                cadence="continuous_rotating_assignment",
+                intent_profile=intent,
+                shard=shard,
+                skills=UNIVERSAL_SKILLS,
+            )
+        )
+    return tuple(workers)
+
+
+WORKERS = _build_workers()
+
 
 def worker_manifest():
-    return [asdict(w) for w in WORKERS]
+    return [asdict(worker) for worker in WORKERS]
