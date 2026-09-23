@@ -315,3 +315,58 @@ def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
     assert status["configured"] is False
     assert status["claimed"] is False
     assert status["status"] == "not_configured"
+
+def test_moltbook_outreach_is_target_bound_and_deterministic():
+    first = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion.example",
+        target_key="https://www.moltbook.com/api/v1/posts/post-a/comments",
+    )
+    replay = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion.example",
+        target_key="https://www.moltbook.com/api/v1/posts/post-a/comments",
+    )
+    variants = {
+        moltbook_acquisition.build_outreach_comment(
+            public_base_url="https://aion.example",
+            target_key=f"https://www.moltbook.com/api/v1/posts/post-{index}/comments",
+        )
+        for index in range(24)
+    }
+
+    assert first == replay
+    assert len(variants) >= 8
+    assert all(
+        "commercial/route-intelligence/preflight" in value
+        for value in variants
+    )
+    assert all(
+        len(value) <= moltbook_acquisition.MAX_COMMENT_CHARS
+        for value in variants
+    )
+
+
+def test_moltbook_suspension_error_is_parsed_and_bounded():
+    observed = acquisition_swarm._parse_moltbook_suspension_until(
+        "error=Forbidden; message=Agent is suspended until "
+        "2026-09-23T16:12:56.984Z. Reason: Auto-mod: duplicate_comment"
+    )
+
+    assert observed is not None
+    assert observed.isoformat() == "2026-09-23T16:12:56.984000+00:00"
+    assert acquisition_swarm._parse_moltbook_suspension_until(
+        "error=Forbidden; message=other failure"
+    ) is None
+
+
+def test_moltbook_dm_404_sets_bounded_backoff(monkeypatch):
+    acquisition_swarm._MOLTBOOK_DM_BACKOFF_UNTIL = None
+
+    until = acquisition_swarm._note_moltbook_dm_http_status(404)
+
+    assert until is not None
+    remaining = (until - acquisition_swarm.datetime.now(
+        acquisition_swarm.timezone.utc
+    )).total_seconds()
+    assert 0 < remaining <= acquisition_swarm.MOLTBOOK_DM_404_BACKOFF_SECONDS
+    acquisition_swarm._MOLTBOOK_DM_BACKOFF_UNTIL = None
+
