@@ -20,7 +20,10 @@ from ..payment_models import RouteIntelligencePurchase
 from ..public_origin import canonical_public_origin
 from ..release_identity import release_identity
 from .acquisition_swarm import acquisition_runtime_snapshot
-from .acquisition_agent_mind import runtime_status as acquisition_mind_runtime_status
+from .acquisition_agent_mind import (
+    TEMPLE_BRAIN_ID,
+    runtime_status as acquisition_mind_runtime_status,
+)
 from .moltbook_acquisition import (
     build_outreach_comment,
     outbound_status as moltbook_outbound_status,
@@ -160,6 +163,38 @@ def build_temple_live_state(db: Session) -> dict:
             )
         )
     }
+    brain_row = db.scalar(
+        select(models.AcquisitionAgentMind).where(
+            models.AcquisitionAgentMind.worker_id == TEMPLE_BRAIN_ID
+        )
+    )
+    temple_brain = {
+        "id": TEMPLE_BRAIN_ID,
+        "state": "not_initialized",
+        "model": acquisition_mind_runtime_status().get("model"),
+        "plan": None,
+        "memory": {"lessons": []},
+        "total_reasoning_calls": 0,
+        "reasoning_failures": 0,
+        "last_reasoned_at": None,
+        "last_error": None,
+    }
+    if brain_row is not None:
+        brain_memory = dict(brain_row.safe_memory or {})
+        temple_brain = {
+            "id": TEMPLE_BRAIN_ID,
+            "state": brain_row.last_state,
+            "model": brain_row.model,
+            "plan": dict(brain_row.last_plan or {}) if brain_row.last_plan else None,
+            "memory": {
+                "lessons": list(brain_memory.get("lessons") or [])[-8:],
+            },
+            "total_reasoning_calls": int(brain_row.total_reasoning_calls or 0),
+            "reasoning_failures": int(brain_row.reasoning_failures or 0),
+            "last_reasoned_at": _iso(brain_row.last_reasoned_at),
+            "last_error": brain_row.last_error,
+        }
+
     mind_state_counts = Counter(
         row.last_state or "unknown" for row in mind_rows.values()
     )
@@ -596,14 +631,16 @@ def build_temple_live_state(db: Session) -> dict:
             "queued_rotation": len(workers) - len(active_ids),
             "runtime": runtime,
             "mind_runtime": mind_runtime,
+            "temple_brain": temple_brain,
             "legacy_campaigns_preserved": legacy_campaigns,
             "workers": worker_states,
             "truth": (
                 "Workers are AION-operated logical acquisition agents. Transport state "
                 "comes from the executing swarm process, never a wall-clock guess. AI mind "
-                "state is separate durable truth: thinking/planned/learning/degraded are not "
-                "network-write claims. Only bounded transport may write externally. Workers "
-                "are not external customers, adoption, revenue or SAT evidence."
+                "state is separate durable truth. Temple Brain is a shared safe strategy/memory "
+                "layer synthesized from verified fleet evidence; it is not an extra customer, "
+                "network writer, payment authority or SAT. Only bounded transport may write "
+                "externally. Workers are not external customers, adoption, revenue or SAT evidence."
             ),
         },
         "channels": channels,
@@ -669,6 +706,8 @@ def build_temple_live_state(db: Session) -> dict:
             "model_credentials_exposed": False,
             "model_raw_prompts_exposed": False,
             "model_chain_of_thought_exposed": False,
+            "temple_brain_uses_only_safe_redacted_fleet_evidence": True,
+            "peer_learning_exposes_raw_private_responses": False,
             "conversation_view": "safe evidence and deterministic classifications only",
         },
     }
