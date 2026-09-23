@@ -1259,6 +1259,11 @@ def record_worker_outcome(worker_id: str, outcome: dict) -> None:
             memory["channel_performance"] = perf
 
         row.safe_memory = memory
-        row.last_state = "learning"
+        # Outcome persistence is not evidence that model reasoning occurred.
+        # Only a mind with a successful current model plan may transition from
+        # planned -> learning. Unconfigured/disabled/degraded states must remain
+        # truthful while deterministic fallback transport continues.
+        if row.last_state == "planned" and row.last_plan:
+            row.last_state = "learning"
         row.updated_at = _now()
         db.commit()
