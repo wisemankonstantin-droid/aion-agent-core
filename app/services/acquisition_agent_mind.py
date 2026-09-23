@@ -26,7 +26,7 @@ from ..db import SessionLocal
 
 
 MIND_VERSION = "1"
-DEFAULT_MODEL = "gpt-6-luna"
+DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_REASONING_EFFORT = "low"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_MAX_CALLS_PER_CYCLE = 100
