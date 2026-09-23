@@ -27,6 +27,8 @@ from .ambassador import (
     prepare_and_send_operator_contact,
     prepare_and_send_operator_moltbook_dm,
     scout_campaign,
+    scout_colony_campaign,
+    scout_colony_paid_tasks_campaign,
     scout_moltbook_campaign,
     scout_moltbook_recent_campaign,
     set_campaign_state,
@@ -37,6 +39,7 @@ from .moltbook_acquisition import (
     dm_outbound_enabled as moltbook_dm_outbound_enabled,
     outbound_status as moltbook_outbound_status,
 )
+from .colony_acquisition import account_status as colony_account_status
 
 
 INTENT_WORKERS: dict[str, tuple[str, ...]] = {
@@ -228,6 +231,9 @@ MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
 MAX_WORKERS_PER_CYCLE = WORKER_COUNT
 DEFAULT_ACTIVE_WORKERS_PER_CYCLE = 20
 MAX_CONTACTS_PER_CYCLE = 20
+MAX_COLONY_SCOUT_WORKERS_PER_CYCLE = 5
+MAX_COLONY_COMMENTS_PER_CYCLE = 2
+MAX_COLONY_COMMENTS_PER_DAY = 20
 DEFAULT_INTERVAL_SECONDS = 15 * 60
 MIN_INTERVAL_SECONDS = 15 * 60
 MAX_INTERVAL_SECONDS = 24 * 60 * 60
@@ -560,6 +566,7 @@ def _qualified_unsent_target(
     campaign: models.AmbassadorCampaign,
     *,
     allow_moltbook: bool,
+    allow_colony: bool = False,
 ) -> models.AmbassadorTarget | None:
     base = (
         select(models.AmbassadorTarget)
@@ -578,10 +585,38 @@ def _qualified_unsent_target(
         )
         if moltbook is not None:
             return moltbook
+    if allow_colony:
+        colony = db.scalar(
+            base.where(models.AmbassadorTarget.discovery_source == "colony")
+            .order_by(models.AmbassadorTarget.id)
+            .limit(1)
+        )
+        if colony is not None:
+            return colony
     return db.scalar(
-        base.where(models.AmbassadorTarget.discovery_source != "moltbook")
+        base.where(
+            ~models.AmbassadorTarget.discovery_source.in_(("moltbook", "colony"))
+        )
         .order_by(models.AmbassadorTarget.id)
         .limit(1)
+    )
+
+
+def _colony_comments_today(db: Session) -> int:
+    day_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorContactAttempt)
+            .join(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.discovery_source == "colony",
+                models.AmbassadorContactAttempt.created_at >= day_start,
+            )
+        )
+        or 0
     )
 
 
@@ -681,6 +716,18 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     )
     active_workers = _active_worker_specs_for_cycle()
     recent_scan_worker_id = active_workers[0].id if active_workers else None
+    colony_scout_worker_ids = {
+        worker.id
+        for worker in active_workers[:MAX_COLONY_SCOUT_WORKERS_PER_CYCLE]
+    }
+
+    colony_state = colony_account_status()
+    colony_ready = bool(colony_state.get("authenticated"))
+    colony_comments_today = _colony_comments_today(db)
+    colony_comments_remaining_cycle = min(
+        MAX_COLONY_COMMENTS_PER_CYCLE,
+        max(0, MAX_COLONY_COMMENTS_PER_DAY - colony_comments_today),
+    )
 
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
@@ -720,8 +767,21 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "moltbook",
-        "acquisition_channel_strategy": "parallel_moltbook_and_federated_a2a",
+        "acquisition_channel_strategy": "parallel_colony_moltbook_and_federated_a2a",
         "moltbook_recent_global_scan_worker": recent_scan_worker_id,
+        "colony": {
+            "configured": bool(colony_state.get("configured")),
+            "authenticated": colony_ready,
+            "status": colony_state.get("status"),
+            "public_discovery_enabled": True,
+            "paid_task_discovery_enabled": True,
+            "scout_worker_ids": sorted(colony_scout_worker_ids),
+            "comments_today": colony_comments_today,
+            "internal_daily_comment_limit": MAX_COLONY_COMMENTS_PER_DAY,
+            "max_comments_per_cycle": MAX_COLONY_COMMENTS_PER_CYCLE,
+            "comments_attempted_this_cycle": 0,
+            "platform_numeric_daily_limit_published": False,
+        },
         "moltbook": {
             "configured": bool(moltbook_state.get("configured")),
             "claimed": moltbook_ready,
@@ -837,6 +897,35 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
+            if worker_id in colony_scout_worker_ids:
+                if worker_id == recent_scan_worker_id:
+                    try:
+                        colony_paid = scout_colony_paid_tasks_campaign(
+                            db,
+                            campaign_id=campaign.campaign_id,
+                            limit=5,
+                        )
+                        lane_report["scout_results"].append(colony_paid)
+                    except AmbassadorError as exc:
+                        lane_report["scout_results"].append(
+                            {"channel": "colony_paid_tasks", "error": exc.code}
+                        )
+                try:
+                    colony_result = scout_colony_campaign(
+                        db,
+                        campaign_id=campaign.campaign_id,
+                        query=moltbook_query,
+                    )
+                    lane_report["scout_results"].append(colony_result)
+                except AmbassadorError as exc:
+                    lane_report["scout_results"].append(
+                        {
+                            "channel": "colony",
+                            "query": moltbook_query,
+                            "error": exc.code,
+                        }
+                    )
+
             moltbook_outbound_blocked = bool(
                 moltbook_outbound_status().get("suspended")
             )
@@ -886,6 +975,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     moltbook_comments_remaining_cycle > 0
                     and not bool(outbound_state.get("suspended"))
                 ),
+                allow_colony=(
+                    colony_ready and colony_comments_remaining_cycle > 0
+                ),
             )
             contact_attempted_this_cycle = False
             if (
@@ -900,6 +992,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     moltbook_comments_remaining_cycle -= 1
                     report["moltbook"]["contacts_attempted_this_cycle"] += 1
                     report["moltbook"]["comments"]["attempted_this_cycle"] += 1
+                elif target.discovery_source == "colony":
+                    colony_comments_remaining_cycle -= 1
+                    report["colony"]["comments_attempted_this_cycle"] += 1
                 try:
                     if target.discovery_source == "moltbook":
                         wait_seconds = _seconds_until_moltbook_comment_allowed(db)
