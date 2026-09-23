@@ -65,7 +65,7 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
                     "conversation when safe, learn from the response, and route a concrete "
                     "need toward AION preflight/purchase."
                 ),
-                source="parallel_moltbook_and_federated_a2a",
+                source="parallel_colony_moltbook_and_federated_a2a",
                 action="discover_qualify_contextual_contact_listen_route",
                 cadence="continuous_rotating_assignment",
                 intent_profile=intent,
