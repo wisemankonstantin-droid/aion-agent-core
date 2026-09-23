@@ -366,6 +366,15 @@ def _worker_daily_plan() -> dict:
     }
 
 
+def _recent_global_scan_lane(*, now_seconds: float | None = None) -> str:
+    """Compatibility view of the lane owning the one global recent scan."""
+
+    active = _active_worker_specs_for_cycle(now_seconds=now_seconds)
+    if not active:
+        return tuple(INTENT_WORKERS)[0]
+    return active[0].intent_profile
+
+
 def _daily_worker_accountability(
     db: Session,
     worker_id: str,
