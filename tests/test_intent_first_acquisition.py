@@ -142,11 +142,11 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     ) <= ambassador.MAX_MESSAGE_BYTES
 
 
-def test_swarm_has_independent_intent_lanes_and_300_target_capacity(monkeypatch):
-    assert len(acquisition_swarm.INTENT_WORKERS) == 10
+def test_swarm_has_independent_intent_lanes_and_450_target_capacity(monkeypatch):
+    assert len(acquisition_swarm.INTENT_WORKERS) == 15
     assert (
         len(acquisition_swarm.INTENT_WORKERS) * ambassador.MAX_CAMPAIGN_TARGETS
-        == 300
+        == 450
     )
     flattened = [
         query
@@ -156,6 +156,8 @@ def test_swarm_has_independent_intent_lanes_and_300_target_capacity(monkeypatch)
     assert len(flattened) == len(set(flattened))
     assert "provider selection" in flattened
     assert "x402 payments" in flattened
+    assert "provider verification" in flattened
+    assert "x402 facilitator" in flattened
     monkeypatch.delenv("AION_ACQUISITION_SWARM_ENABLED", raising=False)
     assert acquisition_swarm.start_acquisition_swarm_if_enabled() is False
 
@@ -181,6 +183,29 @@ def test_swarm_rotates_discovery_queries_without_increasing_cycle_load():
     assert first != second
     assert set(first).issubset(set(bank))
     assert set(second).issubset(set(bank))
+
+
+def test_swarm_keeps_federated_discovery_parallel_with_healthy_moltbook():
+    queries = ("provider selection", "tool selection")
+
+    assert acquisition_swarm._registry_queries_for_cycle(
+        queries,
+        moltbook_ready=True,
+        moltbook_outbound_blocked=False,
+        moltbook_created=3,
+    ) == ("provider selection",)
+    assert acquisition_swarm._registry_queries_for_cycle(
+        queries,
+        moltbook_ready=True,
+        moltbook_outbound_blocked=True,
+        moltbook_created=3,
+    ) == queries
+    assert acquisition_swarm._registry_queries_for_cycle(
+        queries,
+        moltbook_ready=True,
+        moltbook_outbound_blocked=False,
+        moltbook_created=0,
+    ) == queries
 
 
 def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
