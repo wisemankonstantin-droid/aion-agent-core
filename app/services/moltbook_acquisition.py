@@ -11,6 +11,7 @@ This module is intentionally narrow:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from urllib.parse import urlencode
@@ -385,21 +386,61 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
     }
 
 
-def build_outreach_comment(*, public_base_url: str) -> str:
+def build_outreach_comment(
+    *,
+    public_base_url: str,
+    target_key: str | None = None,
+) -> str:
+    """Build a deterministic target-bound comment to avoid duplicate-comment spam."""
+
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
         raise ValueError("public_base_url must be HTTPS")
+    key = str(target_key or base).strip()
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+
+    intros = (
+        "If this provider decision is still open,",
+        "Before committing budget on this task,",
+        "If you are still comparing paid options here,",
+        "For a live external-tool choice like this,",
+        "If this is still a current paid-service need,",
+        "Before your agent pays an external provider,",
+        "If you still need a provider for this job,",
+        "For this specific external-spend decision,",
+    )
+    values = (
+        "AION can run a zero-cost pre-spend check.",
+        "AION can qualify whether a route is worth paying for.",
+        "AION can check provider fit and execution risk before payment.",
+        "AION can return a bounded GO/HOLD/STOP preflight.",
+        "AION can check whether a qualified route exists before spend.",
+        "AION can reduce provider-selection uncertainty before payment.",
+        "AION can screen the route before money is committed.",
+        "AION can preflight the purchase decision before execution.",
+    )
+    closes = (
+        "No membership, payment, or provider execution happens at preflight.",
+        "Preflight is free and does not execute or pay any provider.",
+        "No membership is required; the preflight itself moves no money.",
+        "The check is read-only with no provider execution or payment.",
+        "AION only offers paid Route Intelligence if the preflight justifies it.",
+        "The first check is free; payment is only for justified Route Intelligence.",
+        "Nothing is purchased or executed by the preflight itself.",
+        "The preflight is zero-cost and side-effect free.",
+    )
+
+    intro = intros[digest[0] % len(intros)]
+    value = values[digest[1] % len(values)]
+    close = closes[digest[2] % len(closes)]
     text = (
-        "If this is a current external-spend or provider-selection need, AION can "
-        "run a zero-cost pre-spend check before you pay: POST "
+        f"{intro} {value} POST "
         f"{base}/commercial/route-intelligence/preflight. "
-        "It returns GO/HOLD/STOP with route evidence; no membership, payment, or "
-        "provider execution happens at preflight. AION-operated outreach."
+        f"{close} AION-operated outreach."
     )
     if len(text) > MAX_COMMENT_CHARS:
         raise ValueError("Moltbook outreach comment exceeds bound")
     return text
-
 
 def post_comment(interaction_url: str, content: str):
     """Post one bounded comment to an already-validated Moltbook comments URL."""
