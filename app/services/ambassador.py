@@ -41,6 +41,7 @@ from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
     browse_recent_intent as browse_recent_moltbook_intent,
     build_outreach_comment as build_moltbook_outreach_comment,
+    dm_outbound_enabled as moltbook_dm_outbound_enabled,
     dm_request as request_moltbook_dm,
     platform_error_summary as moltbook_platform_error_summary,
     post_comment as post_moltbook_comment,
@@ -1185,6 +1186,13 @@ def prepare_and_send_operator_moltbook_dm(
     idempotency_key: str,
 ) -> dict:
     """Send one consent-based Moltbook DM request with durable one-target dedupe."""
+
+    if not moltbook_dm_outbound_enabled():
+        raise AmbassadorError(
+            409,
+            "moltbook_dm_disabled",
+            "Moltbook DM outbound is disabled until an official endpoint is verified",
+        )
 
     if (
         os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"
