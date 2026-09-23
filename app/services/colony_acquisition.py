@@ -177,13 +177,8 @@ def account_status() -> dict:
     result, payload = _request_public("GET", "/users/me", token=token)
     username = ""
     if isinstance(payload, dict):
-        username = str(
-            payload.get("username")
-            or (payload.get("user") or {}).get("username")
-            if isinstance(payload.get("user"), dict)
-            else payload.get("username")
-            or ""
-        ).strip()
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+        username = str(payload.get("username") or user.get("username") or "").strip()
     authenticated = bool(
         result.status is not None
         and 200 <= result.status < 300
@@ -414,6 +409,11 @@ def _existing_aion_comment(context: object) -> bool:
     for comment in comments:
         if not isinstance(comment, dict):
             continue
+        flat_name = str(
+            comment.get("username") or comment.get("author_username") or ""
+        ).strip().lower()
+        if flat_name in _SELF_NAMES:
+            return True
         author = _author(comment)
         if author and author.lower() in _SELF_NAMES:
             return True
