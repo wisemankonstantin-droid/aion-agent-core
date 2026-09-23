@@ -364,6 +364,58 @@ def test_peer_lessons_and_temple_brain_flow_into_each_worker_observation():
     )
 
 
+def test_transient_temple_brain_failure_reuses_last_safe_strategy(monkeypatch):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "true")
+    worker = WORKERS[0]
+    acquisition_agent_mind._ensure_temple_brain_row(state="planned")
+    with SessionLocal() as db:
+        brain = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id
+                == acquisition_agent_mind.TEMPLE_BRAIN_ID
+            )
+        )
+        brain.last_plan = _brain_plan()
+        brain.last_plan_digest = "sha256:" + "b" * 64
+        db.commit()
+
+    seen = {}
+
+    def fail_brain(observation):
+        raise RuntimeError("temporary-brain-timeout")
+
+    def worker_plan(worker_id, observation):
+        seen["observation"] = observation
+        return _plan(worker_id)
+
+    monkeypatch.setattr(acquisition_agent_mind, "_call_temple_brain", fail_brain)
+    monkeypatch.setattr(acquisition_agent_mind, "_call_model", worker_plan)
+
+    plans = acquisition_agent_mind.refresh_all_minds(
+        [worker],
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+        fallback_queries_by_worker={worker.id: ["fallback"]},
+    )
+
+    assert worker.id in plans
+    shared = seen["observation"]["temple_brain"]
+    assert shared["collective_summary"] == _brain_plan()["collective_summary"]
+    assert shared["fresh_this_cycle"] is False
+    with SessionLocal() as db:
+        brain = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id
+                == acquisition_agent_mind.TEMPLE_BRAIN_ID
+            )
+        )
+        assert brain.last_state == "degraded"
+        assert brain.reasoning_failures == 1
+        assert brain.last_plan["collective_summary"] == _brain_plan()["collective_summary"]
+
+
 def test_plan_validation_and_executor_policy_fail_closed():
     plan = acquisition_agent_mind._validate_plan(
         {
