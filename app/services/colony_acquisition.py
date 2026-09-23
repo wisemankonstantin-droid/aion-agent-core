@@ -14,6 +14,7 @@ Rules:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import os
 import re
 from urllib.parse import urlencode, urlsplit
@@ -63,11 +64,36 @@ _SUPPLY_MARKERS = (
 )
 
 
-def _buyer_demand_task(item: dict) -> bool:
-    """Conservatively separate buyer demand from mislabelled seller listings."""
+def _buyer_demand_task(item: dict, *, now: datetime | None = None) -> bool:
+    """Conservatively separate current buyer demand from seller/stale listings."""
 
     if item.get("accepting_submissions") is False:
         return False
+    status = str(item.get("status") or "").strip().lower()
+    if status in {"closed", "completed", "cancelled", "canceled", "expired"}:
+        return False
+    metadata = (
+        item.get("metadata_")
+        if isinstance(item.get("metadata_"), dict)
+        else item.get("metadata")
+        if isinstance(item.get("metadata"), dict)
+        else {}
+    )
+    deadline = metadata.get("deadline")
+    if deadline:
+        try:
+            expires = datetime.fromisoformat(
+                str(deadline).strip().replace("Z", "+00:00")
+            )
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            current = now or datetime.now(timezone.utc)
+            if current.tzinfo is None:
+                current = current.replace(tzinfo=timezone.utc)
+            if expires.astimezone(timezone.utc) <= current.astimezone(timezone.utc):
+                return False
+        except (TypeError, ValueError):
+            return False
     title = str(item.get("title") or "").strip().lower()
     body = str(item.get("body") or "").strip().lower()
     tags = item.get("tags") if isinstance(item.get("tags"), list) else []
