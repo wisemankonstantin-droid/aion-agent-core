@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..acquisition import WORKERS as ACQUISITION_WORKERS, WORKER_COUNT
 from ..db import SessionLocal
 from .conversation_intelligence import campaign_intelligence_report
 from .ambassador import (
@@ -224,8 +225,9 @@ MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
-MAX_CONTACTS_PER_CYCLE = len(INTENT_WORKERS)
+MAX_WORKERS_PER_CYCLE = WORKER_COUNT
+DEFAULT_ACTIVE_WORKERS_PER_CYCLE = 20
+MAX_CONTACTS_PER_CYCLE = 20
 DEFAULT_INTERVAL_SECONDS = 15 * 60
 MIN_INTERVAL_SECONDS = 15 * 60
 MAX_INTERVAL_SECONDS = 24 * 60 * 60
@@ -296,11 +298,39 @@ def _moltbook_query_for_cycle(
     return query_bank[(slot + lane_offset) % len(query_bank)]
 
 
-def _recent_global_scan_lane(*, now_seconds: float | None = None) -> str:
-    lanes = tuple(INTENT_WORKERS)
+def _bounded_active_worker_count() -> int:
+    raw = os.getenv(
+        "AION_ACQUISITION_ACTIVE_WORKERS_PER_CYCLE",
+        str(DEFAULT_ACTIVE_WORKERS_PER_CYCLE),
+    )
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = DEFAULT_ACTIVE_WORKERS_PER_CYCLE
+    return max(1, min(value, WORKER_COUNT))
+
+
+def _active_worker_specs_for_cycle(
+    *, now_seconds: float | None = None
+) -> tuple:
+    """Rotate real assignments across the transparent 100-worker force.
+
+    Worker count is capability/ownership topology, not permission to generate
+    unbounded network traffic. Shared transport health and channel limits remain
+    authoritative.
+    """
+
+    count = _bounded_active_worker_count()
+    workers = tuple(ACQUISITION_WORKERS)
+    if count >= len(workers):
+        return workers
     current = time.time() if now_seconds is None else float(now_seconds)
     slot = int(current // DEFAULT_INTERVAL_SECONDS)
-    return lanes[slot % len(lanes)]
+    start = (slot * count) % len(workers)
+    return tuple(
+        workers[(start + offset) % len(workers)]
+        for offset in range(count)
+    )
 
 
 def _registry_queries_for_cycle(
@@ -332,8 +362,9 @@ def _worker_daily_plan() -> dict:
 
 def _daily_worker_accountability(
     db: Session,
-    lane: str,
+    worker_id: str,
     *,
+    intent_profile: str,
     send_enabled: bool,
     cycle_new_targets: int,
     contact_attempted_this_cycle: bool,
@@ -342,7 +373,9 @@ def _daily_worker_accountability(
         hour=0, minute=0, second=0, microsecond=0
     )
     campaign_ids = select(models.AmbassadorCampaign.id).where(
-        models.AmbassadorCampaign.name.like(_campaign_prefix(lane) + "%")
+        models.AmbassadorCampaign.name.like(
+            _campaign_prefix(worker_id, intent_profile) + "%"
+        )
     )
     target_ids = select(models.AmbassadorTarget.id).where(
         models.AmbassadorTarget.campaign_id.in_(campaign_ids)
@@ -419,12 +452,55 @@ def _daily_worker_accountability(
     }
 
 
-def _campaign_prefix(lane: str) -> str:
-    return f"Intent swarm {lane} #"
+def _campaign_prefix(worker_id: str, intent_profile: str) -> str:
+    return f"Intent swarm {intent_profile}@{worker_id} #"
 
 
-def _campaign_for_lane(db: Session, lane: str) -> models.AmbassadorCampaign:
-    prefix = _campaign_prefix(lane)
+def _legacy_campaign_for_intent(
+    db: Session,
+    intent_profile: str,
+) -> models.AmbassadorCampaign | None:
+    """Drain pre-100-worker campaigns before creating replacement inventory."""
+
+    prefix = f"Intent swarm {intent_profile} #"
+    campaigns = list(
+        db.scalars(
+            select(models.AmbassadorCampaign)
+            .where(models.AmbassadorCampaign.name.like(prefix + "%"))
+            .order_by(models.AmbassadorCampaign.id.asc())
+        )
+    )
+    for campaign in campaigns:
+        count = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
+            return campaign
+        unsent = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.campaign_id == campaign.id,
+                models.AmbassadorTarget.qualification_state == "qualified",
+                models.AmbassadorTarget.contact_state == "not_ready",
+                models.AmbassadorTarget.suppressed.is_(False),
+            )
+        ) or 0
+        if campaign.state in {"draft", "ready"} and unsent > 0:
+            return campaign
+    return None
+
+
+def _campaign_for_worker(
+    db: Session,
+    *,
+    worker_id: str,
+    intent_profile: str,
+    allow_legacy: bool,
+) -> models.AmbassadorCampaign:
+    prefix = _campaign_prefix(worker_id, intent_profile)
     campaigns = list(
         db.scalars(
             select(models.AmbassadorCampaign)
@@ -440,14 +516,32 @@ def _campaign_for_lane(db: Session, lane: str) -> models.AmbassadorCampaign:
         ) or 0
         if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
             return campaign
+        unsent = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.campaign_id == campaign.id,
+                models.AmbassadorTarget.qualification_state == "qualified",
+                models.AmbassadorTarget.contact_state == "not_ready",
+                models.AmbassadorTarget.suppressed.is_(False),
+            )
+        ) or 0
+        if campaign.state in {"draft", "ready"} and unsent > 0:
+            return campaign
+
+    if allow_legacy:
+        legacy = _legacy_campaign_for_intent(db, intent_profile)
+        if legacy is not None:
+            return legacy
 
     generation = len(campaigns) + 1
     created = create_campaign(
         db,
         name=f"{prefix}{generation}",
         purpose=(
-            "Intent-first machine acquisition: find agents with provider-selection or "
-            "external-spend needs and offer AION pre-spend preflight before any join."
+            "Intent-first machine acquisition by a transparent AION-operated worker: "
+            "find agents with provider-selection or external-spend needs and offer "
+            "AION pre-spend preflight before any join."
         ),
         maximum_targets=MAX_CAMPAIGN_TARGETS,
         maximum_contacts=MAX_CAMPAIGN_TARGETS,
@@ -460,7 +554,6 @@ def _campaign_for_lane(db: Session, lane: str) -> models.AmbassadorCampaign:
     if campaign is None:
         raise RuntimeError("Intent swarm campaign creation did not persist")
     return campaign
-
 
 def _qualified_unsent_target(
     db: Session,
@@ -578,7 +671,7 @@ def _campaign_response_snapshot(db: Session, campaign_id: str) -> dict:
 
 
 def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> dict:
-    """Run one bounded discovery/contact cycle across independent intent lanes."""
+    """Run one bounded discovery/contact cycle across the 100-worker force."""
 
     send_enabled = (
         _env_enabled("AION_AMBASSADOR_OUTBOUND_ENABLED")
@@ -586,6 +679,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         if send is None
         else bool(send)
     )
+    active_workers = _active_worker_specs_for_cycle()
+    recent_scan_worker_id = active_workers[0].id if active_workers else None
+
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
     moltbook_dm_state = moltbook_dm_check() if moltbook_ready else {
@@ -614,8 +710,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     report = {
         "action": "intent_acquisition_cycle",
         "workers": {},
-        "worker_count": len(INTENT_WORKERS),
-        "theoretical_unique_target_capacity": len(INTENT_WORKERS) * MAX_CAMPAIGN_TARGETS,
+        "worker_count": WORKER_COUNT,
+        "active_worker_count": len(active_workers),
+        "active_worker_ids": [worker.id for worker in active_workers],
+        "theoretical_unique_target_capacity": WORKER_COUNT * MAX_CAMPAIGN_TARGETS,
         "send_enabled": send_enabled,
         "contacts_attempted": 0,
         "contacts_delivered_or_responded": 0,
@@ -623,7 +721,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "moltbook",
         "acquisition_channel_strategy": "parallel_moltbook_and_federated_a2a",
-        "moltbook_recent_global_scan_lane": _recent_global_scan_lane(),
+        "moltbook_recent_global_scan_worker": recent_scan_worker_id,
         "moltbook": {
             "configured": bool(moltbook_state.get("configured")),
             "claimed": moltbook_ready,
@@ -651,7 +749,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 ),
                 "unread_messages": int(moltbook_dm_state.get("unread_count") or 0),
             },
-            # Backward-compatible aliases for existing observability.
             "daily_contact_limit": MOLTBOOK_DAILY_COMMENT_LIMIT,
             "contacts_today": moltbook_comments_today,
             "contacts_remaining_today": moltbook_comments_remaining_today,
@@ -661,20 +758,27 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "suspended_until": moltbook_outbound_status().get("suspended_until"),
         },
         "truth": (
-            "Workers are AION-operated acquisition infrastructure. Their traffic is not "
-            "independent adoption, customer proof, SAT or revenue."
+            "The 100 workers are transparent AION-operated acquisition infrastructure. "
+            "Only the rotating active cohort receives external assignments in a cycle; "
+            "shared transport health, dedupe and platform limits govern network writes. "
+            "Worker count is not independent adoption, customer proof, SAT or revenue."
         ),
     }
 
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
-    for lane, query_bank in INTENT_WORKERS.items():
-        queries = _queries_for_cycle(lane, query_bank)
+    for worker in active_workers:
+        worker_id = worker.id
+        lane = worker.intent_profile
+        query_bank = INTENT_WORKERS[lane]
+        queries = _queries_for_cycle(worker_id, query_bank)
         moltbook_query = _moltbook_query_for_cycle(
-            lane,
+            worker_id,
             MOLTBOOK_INTENT_QUERIES[lane],
         )
         lane_report = {
-            "worker_id": f"aion-intent-{lane}",
+            "worker_id": worker_id,
+            "intent_profile": lane,
+            "shard": worker.shard,
             "queries": list(queries),
             "query_bank_size": len(query_bank),
             "moltbook_query": moltbook_query,
@@ -684,14 +788,19 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "response_intelligence": None,
             "daily_accountability": None,
         }
-        report["workers"][lane] = lane_report
+        report["workers"][worker_id] = lane_report
 
         try:
-            campaign = _campaign_for_lane(db, lane)
+            campaign = _campaign_for_worker(
+                db,
+                worker_id=worker_id,
+                intent_profile=lane,
+                allow_legacy=worker.shard == 1,
+            )
             moltbook_created = 0
 
             if moltbook_ready:
-                if lane == report["moltbook_recent_global_scan_lane"]:
+                if worker_id == recent_scan_worker_id:
                     try:
                         recent_result = scout_moltbook_recent_campaign(
                             db,
@@ -728,10 +837,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
-            # Keep federated registry/A2A discovery alive in parallel with
-            # Moltbook. A healthy social channel may receive priority for
-            # context-rich intent, but it must never suppress independent
-            # machine discovery or become a single acquisition choke point.
             moltbook_outbound_blocked = bool(
                 moltbook_outbound_status().get("suspended")
             )
@@ -803,7 +908,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     result = prepare_and_send_operator_contact(
                         db,
                         target_id=target.target_id,
-                        idempotency_key=f"intent-{lane}-{target.target_id}",
+                        idempotency_key=f"intent-{worker_id}-{target.target_id}",
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
@@ -844,7 +949,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         dm_result = prepare_and_send_operator_moltbook_dm(
                             db,
                             target_id=dm_target.target_id,
-                            idempotency_key=f"dm-{lane}-{dm_target.target_id}",
+                            idempotency_key=f"dm-{worker_id}-{dm_target.target_id}",
                         )
                         lane_report["dm_contact"] = {
                             "target_id": dm_target.target_id,
@@ -858,9 +963,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         if dm_result.get("http_status") == 429:
                             moltbook_dm_remaining_cycle = 0
                     except AmbassadorError as exc:
-                        # AmbassadorError occurs before any Moltbook DM network
-                        # attempt. Restore the per-cycle platform budget so a
-                        # later lane can still use it.
                         report["contacts_attempted"] -= 1
                         contacts_remaining += 1
                         moltbook_dm_remaining_cycle += 1
@@ -876,7 +978,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             )
             lane_report["daily_accountability"] = _daily_worker_accountability(
                 db,
-                lane,
+                worker_id,
+                intent_profile=lane,
                 send_enabled=send_enabled,
                 cycle_new_targets=cycle_new_targets,
                 contact_attempted_this_cycle=contact_attempted_this_cycle,
