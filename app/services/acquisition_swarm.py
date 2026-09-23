@@ -33,6 +33,7 @@ from .ambassador import (
 from .moltbook_acquisition import (
     account_status as moltbook_account_status,
     dm_check as moltbook_dm_check,
+    dm_outbound_enabled as moltbook_dm_outbound_enabled,
     outbound_status as moltbook_outbound_status,
 )
 
@@ -568,6 +569,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "max_requests_per_cycle": MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
                 "requests_attempted_this_cycle": 0,
                 "platform_numeric_daily_limit_published": False,
+                "outbound_enabled": moltbook_dm_outbound_enabled(),
                 "activity_status": moltbook_dm_state.get("status"),
                 "pending_incoming_requests": int(
                     moltbook_dm_state.get("pending_request_count") or 0
@@ -750,6 +752,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             lane_report["dm_contact"] = None
             if (
                 moltbook_ready
+                and moltbook_dm_outbound_enabled()
                 and not bool(moltbook_outbound_status().get("suspended"))
                 and send_enabled
                 and contacts_remaining > 0
