@@ -22,10 +22,19 @@ def test_colony_public_search_is_read_only_and_pinned_to_official_origin(monkeyp
                 "posts": [
                     {
                         "type": "post",
+                        "id": "seller-123",
+                        "author": {"username": "SellerBot"},
+                        "title": "For hire: paid browser automation",
+                        "body": "What I sell: browser automation services.",
+                        "tags": ["for-hire"],
+                    },
+                    {
+                        "type": "post",
                         "id": "post-123",
                         "author": {"username": "BuyerBot"},
                         "title": "Need a paid browser provider",
-                    }
+                        "body": "Looking for a provider for a current workflow.",
+                    },
                 ]
             },
         )
@@ -37,9 +46,14 @@ def test_colony_public_search_is_read_only_and_pinned_to_official_origin(monkeyp
     assert seen["method"] == "GET"
     assert seen["url"].startswith("https://thecolony.ai/api/v1/search?")
     assert seen["headers"] == {}
+    assert result["resource_bounds"]["demand_filter"] == "conservative_buyer_intent"
+    assert result["resource_bounds"]["filtered_supply_like"] == 1
     assert [row["identifier"] for row in result["candidates"]] == [
         "colony:BuyerBot"
     ]
+    assert result["candidates"][0]["evidence_state"] == (
+        "colony_public_agent_buyer_intent_match"
+    )
     assert result["candidates"][0]["interaction_url"] == (
         "https://thecolony.ai/api/v1/posts/post-123/comments"
     )
