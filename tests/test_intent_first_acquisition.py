@@ -209,19 +209,40 @@ def test_swarm_rotation_covers_all_100_workers_without_claiming_100_concurrent_w
     monkeypatch,
 ):
     monkeypatch.delenv("AION_ACQUISITION_ACTIVE_WORKERS_PER_CYCLE", raising=False)
-    cohorts = [
-        acquisition_swarm._active_worker_specs_for_cycle(
-            now_seconds=index * acquisition_swarm.DEFAULT_INTERVAL_SECONDS
-        )
-        for index in range(5)
-    ]
+    acquisition_swarm._reset_rotation_cursor_for_tests(None)
+    try:
+        cohorts = [
+            acquisition_swarm._next_active_worker_specs(now_seconds=0)
+            for _ in range(5)
+        ]
+    finally:
+        acquisition_swarm._reset_rotation_cursor_for_tests(None)
 
     assert all(
         len(cohort) == acquisition_swarm.DEFAULT_ACTIVE_WORKERS_PER_CYCLE == 20
         for cohort in cohorts
     )
     assert len({worker.id for cohort in cohorts for worker in cohort}) == 100
+    assert [worker.id for worker in cohorts[0]] == [
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[:20]
+    ]
+    assert [worker.id for worker in cohorts[4]] == [
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[80:100]
+    ]
     assert acquisition_swarm.MAX_CONTACTS_PER_CYCLE == 20
+
+
+def test_swarm_cadence_is_measured_from_cycle_start_not_completion(monkeypatch):
+    monkeypatch.delenv("AION_ACQUISITION_SWARM_INTERVAL_SECONDS", raising=False)
+
+    assert acquisition_swarm._cycle_sleep_seconds(
+        100.0,
+        now_monotonic=400.0,
+    ) == 10 * 60
+    assert acquisition_swarm._cycle_sleep_seconds(
+        100.0,
+        now_monotonic=1000.0,
+    ) == 0.0
 
 def test_swarm_default_interval_is_launch_cadence():
     assert acquisition_swarm.DEFAULT_INTERVAL_SECONDS == 15 * 60
