@@ -299,3 +299,129 @@ DO NOT REPEAT A MESSAGE WHEN THE TARGET CONTEXT IS DIFFERENT.
 LEARN FROM EVERY REAL RESPONSE.
 
 MOVE THE FUNNEL, NOT THE PR COUNTER.
+
+
+## 15. TRANSPARENT 100-WORKER ACQUISITION FORCE
+
+AION maintains a baseline force of 100 transparent AION-operated logical acquisition workers.
+
+These workers are infrastructure.
+
+They are NOT 100 external agents, customers, members, buyers, revenue events or SATs.
+
+The workers are universal acquisition soldiers rather than permanently narrow bots. Every worker may be assigned to:
+
+- public machine discovery;
+- spend-intent discovery;
+- target qualification;
+- contextual message preparation;
+- one-contact execution on a healthy approved channel;
+- response listening and deterministic signal classification;
+- routing a concrete external need to AION preflight / purchase.
+
+Assignments may rotate across intent profiles and channels according to real response evidence.
+
+The fleet MUST use one shared target truth:
+
+GLOBAL DEDUPE
++
+ONE-CONTACT-PER-TARGET
++
+OPT-OUT
++
+CHANNEL HEALTH
++
+PLATFORM LIMITS
++
+NO SELF-CONVERSATION.
+
+A larger worker force is permission to increase useful parallel search and conversation coverage.
+
+It is NOT permission to evade platform limits, create fake identities, generate duplicate traffic or manufacture activity.
+
+Workers that have no safe current assignment must be visibly shown as queued, idle or blocked.
+
+They must never be animated or counted as if work occurred.
+
+## 16. LIVE TEMPLE OBSERVABILITY LAW
+
+The AION owner must be able to inspect the Temple as a live system without reconstructing operations from chat reports.
+
+The canonical live control-plane view must expose, from real persisted state:
+
+CORE
+->
+AION WORKERS
+->
+DISCOVERY / CONTACT CHANNELS
+->
+TARGETS
+->
+CONTACT ATTEMPTS
+->
+DELIVERED CONTACTS
+->
+MACHINE RESPONSES
+->
+CAPTURED CONVERSATIONS / SAFE SIGNALS
+->
+PURCHASE
+->
+SAT.
+
+The view must show the full worker force and distinguish:
+
+- scheduled / working;
+- queued;
+- blocked;
+- target discovered;
+- qualified;
+- contact attempted;
+- delivered;
+- response received;
+- commercial signal;
+- purchase;
+- settlement.
+
+The owner must be able to select a worker and inspect its current intent assignment, current/last channel, public target identity when safe, public target/thread URL when available, contact result, last activity, bounded outbound message preview/summary and safe conversation intelligence.
+
+The visualization MUST NOT fabricate motion, work, contact, response, buyer intent, payment or settlement.
+
+NO EVENT -> NO EVENT ON THE MAP.
+
+The visualization MUST NOT expose:
+
+- API keys;
+- control tokens;
+- distribution tokens;
+- raw payment payloads;
+- secret-bearing request/response material;
+- raw private machine responses.
+
+Safe deterministic response classes, structured routing evidence, public thread links and bounded message summaries may be shown.
+
+The live view is an observability/control-plane layer over the existing AION truth.
+
+It is not a second source of truth.
+
+## 17. INBOUND VISIBILITY MUST REMAIN PARALLEL
+
+Outbound acquisition does not replace inbound machine discoverability.
+
+AION must preserve and improve machine-readable surfaces that allow external agents to find AION themselves.
+
+Historical high traffic is evidence that distribution visibility can work, but raw traffic must remain separated from unique agents, conversations, buyers and SAT.
+
+The acquisition force therefore operates in two directions:
+
+AION -> EXTERNAL QUALIFIED MACHINE INTENT
+
+and
+
+EXTERNAL MACHINE DISCOVERY -> AION.
+
+A newer outbound channel must not silently disable or neglect previously useful inbound surfaces, registry listings, agent cards, MCP/A2A discovery metadata, machine-readable manifests or compatible directories.
+
+The objective is not maximum noise.
+
+The objective is maximum truthful qualified visibility that moves real machine needs toward FIRST SAT.
