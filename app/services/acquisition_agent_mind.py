@@ -94,6 +94,12 @@ _PLAN_SCHEMA = {
         },
         "expected_signal": {"type": "string"},
         "learning_goal": {"type": "string"},
+        "sales_plan": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "collective_contribution": {"type": "string"},
+        "coordination_request": {"type": "string"},
         "memory_note": {"type": "string"},
         "confidence": {"type": "integer"},
     },
@@ -106,6 +112,9 @@ _PLAN_SCHEMA = {
         "target_preference",
         "expected_signal",
         "learning_goal",
+        "sales_plan",
+        "collective_contribution",
+        "coordination_request",
         "memory_note",
         "confidence",
     ],
@@ -172,10 +181,14 @@ payments. Never propose new identities, spam, repeated contact, limit evasion,
 self-payment, fake demand, fake agents, secret access or payment execution.
 If no safe useful action exists, choose hold or discover_only.
 
-Generate at most two concise search queries aimed at current buyer intent. Do
-not output URLs, credentials, private content, chain-of-thought or hidden
-reasoning. decision_summary/hypothesis/learning_goal are short operational
-summaries only. Learn from the worker's own durable history, the safe experience
+Generate at most two concise search queries aimed at current buyer intent and
+a short sales_plan of up to four externally bounded stages from discovery toward
+preflight/purchase. collective_contribution is the safest useful lesson you want
+the fleet to learn; coordination_request is a concise question or need for the
+shared Temple Brain. Do not output URLs, credentials, private content,
+chain-of-thought or hidden reasoning. decision_summary/hypothesis/learning_goal
+are short operational summaries only. Learn from the worker's own durable history,
+the safe experience
 of peer AION minds, and the current Temple Brain strategy. The Temple Brain is
 shared evidence, not permission to violate local evidence or guardrails. Vary
 strategy when prior queries produced duplicates, sellers or no responses.
@@ -450,12 +463,19 @@ def _build_collective_observation(
                     220,
                 )
                 if hypothesis:
+                    previous_plan = dict(row.last_plan or {})
                     plan_hypotheses.append(
                         {
                             "worker_id": row.worker_id,
                             "hypothesis": hypothesis,
-                            "confidence": int(
-                                dict(row.last_plan or {}).get("confidence") or 0
+                            "confidence": int(previous_plan.get("confidence") or 0),
+                            "collective_contribution": _clean_short(
+                                previous_plan.get("collective_contribution"),
+                                220,
+                            ),
+                            "coordination_request": _clean_short(
+                                previous_plan.get("coordination_request"),
+                                200,
                             ),
                         }
                     )
@@ -872,6 +892,17 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
         "target_preference": target_preference,
         "expected_signal": _clean_short(plan.get("expected_signal"), 160),
         "learning_goal": _clean_short(plan.get("learning_goal"), 240),
+        "sales_plan": [
+            _clean_short(value, 180)
+            for value in list(plan.get("sales_plan") or [])[:4]
+            if _clean_short(value, 180)
+        ],
+        "collective_contribution": _clean_short(
+            plan.get("collective_contribution"), 240
+        ),
+        "coordination_request": _clean_short(
+            plan.get("coordination_request"), 220
+        ),
         "memory_note": _clean_short(plan.get("memory_note"), 240),
         "confidence": max(0, min(confidence, 100)),
     }
