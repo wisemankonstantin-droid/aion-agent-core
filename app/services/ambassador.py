@@ -877,8 +877,25 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         raise AmbassadorError(404, "target_not_found", "Target not found")
     is_moltbook = target_preview.discovery_source == "moltbook"
     if is_moltbook:
+        campaign_preview = db.get(
+            models.AmbassadorCampaign,
+            target_preview.campaign_id,
+        )
+        lane = ""
+        if campaign_preview is not None:
+            name = str(campaign_preview.name or "")
+            prefix = "Intent swarm "
+            if name.startswith(prefix):
+                lane = name[len(prefix):].split(" #", 1)[0]
+        recipient = (
+            target_preview.source_identifier.split(":", 1)[1]
+            if target_preview.source_identifier.startswith("moltbook:")
+            else None
+        )
         comment = build_moltbook_outreach_comment(
-            public_base_url=canonical_aion_public_base_url()
+            public_base_url=canonical_aion_public_base_url(),
+            recipient=recipient,
+            intent=lane,
         )
         payload = {"content": comment}
     else:
