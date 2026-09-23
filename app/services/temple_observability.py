@@ -24,6 +24,10 @@ from .moltbook_acquisition import (
     build_outreach_comment,
     outbound_status as moltbook_outbound_status,
 )
+from .colony_acquisition import (
+    account_status as colony_account_status,
+    build_outreach_comment as build_colony_outreach_comment,
+)
 
 
 _CAMPAIGN = re.compile(
@@ -58,15 +62,21 @@ def _message_preview(
     target: models.AmbassadorTarget,
     intent_profile: str | None,
 ) -> tuple[str | None, str]:
-    if target.discovery_source == "moltbook":
+    if target.discovery_source in {"moltbook", "colony"}:
+        prefix = "moltbook:" if target.discovery_source == "moltbook" else "colony:"
         recipient = (
             target.source_identifier.split(":", 1)[1]
-            if target.source_identifier.startswith("moltbook:")
+            if target.source_identifier.startswith(prefix)
             else None
         )
         try:
+            builder = (
+                build_outreach_comment
+                if target.discovery_source == "moltbook"
+                else build_colony_outreach_comment
+            )
             return (
-                build_outreach_comment(
+                builder(
                     public_base_url=canonical_public_origin(),
                     recipient=recipient,
                     intent=intent_profile,
@@ -502,6 +512,7 @@ def build_temple_live_state(db: Session) -> dict:
         signal_counts.update(set(row.inferred_signals or []))
 
     moltbook_state = moltbook_outbound_status()
+    colony_state = colony_account_status()
     return {
         "generated_at": _iso(now),
         "release": release_identity(),
@@ -522,6 +533,13 @@ def build_temple_live_state(db: Session) -> dict:
             "moltbook": {
                 "suspended": bool(moltbook_state.get("suspended")),
                 "suspended_until": moltbook_state.get("suspended_until"),
+            },
+            "colony": {
+                "public_discovery": True,
+                "paid_task_discovery": True,
+                "write_configured": bool(colony_state.get("configured")),
+                "write_authenticated": bool(colony_state.get("authenticated")),
+                "status": colony_state.get("status"),
             },
             "federated_a2a": {
                 "mode": "parallel_read_discovery_with_one_contact_per_target",
