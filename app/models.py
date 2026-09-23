@@ -991,6 +991,45 @@ class AmbassadorOperatorAction(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AcquisitionAgentMind(Base):
+    """Durable safe state for one AION-operated acquisition mind."""
+
+    __tablename__ = "acquisition_agent_minds"
+    __table_args__ = (
+        UniqueConstraint("worker_id", name="uq_acquisition_agent_minds_worker"),
+        CheckConstraint(
+            "total_reasoning_calls >= 0",
+            name="ck_acquisition_agent_minds_calls_nonnegative",
+        ),
+        CheckConstraint(
+            "reasoning_failures >= 0",
+            name="ck_acquisition_agent_minds_failures_nonnegative",
+        ),
+        Index(
+            "ix_acquisition_agent_minds_state",
+            "last_state",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    worker_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    mind_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    cognitive_profile: Mapped[dict] = mapped_column(JSON, nullable=False)
+    safe_memory: Mapped[dict] = mapped_column(JSON, nullable=False)
+    last_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_observation_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    last_plan_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    last_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    total_reasoning_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reasoning_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_reasoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class DistributionToken(Base):
     __tablename__ = "distribution_tokens"
     __table_args__ = (
