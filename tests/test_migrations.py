@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-EXPECTED_HEAD = "0017_first_sat_accounting_v1"
+EXPECTED_HEAD = "0018_acquisition_agent_minds_v1"
 
 
 def _alembic(root, database_url, *args):
