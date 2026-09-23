@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, func, text
 
@@ -66,6 +66,7 @@ from .services.ambassador_operator import (
     operator_campaign_status as ambassador_operator_campaign_status,
 )
 from .services.acquisition_swarm import start_acquisition_swarm_if_enabled
+from .services.temple_observability import build_temple_live_state, temple_live_html
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import (
     COMMERCIAL_ROUTE_VALUE_PROPOSITION,
@@ -285,6 +286,7 @@ def root():
         "real_external_execution": "POST /commercial/executions/world-bank-population",
         "package5_proof": "GET /proof/package-5",
         "health": "/health",
+        "live_temple": "/temple/live",
         "join_rate_limit_per_minute": configured_join_limit(),
         "mcp_rate_limit_per_minute": configured_mcp_limit(),
     }
@@ -686,6 +688,22 @@ def acquisition_workers():
         "workers": worker_manifest(),
         "important": "These are AION-operated acquisition worker roles, not fake external agents or adoption metrics. Outreach must be targeted and deduplicated.",
     }
+
+
+@app.get("/temple/live", response_class=HTMLResponse, include_in_schema=False)
+def temple_live():
+    return HTMLResponse(
+        content=temple_live_html(),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/temple/live/state", include_in_schema=False)
+def temple_live_state(db: Session = Depends(get_db)):
+    return JSONResponse(
+        build_temple_live_state(db),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/identity-resolution")
