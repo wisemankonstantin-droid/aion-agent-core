@@ -300,7 +300,7 @@ def test_temple_brain_reasoning_request_is_structured_safe_and_not_stored(monkey
     assert plan["confidence"] == 81
     assert seen["url"] == acquisition_agent_mind.RESPONSES_URL
     assert seen["headers"]["Authorization"] == "Bearer brain-test-secret-header-only"
-    assert seen["json"]["model"] == "gpt-5.6-luna"
+    assert seen["json"]["model"] == "gpt-5.6-sol"
     assert seen["json"]["store"] is False
     assert seen["json"]["metadata"]["aion_worker_id"] == acquisition_agent_mind.TEMPLE_BRAIN_ID
     assert seen["json"]["metadata"]["collective_cognition"] == "true"
