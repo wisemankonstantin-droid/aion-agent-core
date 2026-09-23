@@ -33,6 +33,7 @@ from .ambassador import (
 from .moltbook_acquisition import (
     account_status as moltbook_account_status,
     dm_check as moltbook_dm_check,
+    outbound_status as moltbook_outbound_status,
 )
 
 
@@ -579,6 +580,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "contacts_remaining_today": moltbook_comments_remaining_today,
             "max_contacts_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
             "contacts_attempted_this_cycle": 0,
+            "suspended": bool(moltbook_outbound_status().get("suspended")),
+            "suspended_until": moltbook_outbound_status().get("suspended_until"),
         },
         "truth": (
             "Workers are AION-operated acquisition infrastructure. Their traffic is not "
@@ -684,10 +687,14 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 for item in lane_report["scout_results"]
                 if isinstance(item, dict)
             )
+            outbound_state = moltbook_outbound_status()
             target = _qualified_unsent_target(
                 db,
                 campaign,
-                allow_moltbook=moltbook_comments_remaining_cycle > 0,
+                allow_moltbook=(
+                    moltbook_comments_remaining_cycle > 0
+                    and not bool(outbound_state.get("suspended"))
+                ),
             )
             contact_attempted_this_cycle = False
             if (
@@ -731,6 +738,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             lane_report["dm_contact"] = None
             if (
                 moltbook_ready
+                and not bool(moltbook_outbound_status().get("suspended"))
                 and send_enabled
                 and contacts_remaining > 0
                 and moltbook_dm_remaining_cycle > 0
@@ -789,6 +797,13 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
 
+    final_outbound_state = moltbook_outbound_status()
+    report["moltbook"]["suspended"] = bool(
+        final_outbound_state.get("suspended")
+    )
+    report["moltbook"]["suspended_until"] = final_outbound_state.get(
+        "suspended_until"
+    )
     return report
 
 
