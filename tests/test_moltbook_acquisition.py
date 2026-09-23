@@ -238,6 +238,7 @@ def test_moltbook_candidate_uses_expanded_url_validation_only_for_moltbook(monke
 
 def test_moltbook_dm_request_is_consent_based_and_official_origin_only(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.setenv("AION_MOLTBOOK_DM_ENABLED", "1")
     seen = {}
 
     def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
@@ -262,6 +263,7 @@ def test_moltbook_dm_request_is_consent_based_and_official_origin_only(monkeypat
 
 def test_moltbook_dm_request_rejects_self_or_unbounded_message(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.setenv("AION_MOLTBOOK_DM_ENABLED", "1")
 
     assert moltbook_acquisition.dm_request(
         "aion-supreme", "this is long enough"
@@ -412,4 +414,25 @@ def test_moltbook_403_records_platform_suspension(monkeypatch):
     assert result.status == 403
     assert moltbook_acquisition.outbound_status()["suspended"] is True
     moltbook_acquisition._SUSPENDED_UNTIL = None
+
+def test_moltbook_dm_is_fail_closed_until_verified_endpoint(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.delenv("AION_MOLTBOOK_DM_ENABLED", raising=False)
+    called = False
+
+    def fail_fetch(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("disabled DM must not call the network")
+
+    monkeypatch.setattr(safe_http, "fetch_json", fail_fetch)
+    result = moltbook_acquisition.dm_request(
+        "BuyerBot",
+        "AION can run a free pre-spend check before an external purchase.",
+    )
+
+    assert result["accepted"] is False
+    assert result["error"] == "moltbook_dm_disabled"
+    assert result["http_status"] is None
+    assert called is False
 
