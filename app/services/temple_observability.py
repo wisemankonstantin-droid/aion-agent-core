@@ -25,7 +25,7 @@ from .moltbook_acquisition import (
     outbound_status as moltbook_outbound_status,
 )
 from .colony_acquisition import (
-    account_status as colony_account_status,
+    configured as colony_configured,
     build_outreach_comment as build_colony_outreach_comment,
 )
 
@@ -512,7 +512,6 @@ def build_temple_live_state(db: Session) -> dict:
         signal_counts.update(set(row.inferred_signals or []))
 
     moltbook_state = moltbook_outbound_status()
-    colony_state = colony_account_status()
     return {
         "generated_at": _iso(now),
         "release": release_identity(),
@@ -537,9 +536,9 @@ def build_temple_live_state(db: Session) -> dict:
             "colony": {
                 "public_discovery": True,
                 "paid_task_discovery": True,
-                "write_configured": bool(colony_state.get("configured")),
-                "write_authenticated": bool(colony_state.get("authenticated")),
-                "status": colony_state.get("status"),
+                "write_configured": colony_configured(),
+                "write_authenticated": None,
+                "status": "checked_by_swarm_cycle_not_by_live_view",
             },
             "federated_a2a": {
                 "mode": "parallel_read_discovery_with_one_contact_per_target",
