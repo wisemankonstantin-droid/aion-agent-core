@@ -127,6 +127,7 @@ def fetch_bytes(
     headers: Mapping[str, str] | None = None,
     policy: FetchPolicy = FetchPolicy(),
     connection_factory: Callable = PinnedHTTPSConnection,
+    retain_http_error_body: bool = False,
 ) -> FetchResult:
     parsed, candidates, reason = resolve_public_https(
         url,
@@ -178,7 +179,7 @@ def fetch_bytes(
             if response.status >= 400:
                 return FetchResult(
                     response.status,
-                    None,
+                    raw if retain_http_error_body else None,
                     f"http_{response.status}",
                     attempt + 1,
                 )
@@ -198,6 +199,7 @@ def fetch_json(
     headers: Mapping[str, str] | None = None,
     policy: FetchPolicy = FetchPolicy(),
     connection_factory: Callable = PinnedHTTPSConnection,
+    retain_http_error_json: bool = False,
 ) -> tuple[FetchResult, object | None]:
     encoded = None
     request_headers = dict(headers or {})
@@ -211,10 +213,20 @@ def fetch_json(
         headers=request_headers,
         policy=policy,
         connection_factory=connection_factory,
+        retain_http_error_body=retain_http_error_json,
     )
-    if result.error or result.body is None:
+    if result.body is None:
+        return result, None
+    if result.error and not (
+        retain_http_error_json
+        and result.status is not None
+        and result.status >= 400
+        and result.error == f"http_{result.status}"
+    ):
         return result, None
     try:
         return result, json.loads(result.body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
+        if retain_http_error_json and result.error == f"http_{result.status}":
+            return result, None
         return FetchResult(result.status, None, "non_json_response", result.attempts), None
