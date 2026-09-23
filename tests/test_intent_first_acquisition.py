@@ -291,6 +291,25 @@ def test_swarm_keeps_federated_discovery_parallel_with_healthy_moltbook():
     ) == queries
 
 
+def test_federated_registry_discovery_is_not_buyer_outbound_authority():
+    assert acquisition_swarm.FEDERATED_A2A_BUYER_CONTACT_ENABLED is False
+
+    class NoDbReads:
+        def scalar(self, statement):
+            raise AssertionError("federated supply must not be selected as buyer intent")
+
+    class Campaign:
+        id = 1
+
+    target = acquisition_swarm._qualified_unsent_target(
+        NoDbReads(),
+        Campaign(),
+        allow_moltbook=False,
+        allow_colony=False,
+    )
+    assert target is None
+
+
 def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
     plan = acquisition_swarm._worker_daily_plan()
 
