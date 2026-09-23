@@ -12,6 +12,13 @@ from dataclasses import dataclass, asdict
 
 
 WORKER_COUNT = 100
+LEGACY_WORKER_IDS = (
+    "aion-scout-a2a",
+    "aion-scout-mcp",
+    "aion-inviter",
+    "aion-registry-publisher",
+    "aion-conversion-observer",
+)
 INTENT_PROFILES = (
     "provider_selection",
     "paid_api_buyers",
@@ -57,9 +64,14 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
     for index in range(1, WORKER_COUNT + 1):
         intent = INTENT_PROFILES[(index - 1) % len(INTENT_PROFILES)]
         shard = ((index - 1) // len(INTENT_PROFILES)) + 1
+        worker_id = (
+            LEGACY_WORKER_IDS[index - 1]
+            if index <= len(LEGACY_WORKER_IDS)
+            else f"aion-soldier-{index:03d}"
+        )
         workers.append(
             AcquisitionWorker(
-                id=f"aion-soldier-{index:03d}",
+                id=worker_id,
                 mission=(
                     "Find a real external machine need, qualify it, start one contextual "
                     "conversation when safe, learn from the response, and route a concrete "
