@@ -8,6 +8,7 @@ from app import models
 from app.acquisition import WORKERS
 from app.db import SessionLocal
 from app.main import app
+from app.payment_models import RouteIntelligencePurchase
 from app.services import acquisition_agent_mind, acquisition_swarm
 from fastapi.testclient import TestClient
 
@@ -18,6 +19,12 @@ client = TestClient(app)
 def _clean_minds():
     with SessionLocal() as db:
         db.execute(delete(models.AcquisitionAgentMind))
+        db.commit()
+
+
+def _clean_commercial_purchases():
+    with SessionLocal() as db:
+        db.execute(delete(RouteIntelligencePurchase))
         db.commit()
 
 
@@ -615,6 +622,180 @@ def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatc
         assert row.safe_memory["channel_performance"]["federated_a2a"][
             "responses"
         ] == 12
+
+
+def test_commercial_knowledge_uses_configured_deterministic_price(monkeypatch):
+    _clean_commercial_purchases()
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_QUOTE_ENABLED", "1")
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_CURRENCY", "USDC")
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_PRICE", "1.25")
+    monkeypatch.setenv("AION_ROUTE_INTELLIGENCE_MAX_PAYMENT_FEE", "0.1")
+    monkeypatch.delenv("AION_DIRECT_BASE_USDC_ENABLED", raising=False)
+
+    snapshot = acquisition_agent_mind.commercial_knowledge_snapshot()
+    product = snapshot["paid_products"][0]
+
+    assert product["product_sku"] == "aion.verified.route_intelligence.v1"
+    assert product["quote_configured"] is True
+    assert product["currency"] == "USDC"
+    assert product["customer_price"] == "1.25"
+    assert product["policy_eligible"] is True
+    assert snapshot["free_entry_offer"]["customer_price"] == "0"
+    assert snapshot["margin_policy"]["minimum_margin_bps"] == 4000
+    assert snapshot["margin_policy"]["standard_target_margin_bps"] == 6000
+    assert snapshot["authority"]["model_financial_authority"] is False
+    assert snapshot["authority"]["model_may_set_customer_price"] is False
+    assert snapshot["authority"]["deterministic_economic_kernel_authoritative"] is True
+
+
+def test_commercial_knowledge_keeps_missing_price_explicitly_unknown(monkeypatch):
+    _clean_commercial_purchases()
+    for name in (
+        "AION_ROUTE_INTELLIGENCE_QUOTE_ENABLED",
+        "AION_ROUTE_INTELLIGENCE_CURRENCY",
+        "AION_ROUTE_INTELLIGENCE_PRICE",
+        "AION_ROUTE_INTELLIGENCE_MAX_PAYMENT_FEE",
+        "AION_DIRECT_BASE_USDC_ENABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    snapshot = acquisition_agent_mind.commercial_knowledge_snapshot()
+    product = snapshot["paid_products"][0]
+
+    assert product["quote_configured"] is False
+    assert product["currency"] is None
+    assert product["customer_price"] is None
+    assert product["purchase_available"] is False
+    assert snapshot["provider_pricing_policy"][
+        "unknown_provider_price_must_remain_unknown"
+    ] is True
+    assert "route_intelligence_quote_not_configured" in snapshot[
+        "payment_readiness"
+    ]["blocking_reasons"]
+
+
+def test_commercial_knowledge_exposes_only_safe_aggregate_purchase_memory(monkeypatch):
+    _clean_commercial_purchases()
+    now = acquisition_agent_mind._now()
+    common = {
+        "product_sku": "aion.verified.route_intelligence.v1",
+        "request_evidence": {"need": "bounded public need", "candidate_identifier": None},
+        "prepared_result": {"state": "qualified_unpriced"},
+        "quote_currency": "USDC",
+        "quote_amount": "1.25",
+        "network": "eip155:8453",
+        "asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "asset_code": "USDC",
+        "pay_to": "0x" + "1" * 40,
+        "atomic_amount": "1250000",
+        "accounting_evidence": {},
+        "prepared_at": now,
+        "expires_at": now,
+        "updated_at": now,
+    }
+    with SessionLocal() as db:
+        db.add(
+            RouteIntelligencePurchase(
+                purchase_id="11111111-1111-4111-8111-111111111111",
+                request_digest="sha256:" + "1" * 64,
+                result_digest="sha256:" + "2" * 64,
+                payment_requirements_digest="sha256:" + "3" * 64,
+                state="prepared",
+                **common,
+            )
+        )
+        db.add(
+            RouteIntelligencePurchase(
+                purchase_id="22222222-2222-4222-8222-222222222222",
+                request_digest="sha256:" + "4" * 64,
+                result_digest="sha256:" + "5" * 64,
+                payment_requirements_digest="sha256:" + "6" * 64,
+                state="entitled",
+                payment_payload_digest="sha256:" + "7" * 64,
+                transaction_id="0x" + "8" * 64,
+                payer="0x" + "9" * 40,
+                settlement_response_digest="sha256:" + "a" * 64,
+                entitled_at=now,
+                **common,
+            )
+        )
+        db.commit()
+
+    snapshot = acquisition_agent_mind.commercial_knowledge_snapshot()
+    memory = snapshot["market_memory"]
+
+    assert memory["route_intelligence_purchase_state_counts"] == {
+        "entitled": 1,
+        "prepared": 1,
+    }
+    assert memory["settled_purchase_count"] == 1
+    assert memory["latest_settled_quote"] == {
+        "product_sku": "aion.verified.route_intelligence.v1",
+        "currency": "USDC",
+        "amount": "1.25",
+        "entitled_at": now.isoformat(),
+    }
+    serialized = json.dumps(snapshot)
+    assert "0x" + "9" * 40 not in serialized
+    assert "bounded public need" not in serialized
+
+
+def test_commercial_truth_flows_to_temple_and_workers_without_model_price_authority(
+    monkeypatch,
+):
+    _clean_minds()
+    workers = WORKERS[:2]
+    truth = {
+        "snapshot_version": "commercial_knowledge_v1",
+        "paid_products": [
+            {
+                "product_sku": "aion.verified.route_intelligence.v1",
+                "customer_price": "1.25",
+                "currency": "USDC",
+            }
+        ],
+        "authority": {
+            "model_financial_authority": False,
+            "model_may_set_customer_price": False,
+            "deterministic_economic_kernel_authoritative": True,
+        },
+    }
+    monkeypatch.setattr(
+        acquisition_agent_mind,
+        "commercial_knowledge_snapshot",
+        lambda: truth,
+    )
+
+    collective = acquisition_agent_mind._build_collective_observation(
+        workers,
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+    )
+    observations = acquisition_agent_mind._build_observations(
+        workers,
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+        fallback_queries_by_worker={worker.id: ["fallback"] for worker in workers},
+        temple_brain=_brain_plan(),
+    )
+
+    assert collective["commercial_knowledge"] == truth
+    assert collective["hard_constraints"]["no_model_price_authority"] is True
+    assert all(
+        observation["commercial_knowledge"] == truth
+        for observation in observations.values()
+    )
+    assert all(
+        observation["hard_constraints"]["no_model_price_authority"] is True
+        for observation in observations.values()
+    )
+
+    attempted_override = _plan(workers[0].id)
+    attempted_override["customer_price"] = "999999"
+    validated = acquisition_agent_mind._validate_plan(attempted_override, ["fallback"])
+    assert "customer_price" not in acquisition_agent_mind._PLAN_SCHEMA["properties"]
+    assert "customer_price" not in validated
+    assert "only authority for AION product" in acquisition_agent_mind._MIND_INSTRUCTIONS
 
 
 def test_live_temple_exposes_shared_brain_separately_from_100_worker_minds(monkeypatch):
