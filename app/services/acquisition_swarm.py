@@ -249,7 +249,9 @@ MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
 _RUNTIME_LOCK = Lock()
+_ROTATION_LOCK = Lock()
 _STARTED = False
+_ROTATION_CURSOR = None
 _RUNTIME_STATE = {
     "cycle_state": "not_started",
     "cycle_started_at": None,
@@ -428,6 +430,51 @@ def _active_worker_specs_for_cycle(
         workers[(start + offset) % len(workers)]
         for offset in range(count)
     )
+
+
+def _next_active_worker_specs(
+    *, now_seconds: float | None = None
+) -> tuple:
+    """Advance the real 100-worker rotation by completed-cycle order.
+
+    Wall-clock slots seed the first cohort after process start only. Later
+    cohorts advance by the active cohort size, so variable external-discovery
+    duration cannot starve a worker cohort.
+    """
+
+    global _ROTATION_CURSOR
+    count = _bounded_active_worker_count()
+    workers = tuple(ACQUISITION_WORKERS)
+    if count >= len(workers):
+        return workers
+    with _ROTATION_LOCK:
+        if _ROTATION_CURSOR is None:
+            current = time.time() if now_seconds is None else float(now_seconds)
+            slot = int(current // DEFAULT_INTERVAL_SECONDS)
+            _ROTATION_CURSOR = (slot * count) % len(workers)
+        start = int(_ROTATION_CURSOR) % len(workers)
+        selected = tuple(
+            workers[(start + offset) % len(workers)]
+            for offset in range(count)
+        )
+        _ROTATION_CURSOR = (start + count) % len(workers)
+    return selected
+
+
+def _reset_rotation_cursor_for_tests(value: int | None = None) -> None:
+    global _ROTATION_CURSOR
+    with _ROTATION_LOCK:
+        _ROTATION_CURSOR = value
+
+
+def _cycle_sleep_seconds(
+    cycle_started_monotonic: float,
+    *,
+    now_monotonic: float | None = None,
+) -> float:
+    current = time.monotonic() if now_monotonic is None else float(now_monotonic)
+    elapsed = max(0.0, current - float(cycle_started_monotonic))
+    return max(0.0, float(_bounded_interval_seconds()) - elapsed)
 
 
 def _registry_queries_for_cycle(
@@ -814,7 +861,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         if send is None
         else bool(send)
     )
-    active_workers = _active_worker_specs_for_cycle()
+    active_workers = _next_active_worker_specs()
     _runtime_cycle_start(active_workers)
     recent_scan_worker_id = active_workers[0].id if active_workers else None
     colony_scout_worker_ids = {
@@ -1199,6 +1246,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
 
 def _worker_loop() -> None:
     while True:
+        cycle_started_monotonic = time.monotonic()
         try:
             with SessionLocal() as db:
                 report = run_intent_acquisition_cycle(db)
@@ -1214,7 +1262,7 @@ def _worker_loop() -> None:
                 + json.dumps({"error": type(exc).__name__}, sort_keys=True),
                 flush=True,
             )
-        time.sleep(_bounded_interval_seconds())
+        time.sleep(_cycle_sleep_seconds(cycle_started_monotonic))
 
 
 def start_acquisition_swarm_if_enabled() -> bool:
