@@ -260,6 +260,9 @@ def runtime_status() -> dict:
             1,
             16,
         ),
+        "collective_brain_id": TEMPLE_BRAIN_ID,
+        "collective_reasoning_calls_per_cycle": 1,
+        "shared_peer_learning": True,
         "raw_private_responses_allowed": False,
         "credentials_in_prompt_allowed": False,
         "model_direct_network_write_authority": False,
@@ -337,12 +340,191 @@ def _ensure_rows(workers: Iterable, *, state: str) -> None:
         db.commit()
 
 
+def _ensure_temple_brain_row(*, state: str) -> None:
+    now = _now()
+    model = runtime_status()["model"]
+    profile = {
+        "archetype": "collective_temple_brain",
+        "intent_profile": "cross_fleet_strategy",
+        "shard": 0,
+        "exploration_bias": 50,
+        "verification_bias": 80,
+        "conversion_bias": 80,
+        "strategy_fingerprint": hashlib.sha256(TEMPLE_BRAIN_ID.encode()).hexdigest()[:12],
+        "mission": (
+            "Synthesize verified safe experience from all AION acquisition minds and "
+            "coordinate the fleet toward the first real settled agent transaction."
+        ),
+    }
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == TEMPLE_BRAIN_ID
+            )
+        )
+        if row is None:
+            db.add(
+                models.AcquisitionAgentMind(
+                    worker_id=TEMPLE_BRAIN_ID,
+                    mind_version=MIND_VERSION,
+                    model=model,
+                    cognitive_profile=profile,
+                    safe_memory=_empty_memory(),
+                    last_plan=None,
+                    last_observation_digest=None,
+                    last_plan_digest=None,
+                    last_state=state,
+                    total_reasoning_calls=0,
+                    reasoning_failures=0,
+                    last_reasoned_at=None,
+                    last_error=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.mind_version = MIND_VERSION
+            row.model = model
+            row.cognitive_profile = profile
+            row.last_state = state
+            row.updated_at = now
+        db.commit()
+
+
+def _build_collective_observation(
+    workers: tuple,
+    *,
+    channel_health: dict,
+    send_enabled: bool,
+) -> dict:
+    worker_ids = {worker.id for worker in workers}
+    signal_counts: dict[str, int] = {}
+    channel_performance: dict[str, dict[str, int]] = {}
+    peer_lessons: list[dict] = []
+    plan_hypotheses: list[dict] = []
+    recent_outcomes: list[dict] = []
+    routing_feedback_count = 0
+
+    with SessionLocal() as db:
+        minds = list(
+            db.scalars(
+                select(models.AcquisitionAgentMind).where(
+                    models.AcquisitionAgentMind.worker_id.in_(worker_ids)
+                )
+            )
+        )
+        for row in minds:
+            memory = dict(row.safe_memory or {})
+            for channel, stats in dict(memory.get("channel_performance") or {}).items():
+                bucket = channel_performance.setdefault(
+                    str(channel),
+                    {"actions": 0, "responses": 0, "new_targets": 0},
+                )
+                for key in ("actions", "responses", "new_targets"):
+                    bucket[key] += int((stats or {}).get(key) or 0)
+            for lesson in list(memory.get("lessons") or [])[-3:]:
+                cleaned = _clean_short(lesson, 200)
+                if cleaned:
+                    peer_lessons.append(
+                        {"worker_id": row.worker_id, "lesson": cleaned}
+                    )
+            for outcome in list(memory.get("recent_outcomes") or [])[-2:]:
+                if isinstance(outcome, dict):
+                    recent_outcomes.append(
+                        {
+                            "worker_id": row.worker_id,
+                            "channel": _clean_short(outcome.get("channel"), 80) or None,
+                            "new_targets": int(outcome.get("new_targets") or 0),
+                            "qualified_targets": int(outcome.get("qualified_targets") or 0),
+                            "contact_attempted": bool(outcome.get("contact_attempted")),
+                            "response_received": bool(outcome.get("response_received")),
+                            "routing_feedback_count": int(
+                                outcome.get("routing_feedback_count") or 0
+                            ),
+                        }
+                    )
+            if row.last_plan:
+                hypothesis = _clean_short(
+                    dict(row.last_plan or {}).get("hypothesis"),
+                    220,
+                )
+                if hypothesis:
+                    plan_hypotheses.append(
+                        {
+                            "worker_id": row.worker_id,
+                            "hypothesis": hypothesis,
+                            "confidence": int(
+                                dict(row.last_plan or {}).get("confidence") or 0
+                            ),
+                        }
+                    )
+
+        for intelligence in db.scalars(
+            select(ConversationIntelligence)
+            .order_by(
+                ConversationIntelligence.created_at.desc(),
+                ConversationIntelligence.id.desc(),
+            )
+            .limit(1000)
+        ):
+            signals = set(intelligence.explicit_signals or [])
+            signals.update(intelligence.inferred_signals or [])
+            for signal in signals:
+                key = _clean_short(signal, 80)
+                if key:
+                    signal_counts[key] = int(signal_counts.get(key) or 0) + 1
+
+        for evidence in db.scalars(
+            select(ConversationEvidence)
+            .order_by(ConversationEvidence.captured_at.desc())
+            .limit(1000)
+        ):
+            for item in evidence.safe_evidence or []:
+                if isinstance(item, dict) and item.get("kind") == "routing_feedback_v1":
+                    routing_feedback_count += 1
+
+    peer_lessons = peer_lessons[-MAX_SHARED_PEER_LESSONS:]
+    plan_hypotheses = sorted(
+        plan_hypotheses,
+        key=lambda row: row["confidence"],
+        reverse=True,
+    )[:MAX_SHARED_HYPOTHESES]
+    recent_outcomes = recent_outcomes[-40:]
+
+    return {
+        "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+        "brain_id": TEMPLE_BRAIN_ID,
+        "worker_count": len(workers),
+        "send_enabled": bool(send_enabled),
+        "channel_health": channel_health,
+        "fleet_channel_performance": channel_performance,
+        "safe_response_signal_counts": dict(sorted(signal_counts.items())),
+        "structured_routing_feedback_count": routing_feedback_count,
+        "peer_lessons": peer_lessons,
+        "recent_safe_outcomes": recent_outcomes,
+        "high_confidence_worker_hypotheses": plan_hypotheses,
+        "hard_constraints": {
+            "one_contact_per_target": True,
+            "no_fake_agents": True,
+            "no_self_payment": True,
+            "no_limit_evasion": True,
+            "no_model_direct_network_write": True,
+            "no_model_payment_authority": True,
+            "utility_before_membership": True,
+            "pay_before_spend": True,
+            "raw_private_responses_available": False,
+            "chain_of_thought_sharing_allowed": False,
+        },
+    }
+
+
 def _build_observations(
     workers: tuple,
     *,
     channel_health: dict,
     send_enabled: bool,
     fallback_queries_by_worker: dict[str, list[str]],
+    temple_brain: dict | None,
 ) -> dict[str, dict]:
     worker_ids = {worker.id for worker in workers}
     totals = {
@@ -566,6 +748,17 @@ def _build_observations(
                         if key:
                             counts[key] = int(counts.get(key) or 0) + 1
 
+        shared_peer_lessons = []
+        for peer_id, peer_row in minds.items():
+            peer_memory = dict(peer_row.safe_memory or {})
+            for lesson in list(peer_memory.get("lessons") or [])[-2:]:
+                cleaned = _clean_short(lesson, 180)
+                if cleaned:
+                    shared_peer_lessons.append(
+                        {"worker_id": peer_id, "lesson": cleaned}
+                    )
+        shared_peer_lessons = shared_peer_lessons[-MAX_SHARED_PEER_LESSONS:]
+
         observations = {}
         for worker in workers:
             row = minds.get(worker.id)
@@ -583,6 +776,12 @@ def _build_observations(
                 "previous_plan": (
                     dict(row.last_plan or {}) if row is not None and row.last_plan else None
                 ),
+                "temple_brain": temple_brain,
+                "peer_experience": [
+                    item
+                    for item in shared_peer_lessons
+                    if item["worker_id"] != worker.id
+                ][:12],
                 "channel_health": channel_health,
                 "send_enabled": bool(send_enabled),
                 "fallback_queries": list(
