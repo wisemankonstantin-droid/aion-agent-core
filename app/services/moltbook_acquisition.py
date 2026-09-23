@@ -43,6 +43,11 @@ _INTENT_LABELS = {
     "inference_buyers": "inference/LLM-provider decision",
     "fallback_seekers": "provider-fallback decision",
     "agent_commerce": "agent-procurement decision",
+    "security_buyers": "security-provider decision",
+    "observability_buyers": "monitoring/observability-provider decision",
+    "storage_compute_buyers": "storage/compute-provider decision",
+    "payments_buyers": "payment-rail/provider decision",
+    "verification_buyers": "provider-verification decision",
 }
 _SELF_NAMES = {
     "aion-supreme",
