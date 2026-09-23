@@ -48,7 +48,7 @@ def test_preflight_is_secret_safe_read_only_and_stops_at_master_gate(monkeypatch
 
     class CurrentSchemaSession:
         def scalars(self, statement):
-            return iter(["0017_first_sat_accounting_v1"])
+            return iter(["0018_acquisition_agent_minds_v1"])
 
     result = first_sat_activation_preflight(CurrentSchemaSession(), expected_release_sha="a" * 40)
 
@@ -95,7 +95,7 @@ def test_preflight_requires_exact_expected_release_and_representable_atomic_pric
 
     class CurrentSchemaSession:
         def scalars(self, statement):
-            return iter(["0017_first_sat_accounting_v1"])
+            return iter(["0018_acquisition_agent_minds_v1"])
 
     missing = first_sat_activation_preflight(CurrentSchemaSession())
     assert "expected_release_sha_missing_or_invalid" in missing["blocking_reasons"]
