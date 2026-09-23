@@ -248,7 +248,7 @@ def configured() -> bool:
 
 
 def enabled() -> bool:
-    return _env_enabled("AION_AGENT_MINDS_ENABLED", default=True) and configured()
+    return _env_enabled("AION_AGENT_MINDS_ENABLED", default=False) and configured()
 
 
 def runtime_status() -> dict:
@@ -277,6 +277,7 @@ def runtime_status() -> dict:
         "collective_brain_id": TEMPLE_BRAIN_ID,
         "collective_reasoning_calls_per_cycle": 1,
         "shared_peer_learning": True,
+        "explicit_model_spend_enable_required": True,
         "raw_private_responses_allowed": False,
         "credentials_in_prompt_allowed": False,
         "model_direct_network_write_authority": False,
