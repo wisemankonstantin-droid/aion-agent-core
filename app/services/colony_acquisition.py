@@ -30,6 +30,53 @@ MAX_CONTEXT_BYTES = 256_000
 _SELF_NAMES = {"aion-supreme", "aion_supreme", "aion supreme"}
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,160}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
+_DEMAND_MARKERS = (
+    "looking for",
+    "seeking ",
+    "wanted:",
+    "wanted ",
+    "need an agent",
+    "need a provider",
+    "need someone",
+    "we need ",
+    "please submit your bid",
+    "please submit bids",
+    "submit your bids",
+    "bounty",
+    "request for ",
+    "hiring ",
+    "looking to hire",
+    "需要",
+    "busco ",
+    "se busca ",
+)
+_SUPPLY_MARKERS = (
+    "for hire",
+    "what i sell",
+    "i sell ",
+    "services & pricing",
+    "services (",
+    "i am available for",
+    "available for immediate work",
+    "how to order",
+    "what i deliver",
+)
+
+
+def _buyer_demand_task(item: dict) -> bool:
+    """Conservatively separate buyer demand from mislabelled seller listings."""
+
+    if item.get("accepting_submissions") is False:
+        return False
+    title = str(item.get("title") or "").strip().lower()
+    body = str(item.get("body") or "").strip().lower()
+    tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+    normalized_tags = {str(tag).strip().lower() for tag in tags}
+    text = f"{title}\n{body}"
+    if "for-hire" in normalized_tags or any(marker in text for marker in _SUPPLY_MARKERS):
+        return False
+    return any(marker in text for marker in _DEMAND_MARKERS)
+
 
 _INTENT_LABELS = {
     "provider_selection": "provider-selection decision",
@@ -326,14 +373,20 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
 
 
 def browse_paid_tasks(limit: int = MAX_SEARCH_RESULTS) -> dict:
+    """Read public marketplace tasks and retain only clear buyer-demand posts.
+
+    The Colony contract defines paid_task as work that workers bid on, but public
+    data also contains seller self-listings mislabelled as paid_task. Intent-first
+    acquisition must not count those sellers as buyer demand.
+    """
+
     bounded = max(1, min(int(limit), MAX_SEARCH_RESULTS))
     result, payload = _request_public(
         "GET",
-        "/posts",
+        "/marketplace/tasks",
         params={
-            "post_type": "paid_task",
-            "sort": "newest",
-            "limit": bounded,
+            "sort": "budget",
+            "limit": min(20, max(bounded * 4, bounded)),
         },
     )
     if result.error or result.status != 200:
@@ -345,23 +398,31 @@ def browse_paid_tasks(limit: int = MAX_SEARCH_RESULTS) -> dict:
             "outbound_contact_performed": False,
         }
     candidates = []
+    filtered_supply_like = 0
     for item in _rows(payload):
+        if not _buyer_demand_task(item):
+            filtered_supply_like += 1
+            continue
         candidate = _candidate(
             item,
-            evidence_state="colony_public_paid_task_intent",
+            evidence_state="colony_marketplace_buyer_demand",
         )
         if candidate is not None:
             candidates.append(candidate)
+        if len(candidates) >= bounded:
+            break
     return {
         "status": "success",
         "error": None,
         "http_status": result.status,
-        "candidates": candidates[:bounded],
+        "candidates": candidates,
         "outbound_contact_performed": False,
         "resource_bounds": {
             "candidate_limit": bounded,
             "api_attempts": result.attempts,
-            "post_type": "paid_task",
+            "surface": "marketplace_tasks",
+            "demand_filter": "conservative_buyer_intent",
+            "filtered_supply_like": filtered_supply_like,
         },
     }
 
