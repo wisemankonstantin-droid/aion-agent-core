@@ -6,6 +6,8 @@
 
 `AION_ACQUISITION_EXECUTION_AND_LEARNING_LAW.md` is the canonical operational acquisition law. It requires contextual target-specific outbound, parallel independent discovery channels, truthful funnel accounting, preservation of verified working distribution, health-before-volume and response-driven allocation. A preferred acquisition channel must never silently suppress healthy parallel machine discovery.
 
+It additionally requires a transparent baseline force of 100 AION-operated logical acquisition workers and a live Temple observability surface. Worker count is infrastructure capacity, never external adoption. The live view must derive from durable truth, expose queued/working/blocked state honestly, preserve inbound machine visibility in parallel with outbound acquisition, and never expose secrets or fabricate activity.
+
 ## Mission and launch
 
 AION must become a production-ready, agent-native ecosystem in which an external AI agent can discover AION, understand machine-readable capabilities, connect, request value, receive a machine-verifiable result, pay when required, and return without a human in the customer loop.
