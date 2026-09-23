@@ -31,7 +31,7 @@ from .colony_acquisition import (
 
 
 _CAMPAIGN = re.compile(
-    r"^Intent swarm (?P<intent>[A-Za-z0-9_]+)(?:@(?P<worker>aion-soldier-[0-9]{3}))? #[0-9]+$"
+    r"^Intent swarm (?P<intent>[A-Za-z0-9_]+)(?:@(?P<worker>aion-[A-Za-z0-9-]{1,80}))? #[0-9]+$"
 )
 _RECENT_EVENT_LIMIT = 120
 _RECENT_TARGET_LIMIT = 240
