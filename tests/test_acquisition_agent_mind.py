@@ -31,8 +31,37 @@ def _plan(worker_id: str) -> dict:
         "target_preference": "explicit_buyer_demand",
         "expected_signal": "routing_need",
         "learning_goal": "Compare explicit buyer demand with generic discovery.",
+        "sales_plan": [
+            "discover current external-spend intent",
+            "qualify one real buyer need",
+            "offer zero-cost AION preflight",
+            "route genuine demand toward purchase",
+        ],
+        "collective_contribution": "Explicit current buyer verbs are higher value than seller capability language.",
+        "coordination_request": "Share which channel has the strongest current pricing or routing signal.",
         "memory_note": "Prefer current buyer verbs over seller capability language.",
         "confidence": 72,
+    }
+
+
+def _brain_plan() -> dict:
+    return {
+        "collective_summary": "Prioritize explicit current buyer demand over generic listings.",
+        "priority_hypotheses": [
+            "Pricing and routing language is closer to purchase than generic agent discovery.",
+            "Federated A2A plus Colony buyer tasks can diversify acquisition beyond Moltbook.",
+        ],
+        "channel_priority": ["federated_a2a", "colony", "moltbook"],
+        "search_motifs": ["need paid provider now", "looking to hire agent service"],
+        "avoid_patterns": ["generic seller listings", "duplicate targets"],
+        "peer_directives": [
+            "Share verified pricing, integration, trust and routing signals with the fleet."
+        ],
+        "learning_agenda": [
+            "Measure which channel produces structured buyer needs rather than replies only."
+        ],
+        "memory_note": "Favor evidence closest to purchase and structured routing need.",
+        "confidence": 81,
     }
 
 
@@ -91,6 +120,11 @@ def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkey
         "_call_model",
         lambda worker_id, observation: _plan(worker_id),
     )
+    monkeypatch.setattr(
+        acquisition_agent_mind,
+        "_call_temple_brain",
+        lambda observation: _brain_plan(),
+    )
     workers = WORKERS[:4]
 
     plans = acquisition_agent_mind.refresh_all_minds(
@@ -121,6 +155,17 @@ def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkey
     assert len(rows) == 4
     assert {row.last_state for row in rows} == {"planned"}
     assert all(row.total_reasoning_calls == 1 for row in rows)
+    with SessionLocal() as db:
+        brain = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id
+                == acquisition_agent_mind.TEMPLE_BRAIN_ID
+            )
+        )
+        assert brain is not None
+        assert brain.last_state == "planned"
+        assert brain.total_reasoning_calls == 1
+        assert brain.last_plan["collective_summary"]
     assert all(row.last_plan_digest.startswith("sha256:") for row in rows)
     assert "test-key-never-sent" not in json.dumps(
         [
@@ -217,6 +262,9 @@ def test_plan_validation_and_executor_policy_fail_closed():
             "target_preference": "invalid-target-preference",
             "expected_signal": "need",
             "learning_goal": "learn",
+            "sales_plan": ["find", "qualify", "route", "extra", "ignored"],
+            "collective_contribution": "share verified buyer language",
+            "coordination_request": "which channel converts?",
             "memory_note": "remember",
             "confidence": 999,
         },
@@ -230,6 +278,9 @@ def test_plan_validation_and_executor_policy_fail_closed():
     assert plan["search_queries"] == ["one", "two"]
     assert plan["contact_policy"] == "discover_only"
     assert plan["target_preference"] == "current_external_spend_intent"
+    assert plan["sales_plan"] == ["find", "qualify", "route", "extra"]
+    assert plan["collective_contribution"] == "share verified buyer language"
+    assert plan["coordination_request"] == "which channel converts?"
     assert plan["confidence"] == 100
 
     discover = acquisition_swarm._mind_transport_policy(
