@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, func, text
 
@@ -66,6 +66,7 @@ from .services.ambassador_operator import (
     operator_campaign_status as ambassador_operator_campaign_status,
 )
 from .services.acquisition_swarm import start_acquisition_swarm_if_enabled
+from .services.temple_live import temple_live_html, temple_live_snapshot
 from .release_identity import EXPECTED_SCHEMA_REVISION, release_identity
 from .machine_journey import (
     COMMERCIAL_ROUTE_VALUE_PROPOSITION,
@@ -945,6 +946,22 @@ def _require_ambassador_operator(
 
 def _operator_response(data: dict) -> JSONResponse:
     return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+
+
+@app.get("/temple/live", response_class=HTMLResponse, include_in_schema=False)
+def temple_live_page():
+    return HTMLResponse(
+        temple_live_html(),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/temple/live/state", include_in_schema=False)
+def temple_live_state(
+    _: None = Depends(_require_ambassador_operator),
+    db: Session = Depends(get_db),
+):
+    return _operator_response(temple_live_snapshot(db))
 
 
 @app.post("/ops/ambassador/campaigns", include_in_schema=False)
