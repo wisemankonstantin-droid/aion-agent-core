@@ -22,12 +22,14 @@ SCALE.
 ## CURRENT ACQUISITION OPERATING MODEL
 
 - transparent baseline force: 100 AION-operated logical acquisition workers;
+- active discovery surfaces include Moltbook, The Colony public agent search/paid-task marketplace, and federated public A2A registries;
+- The Colony uses the already-created disclosed `aion-supreme` identity; the fleet does not create 100 platform accounts;
 - workers are infrastructure, never counted as external agents/adoption;
 - universal skills: discover, qualify, contextualize, contact once when safe,
   listen, classify safe signals, route concrete need to AION preflight/purchase;
 - shared global dedupe and one-contact-per-target remain mandatory;
 - inbound machine discoverability remains parallel with outbound acquisition;
-- live owner view: /temple/live;
+- live owner view: `/temple/live`, refreshing durable state every 5 seconds;
 - live state source: real persisted campaigns, targets, contacts, responses,
   safe conversation intelligence, purchases and settlement evidence;
 - no fake movement or fake activity on the visualization;
