@@ -25,7 +25,8 @@ from ..conversation_models import ConversationEvidence, ConversationIntelligence
 from ..db import SessionLocal
 
 
-MIND_VERSION = "1"
+MIND_VERSION = "2"
+TEMPLE_BRAIN_ID = "aion-temple-brain"
 DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_REASONING_EFFORT = "low"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -36,6 +37,8 @@ MAX_OBSERVATION_BYTES = 12_000
 MAX_MEMORY_OUTCOMES = 8
 MAX_PLAN_QUERIES = 2
 MAX_PLAN_CHANNELS = 4
+MAX_SHARED_PEER_LESSONS = 24
+MAX_SHARED_HYPOTHESES = 6
 _ALLOWED_CHANNELS = ("colony", "federated_a2a", "moltbook", "hold")
 _ALLOWED_CONTACT_POLICIES = (
     "contact_one_if_qualified",
@@ -108,6 +111,51 @@ _PLAN_SCHEMA = {
     "additionalProperties": False,
 }
 
+_TEMPLE_BRAIN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collective_summary": {"type": "string"},
+        "priority_hypotheses": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "channel_priority": {
+            "type": "array",
+            "items": {"type": "string", "enum": list(_ALLOWED_CHANNELS)},
+        },
+        "search_motifs": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "avoid_patterns": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "peer_directives": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "learning_agenda": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "memory_note": {"type": "string"},
+        "confidence": {"type": "integer"},
+    },
+    "required": [
+        "collective_summary",
+        "priority_hypotheses",
+        "channel_priority",
+        "search_motifs",
+        "avoid_patterns",
+        "peer_directives",
+        "learning_agenda",
+        "memory_note",
+        "confidence",
+    ],
+    "additionalProperties": False,
+}
+
 _MIND_INSTRUCTIONS = """You are one autonomous AION acquisition agent.
 Your only North Star is FIRST REAL SETTLED AGENT TRANSACTION.
 
@@ -126,8 +174,32 @@ If no safe useful action exists, choose hold or discover_only.
 Generate at most two concise search queries aimed at current buyer intent. Do
 not output URLs, credentials, private content, chain-of-thought or hidden
 reasoning. decision_summary/hypothesis/learning_goal are short operational
-summaries only. Learn from the worker's own durable history and vary strategy
-when prior queries produced duplicates, sellers or no responses.
+summaries only. Learn from the worker's own durable history, the safe experience
+of peer AION minds, and the current Temple Brain strategy. The Temple Brain is
+shared evidence, not permission to violate local evidence or guardrails. Vary
+strategy when prior queries produced duplicates, sellers or no responses.
+"""
+
+_TEMPLE_BRAIN_INSTRUCTIONS = """You are the shared strategic cognition layer of AION.
+Your only North Star is FIRST REAL SETTLED AGENT TRANSACTION.
+
+Synthesize the safe, redacted, durable experience of the whole 100-agent
+acquisition force. Produce a compact collective strategy that helps independent
+minds search wider, learn from one another, avoid repeated failures, and move
+genuine external buyer intent toward AION preflight and purchase.
+
+Use only the supplied aggregate facts and peer lessons. Do not invent demand,
+buyers, conversations, outcomes, URLs, credentials or payments. Do not expose
+chain-of-thought. Never recommend spam, duplicate contact, new fake identities,
+platform-limit evasion, self-payment, uncontrolled money movement, or contact
+that violates opt-out/channel health. A shared strategy may prioritize channels,
+buyer-intent motifs, hypotheses and experiments, but the bounded executor remains
+the only authority for network writes and payments.
+
+Prefer evidence that is closer to commercial intent: structured routing need,
+pricing interest, integration request, trust/security requirement, verified
+response, qualified target, delivered contact. Distinguish traffic and generic
+responses from buyer demand and SAT. Keep directives concise and operational.
 """
 
 
