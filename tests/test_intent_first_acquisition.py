@@ -142,11 +142,20 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     ) <= ambassador.MAX_MESSAGE_BYTES
 
 
-def test_swarm_has_independent_intent_lanes_and_450_target_capacity(monkeypatch):
+def test_swarm_has_100_transparent_workers_and_3000_target_capacity(monkeypatch):
+    from app.acquisition import worker_manifest
+
     assert len(acquisition_swarm.INTENT_WORKERS) == 15
+    manifest = worker_manifest()
+    assert len(manifest) == acquisition_swarm.WORKER_COUNT == 100
+    assert len({worker["id"] for worker in manifest}) == 100
+    assert all(
+        worker["intent_profile"] in acquisition_swarm.INTENT_WORKERS
+        for worker in manifest
+    )
     assert (
-        len(acquisition_swarm.INTENT_WORKERS) * ambassador.MAX_CAMPAIGN_TARGETS
-        == 450
+        acquisition_swarm.WORKER_COUNT * ambassador.MAX_CAMPAIGN_TARGETS
+        == 3000
     )
     flattened = [
         query
@@ -160,6 +169,25 @@ def test_swarm_has_independent_intent_lanes_and_450_target_capacity(monkeypatch)
     assert "x402 facilitator" in flattened
     monkeypatch.delenv("AION_ACQUISITION_SWARM_ENABLED", raising=False)
     assert acquisition_swarm.start_acquisition_swarm_if_enabled() is False
+
+
+def test_swarm_rotation_covers_all_100_workers_without_claiming_100_concurrent_writes(
+    monkeypatch,
+):
+    monkeypatch.delenv("AION_ACQUISITION_ACTIVE_WORKERS_PER_CYCLE", raising=False)
+    cohorts = [
+        acquisition_swarm._active_worker_specs_for_cycle(
+            now_seconds=index * acquisition_swarm.DEFAULT_INTERVAL_SECONDS
+        )
+        for index in range(5)
+    ]
+
+    assert all(
+        len(cohort) == acquisition_swarm.DEFAULT_ACTIVE_WORKERS_PER_CYCLE == 20
+        for cohort in cohorts
+    )
+    assert len({worker.id for cohort in cohorts for worker in cohort}) == 100
+    assert acquisition_swarm.MAX_CONTACTS_PER_CYCLE == 20
 
 def test_swarm_default_interval_is_launch_cadence():
     assert acquisition_swarm.DEFAULT_INTERVAL_SECONDS == 15 * 60
@@ -347,3 +375,33 @@ def test_swarm_response_snapshot_keeps_only_safe_routing_evidence():
     ]
     assert "must not survive" not in json.dumps(snapshot)
 
+
+
+def test_live_temple_is_read_only_truth_view_with_100_workers():
+    response = client.get("/temple/live/state")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    data = response.json()
+    assert data["north_star"] == "FIRST_REAL_SETTLED_AGENT_TRANSACTION"
+    assert data["fleet"]["worker_count"] == 100
+    assert len(data["fleet"]["workers"]) == 100
+    assert data["privacy"]["raw_private_responses_exposed"] is False
+    assert data["privacy"]["credentials_exposed"] is False
+    assert data["privacy"]["payment_payloads_exposed"] is False
+    assert data["privacy"]["response_digests_exposed"] is False
+    serialized = json.dumps(data).lower()
+    assert "api_key" not in serialized
+    assert "distribution_token" not in serialized
+    assert "payment_payload_digest" not in serialized
+
+
+def test_live_temple_html_renders_dependency_free_3d_control_plane():
+    response = client.get("/temple/live")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "AION LIVE TEMPLE" in response.text
+    assert "<canvas id=\"scene\"></canvas>" in response.text
+    assert "/temple/live/state" in response.text
+    assert "setInterval(refresh,5000)" in response.text
