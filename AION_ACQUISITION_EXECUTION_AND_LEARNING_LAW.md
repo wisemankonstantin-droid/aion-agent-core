@@ -272,7 +272,103 @@ This law does not authorize production deploy, production configuration changes,
 
 Those remain governed by the active AION control-plane laws.
 
-## 14. FINAL OPERATING RULE
+## 14. DISTRIBUTED WORKER ARMY LAW
+
+AION may operate a large number of transparent logical acquisition workers.
+
+The initial operational roster is:
+
+100 AION-OPERATED NETWORK WORKERS.
+
+These workers are infrastructure, not external agents, customers, members or adoption.
+
+Every worker must have an inspectable identity and work state, including:
+
+- worker ID;
+- assigned intent lane;
+- preferred discovery channel;
+- schedule/shard;
+- current or most recent query/task;
+- most recent target/contact when one exists;
+- delivery/response result;
+- blocker or error state;
+- last update time.
+
+Workers share one global dedupe/contact truth.
+
+Adding workers MUST NOT create permission to:
+
+- create fake external identities;
+- duplicate-contact the same target;
+- evade platform controls;
+- multiply identical public messages;
+- bypass opt-outs, suspensions or rate limits.
+
+Scale independent discovery and useful conversations, not artificial activity.
+
+## 15. OWNER LIVE OBSERVABILITY LAW
+
+AION work must be directly observable by the owner as a live system.
+
+The canonical control-plane view should make the following visible from one browser surface:
+
+CORE
++
+WORKERS
++
+CHANNELS
++
+TARGETS
++
+CONTACT EVENTS
++
+RESPONSES / SAFE CONVERSATION INTELLIGENCE
++
+BLOCKERS
++
+COMMERCIAL FUNNEL
++
+SETTLEMENT EVIDENCE.
+
+The visualization MUST read real runtime/database evidence.
+
+It MUST NOT animate synthetic contacts, fake motion, invented conversations or inferred SAT.
+
+If a worker is idle, blocked, suspended, rate-limited, failing or has no route, that state must remain visible.
+
+Owner observability must redact secrets, raw payment authorizations, private credentials and nonessential raw response bodies.
+
+The purpose of visualization is operational truth and faster intervention, not decoration.
+
+## 16. INBOUND VISIBILITY PRESERVATION LAW
+
+AION must preserve and expand machine-visible inbound discovery surfaces that have previously produced real external attention.
+
+Historical traffic must be interpreted truthfully:
+
+REQUESTS
+!=
+UNIQUE AGENTS
+!=
+ACTIVATED AGENTS
+!=
+RETURNING AGENTS
+!=
+BUYERS.
+
+A high inbound request count is evidence of visibility, not automatic evidence of customer count.
+
+When a previous distribution path produced meaningful inbound visibility, future acquisition work must not silently remove that path unless a verified blocker requires it.
+
+Machine discovery and outbound acquisition should reinforce each other:
+
+AION IS EASY TO FIND
++
+AION ACTIVELY FINDS QUALIFIED NEED
++
+AION OFFERS IMMEDIATE PRE-SPEND VALUE.
+
+## 17. FINAL OPERATING RULE
 
 MORE SAFE PARALLEL DISCOVERY
 ->
