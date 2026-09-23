@@ -36,10 +36,11 @@ checks = {
     "migration_0015_x402_exact_upfront_v1": (root / "alembic/versions/0015_x402_exact_upfront_v1.py").exists(),
     "migration_0016_official_data_execution_v1": (root / "alembic/versions/0016_official_data_execution_v1.py").exists(),
     "migration_0017_first_sat_accounting_v1": (root / "alembic/versions/0017_first_sat_accounting_v1.py").exists(),
+    "migration_0018_acquisition_agent_minds_v1": (root / "alembic/versions/0018_acquisition_agent_minds_v1.py").exists(),
     "package_3b_learning_engine": (root / "app/services/learning_engine.py").exists()
         and (root / "scripts/learning_cycle.py").exists(),
     "repository_release_identity": (
-        'EXPECTED_SCHEMA_REVISION = "0017_first_sat_accounting_v1"' in release_identity
+        'EXPECTED_SCHEMA_REVISION = "0018_acquisition_agent_minds_v1"' in release_identity
         and "RENDER_GIT_COMMIT" in release_identity
         and "AION_RELEASE_SHA" in release_identity
     ),
