@@ -248,7 +248,98 @@ MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
+_RUNTIME_LOCK = Lock()
 _STARTED = False
+_RUNTIME_STATE = {
+    "cycle_state": "not_started",
+    "cycle_started_at": None,
+    "cycle_completed_at": None,
+    "active_worker_ids": [],
+    "completed_worker_ids": [],
+    "last_cycle_worker_ids": [],
+    "current_worker_id": None,
+    "last_error": None,
+}
+
+
+def _runtime_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _runtime_cycle_start(active_workers) -> None:
+    worker_ids = [worker.id for worker in active_workers]
+    with _RUNTIME_LOCK:
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "running",
+                "cycle_started_at": _runtime_now(),
+                "cycle_completed_at": None,
+                "active_worker_ids": worker_ids,
+                "completed_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": None,
+            }
+        )
+
+
+def _runtime_worker_started(worker_id: str) -> None:
+    with _RUNTIME_LOCK:
+        if _RUNTIME_STATE.get("cycle_state") == "running":
+            _RUNTIME_STATE["current_worker_id"] = worker_id
+
+
+def _runtime_worker_completed(worker_id: str) -> None:
+    with _RUNTIME_LOCK:
+        completed = list(_RUNTIME_STATE.get("completed_worker_ids") or [])
+        if worker_id not in completed:
+            completed.append(worker_id)
+        _RUNTIME_STATE["completed_worker_ids"] = completed
+        if _RUNTIME_STATE.get("current_worker_id") == worker_id:
+            _RUNTIME_STATE["current_worker_id"] = None
+
+
+def _runtime_cycle_completed() -> None:
+    with _RUNTIME_LOCK:
+        last_ids = list(_RUNTIME_STATE.get("active_worker_ids") or [])
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "sleeping",
+                "cycle_completed_at": _runtime_now(),
+                "last_cycle_worker_ids": last_ids,
+                "active_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": None,
+            }
+        )
+
+
+def _runtime_cycle_error(error_name: str) -> None:
+    with _RUNTIME_LOCK:
+        last_ids = list(_RUNTIME_STATE.get("active_worker_ids") or [])
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "error",
+                "cycle_completed_at": _runtime_now(),
+                "last_cycle_worker_ids": last_ids,
+                "active_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": str(error_name or "unknown")[:160],
+            }
+        )
+
+
+def acquisition_runtime_snapshot() -> dict:
+    with _RUNTIME_LOCK:
+        return {
+            "cycle_state": _RUNTIME_STATE["cycle_state"],
+            "cycle_started_at": _RUNTIME_STATE["cycle_started_at"],
+            "cycle_completed_at": _RUNTIME_STATE["cycle_completed_at"],
+            "active_worker_ids": list(_RUNTIME_STATE["active_worker_ids"]),
+            "completed_worker_ids": list(_RUNTIME_STATE["completed_worker_ids"]),
+            "last_cycle_worker_ids": list(_RUNTIME_STATE["last_cycle_worker_ids"]),
+            "current_worker_id": _RUNTIME_STATE["current_worker_id"],
+            "last_error": _RUNTIME_STATE["last_error"],
+        }
 
 
 def _aware(value: datetime) -> datetime:
@@ -724,6 +815,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         else bool(send)
     )
     active_workers = _active_worker_specs_for_cycle()
+    _runtime_cycle_start(active_workers)
     recent_scan_worker_id = active_workers[0].id if active_workers else None
     colony_scout_worker_ids = {
         worker.id
@@ -837,6 +929,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
     for worker in active_workers:
         worker_id = worker.id
+        _runtime_worker_started(worker_id)
         lane = worker.intent_profile
         query_bank = INTENT_WORKERS[lane]
         queries = _queries_for_cycle(worker_id, query_bank)
@@ -1090,6 +1183,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             )
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
+        finally:
+            _runtime_worker_completed(worker_id)
 
     final_outbound_state = moltbook_outbound_status()
     report["moltbook"]["suspended"] = bool(
@@ -1098,6 +1193,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     report["moltbook"]["suspended_until"] = final_outbound_state.get(
         "suspended_until"
     )
+    _runtime_cycle_completed()
     return report
 
 
@@ -1112,6 +1208,7 @@ def _worker_loop() -> None:
                 flush=True,
             )
         except Exception as exc:
+            _runtime_cycle_error(type(exc).__name__)
             print(
                 "AION_ACQUISITION_SWARM_ERROR "
                 + json.dumps({"error": type(exc).__name__}, sort_keys=True),
