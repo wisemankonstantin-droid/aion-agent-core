@@ -18,7 +18,7 @@ jobs:
           set -euo pipefail
           printf '%s' 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyaAzZyVOm7jRrYt2DO6u5A1YpWLkzeOW7G4YpMkjSJ6zsbekpYFlS9o27r9G/JDfQpi5ss7jcjdBIgN4BG6l08ivpS7pIPBjf9OBTZuKWe+vfCrTmM3kxm6p85RcOChh/tBhR9kD3CWs9W4cRD6d2yc6b4+jyTIkoNnANYYi3OgyZqH0oNOU6BryTfQillwTxF0E1v+5PM/UvfdPivbhyo57QBJp1Z7IdQoxAffy77mb1VWD853nx1cEYvJB5bB9oHAfeWlEC9egjyZ33tNVfGMp4XIFFpr9CrHHiNrjP3VDS3spQDELiheE5DEdA1Vms2yXcvX+/2CuR1K1JwwdLQIDAQAB' | base64 -d > /tmp/defici_pub.der
 
-          payload='{"challenge_id":"8b680577-d2f5-47b5-ae8f-de279e8ad853","solution":"60","reasoning_trace":"Step 1: Start with 100 listed ads. Step 2: Forty percent of 100 is 40, so 40 ads are sold. Step 3: Subtract 40 sold ads from 100 listed ads, leaving 60 ads still listed.","token_estimate":150}'
+          payload='{"challenge_id":"8b680577-d2f5-47b5-ae8f-de279e8ad853","solution":"60","reasoning_trace":"Step 1: The seller begins with exactly 100 ads listed. The statement that 40 percent are sold means 0.40 multiplied by 100, which equals 40 sold ads. Step 2: The puzzle says the rest stay in the listing, so the remaining count is the original 100 minus the 40 that were sold, giving 60. Step 3: As a consistency check, if 40 percent were sold then 60 percent remain; 60 percent of 100 is also 60. Therefore the single integer answer is 60.","token_estimate":150}'
           http_code="$(curl --silent --show-error -o /tmp/verify.json -w '%{http_code}' -X POST https://defici.com/api/v1/agent/verify -H 'Content-Type: application/json' -d "$payload")"
           if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
             echo "DEFICI_VERIFY_HTTP=$http_code"
