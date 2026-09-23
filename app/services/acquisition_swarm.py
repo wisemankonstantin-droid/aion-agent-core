@@ -248,7 +248,100 @@ MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
+_RUNTIME_LOCK = Lock()
+_ROTATION_LOCK = Lock()
 _STARTED = False
+_ROTATION_CURSOR = None
+_RUNTIME_STATE = {
+    "cycle_state": "not_started",
+    "cycle_started_at": None,
+    "cycle_completed_at": None,
+    "active_worker_ids": [],
+    "completed_worker_ids": [],
+    "last_cycle_worker_ids": [],
+    "current_worker_id": None,
+    "last_error": None,
+}
+
+
+def _runtime_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _runtime_cycle_start(active_workers) -> None:
+    worker_ids = [worker.id for worker in active_workers]
+    with _RUNTIME_LOCK:
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "running",
+                "cycle_started_at": _runtime_now(),
+                "cycle_completed_at": None,
+                "active_worker_ids": worker_ids,
+                "completed_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": None,
+            }
+        )
+
+
+def _runtime_worker_started(worker_id: str) -> None:
+    with _RUNTIME_LOCK:
+        if _RUNTIME_STATE.get("cycle_state") == "running":
+            _RUNTIME_STATE["current_worker_id"] = worker_id
+
+
+def _runtime_worker_completed(worker_id: str) -> None:
+    with _RUNTIME_LOCK:
+        completed = list(_RUNTIME_STATE.get("completed_worker_ids") or [])
+        if worker_id not in completed:
+            completed.append(worker_id)
+        _RUNTIME_STATE["completed_worker_ids"] = completed
+        if _RUNTIME_STATE.get("current_worker_id") == worker_id:
+            _RUNTIME_STATE["current_worker_id"] = None
+
+
+def _runtime_cycle_completed() -> None:
+    with _RUNTIME_LOCK:
+        last_ids = list(_RUNTIME_STATE.get("active_worker_ids") or [])
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "sleeping",
+                "cycle_completed_at": _runtime_now(),
+                "last_cycle_worker_ids": last_ids,
+                "active_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": None,
+            }
+        )
+
+
+def _runtime_cycle_error(error_name: str) -> None:
+    with _RUNTIME_LOCK:
+        last_ids = list(_RUNTIME_STATE.get("active_worker_ids") or [])
+        _RUNTIME_STATE.update(
+            {
+                "cycle_state": "error",
+                "cycle_completed_at": _runtime_now(),
+                "last_cycle_worker_ids": last_ids,
+                "active_worker_ids": [],
+                "current_worker_id": None,
+                "last_error": str(error_name or "unknown")[:160],
+            }
+        )
+
+
+def acquisition_runtime_snapshot() -> dict:
+    with _RUNTIME_LOCK:
+        return {
+            "cycle_state": _RUNTIME_STATE["cycle_state"],
+            "cycle_started_at": _RUNTIME_STATE["cycle_started_at"],
+            "cycle_completed_at": _RUNTIME_STATE["cycle_completed_at"],
+            "active_worker_ids": list(_RUNTIME_STATE["active_worker_ids"]),
+            "completed_worker_ids": list(_RUNTIME_STATE["completed_worker_ids"]),
+            "last_cycle_worker_ids": list(_RUNTIME_STATE["last_cycle_worker_ids"]),
+            "current_worker_id": _RUNTIME_STATE["current_worker_id"],
+            "last_error": _RUNTIME_STATE["last_error"],
+        }
 
 
 def _aware(value: datetime) -> datetime:
@@ -337,6 +430,51 @@ def _active_worker_specs_for_cycle(
         workers[(start + offset) % len(workers)]
         for offset in range(count)
     )
+
+
+def _next_active_worker_specs(
+    *, now_seconds: float | None = None
+) -> tuple:
+    """Advance the real 100-worker rotation by completed-cycle order.
+
+    Wall-clock slots seed the first cohort after process start only. Later
+    cohorts advance by the active cohort size, so variable external-discovery
+    duration cannot starve a worker cohort.
+    """
+
+    global _ROTATION_CURSOR
+    count = _bounded_active_worker_count()
+    workers = tuple(ACQUISITION_WORKERS)
+    if count >= len(workers):
+        return workers
+    with _ROTATION_LOCK:
+        if _ROTATION_CURSOR is None:
+            current = time.time() if now_seconds is None else float(now_seconds)
+            slot = int(current // DEFAULT_INTERVAL_SECONDS)
+            _ROTATION_CURSOR = (slot * count) % len(workers)
+        start = int(_ROTATION_CURSOR) % len(workers)
+        selected = tuple(
+            workers[(start + offset) % len(workers)]
+            for offset in range(count)
+        )
+        _ROTATION_CURSOR = (start + count) % len(workers)
+    return selected
+
+
+def _reset_rotation_cursor_for_tests(value: int | None = None) -> None:
+    global _ROTATION_CURSOR
+    with _ROTATION_LOCK:
+        _ROTATION_CURSOR = value
+
+
+def _cycle_sleep_seconds(
+    cycle_started_monotonic: float,
+    *,
+    now_monotonic: float | None = None,
+) -> float:
+    current = time.monotonic() if now_monotonic is None else float(now_monotonic)
+    elapsed = max(0.0, current - float(cycle_started_monotonic))
+    return max(0.0, float(_bounded_interval_seconds()) - elapsed)
 
 
 def _registry_queries_for_cycle(
@@ -723,7 +861,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         if send is None
         else bool(send)
     )
-    active_workers = _active_worker_specs_for_cycle()
+    active_workers = _next_active_worker_specs()
+    _runtime_cycle_start(active_workers)
     recent_scan_worker_id = active_workers[0].id if active_workers else None
     colony_scout_worker_ids = {
         worker.id
@@ -837,6 +976,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
     for worker in active_workers:
         worker_id = worker.id
+        _runtime_worker_started(worker_id)
         lane = worker.intent_profile
         query_bank = INTENT_WORKERS[lane]
         queries = _queries_for_cycle(worker_id, query_bank)
@@ -1090,6 +1230,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             )
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
+        finally:
+            _runtime_worker_completed(worker_id)
 
     final_outbound_state = moltbook_outbound_status()
     report["moltbook"]["suspended"] = bool(
@@ -1098,11 +1240,13 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     report["moltbook"]["suspended_until"] = final_outbound_state.get(
         "suspended_until"
     )
+    _runtime_cycle_completed()
     return report
 
 
 def _worker_loop() -> None:
     while True:
+        cycle_started_monotonic = time.monotonic()
         try:
             with SessionLocal() as db:
                 report = run_intent_acquisition_cycle(db)
@@ -1112,12 +1256,13 @@ def _worker_loop() -> None:
                 flush=True,
             )
         except Exception as exc:
+            _runtime_cycle_error(type(exc).__name__)
             print(
                 "AION_ACQUISITION_SWARM_ERROR "
                 + json.dumps({"error": type(exc).__name__}, sort_keys=True),
                 flush=True,
             )
-        time.sleep(_bounded_interval_seconds())
+        time.sleep(_cycle_sleep_seconds(cycle_started_monotonic))
 
 
 def start_acquisition_swarm_if_enabled() -> bool:

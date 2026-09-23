@@ -22,10 +22,19 @@ def test_colony_public_search_is_read_only_and_pinned_to_official_origin(monkeyp
                 "posts": [
                     {
                         "type": "post",
+                        "id": "seller-123",
+                        "author": {"username": "SellerBot"},
+                        "title": "For hire: paid browser automation",
+                        "body": "What I sell: browser automation services.",
+                        "tags": ["for-hire"],
+                    },
+                    {
+                        "type": "post",
                         "id": "post-123",
                         "author": {"username": "BuyerBot"},
                         "title": "Need a paid browser provider",
-                    }
+                        "body": "Looking for a provider for a current workflow.",
+                    },
                 ]
             },
         )
@@ -37,41 +46,112 @@ def test_colony_public_search_is_read_only_and_pinned_to_official_origin(monkeyp
     assert seen["method"] == "GET"
     assert seen["url"].startswith("https://thecolony.ai/api/v1/search?")
     assert seen["headers"] == {}
+    assert result["resource_bounds"]["demand_filter"] == "conservative_buyer_intent"
+    assert result["resource_bounds"]["filtered_supply_like"] == 1
     assert [row["identifier"] for row in result["candidates"]] == [
         "colony:BuyerBot"
     ]
+    assert result["candidates"][0]["evidence_state"] == (
+        "colony_public_agent_buyer_intent_match"
+    )
     assert result["candidates"][0]["interaction_url"] == (
         "https://thecolony.ai/api/v1/posts/post-123/comments"
     )
 
 
-def test_colony_paid_task_discovery_is_explicit_spend_surface(monkeypatch):
+def test_colony_paid_task_discovery_keeps_buyer_demand_and_rejects_for_hire(monkeypatch):
     def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
         assert method == "GET"
-        assert "post_type=paid_task" in url
+        assert "/api/v1/marketplace/tasks?" in url
+        assert "sort=budget" in url
         return (
             safe_http.FetchResult(200, b"{}", None, 1),
-            [
-                {
-                    "type": "post",
-                    "id": "task-1",
-                    "author": {"username": "TaskBuyer"},
-                    "title": "Paid verification task",
-                }
-            ],
+            {
+                "items": [
+                    {
+                        "id": "seller-1",
+                        "author": {"username": "SellerBot"},
+                        "title": "For hire: API audits and research",
+                        "body": "What I sell: fixed-price agent services.",
+                        "tags": ["for-hire"],
+                        "accepting_submissions": True,
+                    },
+                    {
+                        "id": "task-1",
+                        "author": {"username": "TaskBuyer"},
+                        "title": "Need an agent to verify an integration",
+                        "body": "Looking for an agent. Please submit your bids with approach.",
+                        "metadata_": {
+                            "budget_min_sats": 1000,
+                            "budget_max_sats": 5000,
+                            "deadline": "2026-12-01T00:00:00Z",
+                        },
+                        "accepting_submissions": True,
+                    },
+                ]
+            },
         )
 
     monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
     result = colony_acquisition.browse_paid_tasks(5)
 
     assert result["status"] == "success"
-    assert result["resource_bounds"]["post_type"] == "paid_task"
+    assert result["resource_bounds"]["surface"] == "marketplace_tasks"
+    assert result["resource_bounds"]["demand_filter"] == "conservative_buyer_intent"
+    assert result["resource_bounds"]["filtered_supply_like"] == 1
     assert [row["identifier"] for row in result["candidates"]] == [
         "colony:TaskBuyer"
     ]
     assert result["candidates"][0]["evidence_state"] == (
-        "colony_public_paid_task_intent"
+        "colony_marketplace_buyer_demand"
     )
+
+
+def test_colony_demand_filter_fails_closed_on_ambiguous_seller_copy():
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "For hire: data cleanup",
+            "body": "Services & pricing. I am available for immediate work.",
+            "tags": ["for-hire"],
+            "accepting_submissions": True,
+        }
+    ) is False
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "需要构建情感分析模型",
+            "body": "Looking for experts to build a sentiment analysis model. Please submit your bids.",
+            "accepting_submissions": True,
+        }
+    ) is True
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "Potential task",
+            "body": "Maybe something useful.",
+            "accepting_submissions": True,
+        }
+    ) is False
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "Need an agent to build a model",
+            "body": "Looking for experts. Please submit your bids.",
+            "metadata_": {"deadline": "2026-06-20T23:59:59Z"},
+            "accepting_submissions": True,
+        },
+        now=__import__("datetime").datetime(
+            2026, 9, 23, tzinfo=__import__("datetime").timezone.utc
+        ),
+    ) is False
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "Need an agent to build a model",
+            "body": "Looking for experts. Please submit your bids.",
+            "metadata_": {"deadline": "2026-12-01T00:00:00Z"},
+            "accepting_submissions": True,
+        },
+        now=__import__("datetime").datetime(
+            2026, 9, 23, tzinfo=__import__("datetime").timezone.utc
+        ),
+    ) is True
 
 
 def test_colony_missing_secret_keeps_discovery_but_fails_write_auth_closed(monkeypatch):

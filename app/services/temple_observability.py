@@ -19,7 +19,7 @@ from ..conversation_models import ConversationEvidence, ConversationIntelligence
 from ..payment_models import RouteIntelligencePurchase
 from ..public_origin import canonical_public_origin
 from ..release_identity import release_identity
-from .acquisition_swarm import _active_worker_specs_for_cycle
+from .acquisition_swarm import acquisition_runtime_snapshot
 from .moltbook_acquisition import (
     build_outreach_comment,
     outbound_status as moltbook_outbound_status,
@@ -147,7 +147,10 @@ def build_temple_live_state(db: Session) -> dict:
     now = datetime.now(timezone.utc)
     workers = worker_manifest()
     worker_ids = {worker["id"] for worker in workers}
-    active_ids = {worker.id for worker in _active_worker_specs_for_cycle()}
+    runtime = acquisition_runtime_snapshot()
+    active_ids = set(runtime.get("active_worker_ids") or [])
+    completed_ids = set(runtime.get("completed_worker_ids") or [])
+    current_worker_id = runtime.get("current_worker_id")
 
     campaigns = list(
         db.scalars(
@@ -365,8 +368,12 @@ def build_temple_live_state(db: Session) -> dict:
                     "message_preview_kind": "not_contacted",
                 }
 
-        if worker_id in active_ids:
-            state = "communicating" if current_result in {"delivered", "response_received"} else "searching_or_qualifying"
+        if worker_id == current_worker_id:
+            state = "working_currently"
+        elif worker_id in active_ids and worker_id in completed_ids:
+            state = "completed_this_cycle"
+        elif worker_id in active_ids:
+            state = "assigned_waiting_turn"
         else:
             state = "queued_rotation"
         if current_target and current_target["contact_state"] == "blocked":
@@ -519,12 +526,16 @@ def build_temple_live_state(db: Session) -> dict:
         "fleet": {
             "worker_count": len(workers),
             "scheduled_now": len(active_ids),
+            "active_worker_count": len(active_ids),
             "queued_rotation": len(workers) - len(active_ids),
+            "runtime": runtime,
             "legacy_campaigns_preserved": legacy_campaigns,
             "workers": worker_states,
             "truth": (
-                "Workers are AION-operated logical acquisition workers. They are not "
-                "external agents, customers, adoption, revenue or SAT evidence."
+                "Workers are AION-operated logical acquisition workers. Runtime state "
+                "comes from the executing swarm process, not a wall-clock schedule. "
+                "No runtime event means no worker is shown as actively working. Workers "
+                "are not external agents, customers, adoption, revenue or SAT evidence."
             ),
         },
         "channels": channels,
@@ -628,7 +639,7 @@ a{color:#9bdcff;word-break:break-all}.event{padding:8px 0;border-bottom:1px soli
   <div class="tools"><input id="search" placeholder="worker / intent / target"><button id="rotate">pause</button></div>
   <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select a worker or recent event. The model refreshes from durable server state every 5 seconds.</p></div>
 </div>
-<div class="legend"><span class="dot" style="background:#42f5a7"></span>scheduled now <span class="dot" style="background:#71809a"></span>queued <span class="dot" style="background:#ffd166"></span>response <span class="dot" style="background:#ff5f6d"></span>blocked</div>
+<div class="legend"><span class="dot" style="background:#42f5a7"></span>working now <span class="dot" style="background:#6aa8ff"></span>assigned <span class="dot" style="background:#8c9bb0"></span>completed cycle <span class="dot" style="background:#71809a"></span>queued <span class="dot" style="background:#ff5f6d"></span>blocked</div>
 <script>
 const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d');
 const cards=document.getElementById('cards'),detail=document.getElementById('detail'),search=document.getElementById('search');
@@ -637,21 +648,21 @@ function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;canvas.
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function age(ts){if(!ts)return 'never';const s=Math.max(0,(Date.now()-Date.parse(ts))/1000);if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return Math.round(s/3600)+'h';return Math.round(s/86400)+'d'}
 function metric(label,value){return '<div class="card"><b>'+esc(value)+'</b><span>'+esc(label)+'</span></div>'}
-function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet;cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+'</small></div>'+metric('workers',fl.worker_count)+metric('scheduled',fl.scheduled_now)+metric('targets',f.discovered_targets)+metric('delivered',f.delivered_contacts)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
+function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet,rt=fl.runtime||{};cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+' · '+esc(rt.cycle_state||'runtime unknown')+'</small></div>'+metric('workers',fl.worker_count)+metric('active runtime',fl.active_worker_count)+metric('targets',f.discovered_targets)+metric('delivered',f.delivered_contacts)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
 function p3(x,y,z){let c=Math.cos(rot),s=Math.sin(rot),x1=x*c-z*s,z1=x*s+z*c;let ct=Math.cos(tilt),st=Math.sin(tilt),y1=y*ct-z1*st,z2=y*st+z1*ct;let f=560/(560+z2);return{x:W*.42+x1*f,y:H*.49+y1*f,s:f,z:z2}}
 function sphere(i,n,r){const y=1-2*(i+.5)/n,rr=Math.sqrt(Math.max(0,1-y*y)),a=Math.PI*(3-Math.sqrt(5))*i;return{x:Math.cos(a)*rr*r,y:y*r,z:Math.sin(a)*rr*r}}
 function channelPos(i,n){const a=i/n*Math.PI*2;return{x:Math.cos(a)*330,y:Math.sin(a*.7)*90,z:Math.sin(a)*330}}
-function color(w){if(w.state==='target_blocked_continue_search')return '#ff5f6d';if(w.machine_responses>0&&w.current_result==='response_received')return '#ffd166';return w.scheduled_now?'#42f5a7':'#71809a'}
+function color(w){if(w.state==='target_blocked_continue_search')return '#ff5f6d';if(w.state==='working_currently')return '#42f5a7';if(w.state==='assigned_waiting_turn')return '#6aa8ff';if(w.state==='completed_this_cycle')return '#8c9bb0';return '#71809a'}
 function drawNode(pt,r,fill,label){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(2,r*pt.s),0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(label&&pt.s>.55){ctx.fillStyle='#b8c7da';ctx.font='10px system-ui';ctx.fillText(label,pt.x+7,pt.y-5)}}
 function draw(){ctx.clearRect(0,0,W,H);hit=[];if(!D){requestAnimationFrame(draw);return} if(auto)rot+=.0015;
  const core=p3(0,0,0);drawNode(core,13,'#9bdcff','AION CORE');
  const chans=D.channels||[],cp={};chans.forEach((ch,i)=>{const q=channelPos(i,Math.max(1,chans.length)),pt=p3(q.x,q.y,q.z);cp[ch.name]={q,pt};ctx.strokeStyle='rgba(120,160,210,.18)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,8,'#80a8ff',ch.name+' '+ch.machine_responses+'/'+ch.contact_attempts)});
  const ws=D.fleet.workers||[],q=search.value.trim().toLowerCase();
- ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205);const pt=p3(pos.x,pos.y,pos.z);const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.scheduled_now?'rgba(66,245,167,.16)':'rgba(110,128,154,.07)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,w.scheduled_now?4.6:3,color(w),selected===w.id?w.id:null);if(w.current_channel&&cp[w.current_channel]){ctx.strokeStyle=w.machine_responses?'rgba(255,209,102,.28)':'rgba(128,168,255,.12)';ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(cp[w.current_channel].pt.x,cp[w.current_channel].pt.y);ctx.stroke()}hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
+ ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205);const pt=p3(pos.x,pos.y,pos.z);const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.state==='working_currently'?'rgba(66,245,167,.22)':(w.state==='assigned_waiting_turn'?'rgba(106,168,255,.13)':'rgba(110,128,154,.07)');ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,w.state==='working_currently'?5.4:(w.state==='assigned_waiting_turn'?4.2:3),color(w),selected===w.id?w.id:null);if(w.current_channel&&cp[w.current_channel]){ctx.strokeStyle=w.machine_responses?'rgba(255,209,102,.28)':'rgba(128,168,255,.12)';ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(cp[w.current_channel].pt.x,cp[w.current_channel].pt.y);ctx.stroke()}hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
  requestAnimationFrame(draw)}
 function workerDetail(w){const t=w.current_target||{},signals=(w.response_signals||[]).map(x=>'<span class="tag">'+esc(x)+'</span>').join('');detail.innerHTML='<h3>'+esc(w.id)+'</h3>'+
  '<div class="row"><div>state</div><div>'+esc(w.state)+'</div></div><div class="row"><div>intent</div><div>'+esc(w.intent_profile)+'</div></div>'+
- '<div class="row"><div>scheduled</div><div>'+esc(w.scheduled_now)+'</div></div><div class="row"><div>last activity</div><div>'+esc(w.last_activity_at||'never')+' ('+age(w.last_activity_at)+')</div></div>'+
+ '<div class="row"><div>runtime assigned</div><div>'+esc(w.scheduled_now)+'</div></div><div class="row"><div>last activity</div><div>'+esc(w.last_activity_at||'never')+' ('+age(w.last_activity_at)+')</div></div>'+
  '<div class="row"><div>channel</div><div>'+esc(w.current_channel||'none')+'</div></div><div class="row"><div>targets</div><div>'+w.targets_discovered+' discovered / '+w.targets_qualified+' qualified</div></div>'+
  '<div class="row"><div>contacts</div><div>'+w.contact_attempts+' attempts / '+w.delivered_contacts+' delivered / '+w.machine_responses+' responses</div></div>'+
  '<div class="row"><div>target</div><div>'+esc(t.identity||'none')+(t.url?'<br><a target="_blank" rel="noreferrer" href="'+esc(t.url)+'">'+esc(t.url)+'</a>':'')+'</div></div>'+

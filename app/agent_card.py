@@ -25,6 +25,28 @@ def get_agent_card(base_url: str):
         "defaultOutputModes": ["application/json", "text/plain"],
         "skills": [
             {
+                "id": "aion_pre_spend_preflight",
+                "name": "AION pre-spend preflight",
+                "description": (
+                    "Before external spend, POST a bounded current need to "
+                    "/commercial/route-intelligence/preflight. The preflight is public, "
+                    "zero-price, requires no membership, returns GO/HOLD/STOP, and performs "
+                    "no provider execution or payment."
+                ),
+                "tags": [
+                    "aion",
+                    "pre-spend",
+                    "provider-selection",
+                    "route-intelligence",
+                    "public",
+                    "zero-price",
+                ],
+                "examples": [
+                    '{"need":"paid web research provider"}',
+                    '{"need":"storage provider for an agent","candidate_identifier":"optional-provider"}',
+                ],
+            },
+            {
                 "id": "aion_first_contact",
                 "name": "AION first contact",
                 "description": "Return immediate public utility without creating membership. Joining remains optional and explicit.",

@@ -705,7 +705,11 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
         },
         "optional_structured_feedback": {
             "part_type": "A2A data part",
-            "reply_if": "current real provider-selection or external-spend need",
+            "preferred_when_applicable": True,
+            "reply_if": (
+                "If you have a current external-spend need, reply with one A2A data "
+                "part matching shape; otherwise do not invent a need"
+            ),
             "shape": {
                 "aion_feedback": {
                     "routing_need": "1-128 chars",
@@ -724,8 +728,8 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
             "distribution_token": distribution_token,
         },
         "next_actions": [
+            "reply_with_aion_feedback_if_current_need",
             "inspect_pre_spend_preflight",
-            "submit_real_need",
             "purchase_if_justified",
         ],
         "truth": (

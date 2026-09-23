@@ -126,9 +126,12 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     )
     assert message["purpose"] == "bounded_machine_utility_invitation"
     assert message["intent"] == "before_external_spend"
-    assert message["optional_structured_feedback"]["part_type"] == "A2A data part"
-    assert message["optional_structured_feedback"]["reply_if"] == "current real provider-selection or external-spend need"
-    assert message["optional_structured_feedback"]["shape"]["aion_feedback"]["currency"] == "USD"
+    feedback = message["optional_structured_feedback"]
+    assert feedback["part_type"] == "A2A data part"
+    assert feedback["preferred_when_applicable"] is True
+    assert "reply with one A2A data part" in feedback["reply_if"]
+    assert "do not invent a need" in feedback["reply_if"]
+    assert feedback["shape"]["aion_feedback"]["currency"] == "USD"
     assert message["pre_spend_preflight"]["url"].endswith(
         "/commercial/route-intelligence/preflight"
     )
@@ -136,10 +139,41 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     assert message["pre_spend_preflight"]["payment_or_provider_execution"] is False
     assert message["join"]["optional"] is True
     assert message["join"]["not_required_for_utility_or_purchase"] is True
-    assert message["next_actions"][0] == "inspect_pre_spend_preflight"
+    assert message["next_actions"][0] == "reply_with_aion_feedback_if_current_need"
     assert len(
         json.dumps(message, sort_keys=True, separators=(",", ":")).encode()
     ) <= ambassador.MAX_MESSAGE_BYTES
+
+
+def test_machine_discovery_surfaces_make_zero_cost_preflight_first_class():
+    card = client.get("/.well-known/agent-card.json")
+    assert card.status_code == 200
+    preflight_skill = next(
+        skill
+        for skill in card.json()["skills"]
+        if skill["id"] == "aion_pre_spend_preflight"
+    )
+    assert "zero-price" in preflight_skill["description"]
+    assert "no membership" in preflight_skill["description"]
+    assert "/commercial/route-intelligence/preflight" in preflight_skill["description"]
+
+    manifest = client.get("/.well-known/aion.json")
+    assert manifest.status_code == 200
+    before_spend = manifest.json()["before_external_spend"]
+    assert before_spend["url"].endswith("/commercial/route-intelligence/preflight")
+    assert before_spend["cost"] == "known_zero"
+    assert before_spend["membership_required"] is False
+    assert before_spend["payment_required"] is False
+    assert before_spend["provider_execution"] is False
+    assert before_spend["decision"] == "GO|HOLD|STOP"
+
+    skill = client.get("/skill.md")
+    llms = client.get("/llms.txt")
+    assert skill.status_code == llms.status_code == 200
+    assert "BEFORE EXTERNAL SPEND:" in skill.text
+    assert "BEFORE EXTERNAL SPEND:" in llms.text
+    assert "/commercial/route-intelligence/preflight" in skill.text
+    assert "/commercial/route-intelligence/preflight" in llms.text
 
 
 def test_swarm_has_100_transparent_workers_and_3000_target_capacity(monkeypatch):
@@ -175,19 +209,40 @@ def test_swarm_rotation_covers_all_100_workers_without_claiming_100_concurrent_w
     monkeypatch,
 ):
     monkeypatch.delenv("AION_ACQUISITION_ACTIVE_WORKERS_PER_CYCLE", raising=False)
-    cohorts = [
-        acquisition_swarm._active_worker_specs_for_cycle(
-            now_seconds=index * acquisition_swarm.DEFAULT_INTERVAL_SECONDS
-        )
-        for index in range(5)
-    ]
+    acquisition_swarm._reset_rotation_cursor_for_tests(None)
+    try:
+        cohorts = [
+            acquisition_swarm._next_active_worker_specs(now_seconds=0)
+            for _ in range(5)
+        ]
+    finally:
+        acquisition_swarm._reset_rotation_cursor_for_tests(None)
 
     assert all(
         len(cohort) == acquisition_swarm.DEFAULT_ACTIVE_WORKERS_PER_CYCLE == 20
         for cohort in cohorts
     )
     assert len({worker.id for cohort in cohorts for worker in cohort}) == 100
+    assert [worker.id for worker in cohorts[0]] == [
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[:20]
+    ]
+    assert [worker.id for worker in cohorts[4]] == [
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[80:100]
+    ]
     assert acquisition_swarm.MAX_CONTACTS_PER_CYCLE == 20
+
+
+def test_swarm_cadence_is_measured_from_cycle_start_not_completion(monkeypatch):
+    monkeypatch.delenv("AION_ACQUISITION_SWARM_INTERVAL_SECONDS", raising=False)
+
+    assert acquisition_swarm._cycle_sleep_seconds(
+        100.0,
+        now_monotonic=400.0,
+    ) == 10 * 60
+    assert acquisition_swarm._cycle_sleep_seconds(
+        100.0,
+        now_monotonic=1000.0,
+    ) == 0.0
 
 def test_swarm_default_interval_is_launch_cadence():
     assert acquisition_swarm.DEFAULT_INTERVAL_SECONDS == 15 * 60
@@ -396,6 +451,51 @@ def test_live_temple_is_read_only_truth_view_with_100_workers():
     assert "payment_payload_digest" not in serialized
 
 
+def test_acquisition_runtime_truth_does_not_fake_wall_clock_activity():
+    cohort = acquisition_swarm._active_worker_specs_for_cycle(now_seconds=0)[:2]
+    acquisition_swarm._runtime_cycle_start(cohort)
+
+    running = acquisition_swarm.acquisition_runtime_snapshot()
+    assert running["cycle_state"] == "running"
+    assert running["active_worker_ids"] == [worker.id for worker in cohort]
+    assert running["current_worker_id"] is None
+
+    acquisition_swarm._runtime_worker_started(cohort[0].id)
+    current = acquisition_swarm.acquisition_runtime_snapshot()
+    assert current["current_worker_id"] == cohort[0].id
+
+    acquisition_swarm._runtime_worker_completed(cohort[0].id)
+    completed = acquisition_swarm.acquisition_runtime_snapshot()
+    assert cohort[0].id in completed["completed_worker_ids"]
+    assert completed["current_worker_id"] is None
+
+    acquisition_swarm._runtime_cycle_completed()
+    sleeping = acquisition_swarm.acquisition_runtime_snapshot()
+    assert sleeping["cycle_state"] == "sleeping"
+    assert sleeping["active_worker_ids"] == []
+    assert sleeping["last_cycle_worker_ids"] == [worker.id for worker in cohort]
+
+
+def test_live_temple_does_not_show_scheduled_work_without_runtime_event():
+    acquisition_swarm._runtime_cycle_completed()
+
+    response = client.get("/temple/live/state")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["fleet"]["runtime"]["cycle_state"] == "sleeping"
+    assert data["fleet"]["active_worker_count"] == 0
+    assert data["fleet"]["scheduled_now"] == 0
+    assert all(
+        worker["state"] != "working_currently"
+        for worker in data["fleet"]["workers"]
+    )
+    assert all(
+        worker["state"] != "assigned_waiting_turn"
+        for worker in data["fleet"]["workers"]
+    )
+
+
 def test_live_temple_html_renders_dependency_free_3d_control_plane():
     response = client.get("/temple/live")
 
@@ -405,3 +505,6 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "<canvas id=\"scene\"></canvas>" in response.text
     assert "/temple/live/state" in response.text
     assert "setInterval(refresh,5000)" in response.text
+    assert "working now" in response.text
+    assert "assigned" in response.text
+    assert "completed cycle" in response.text
