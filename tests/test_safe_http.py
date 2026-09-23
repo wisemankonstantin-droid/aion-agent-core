@@ -126,6 +126,52 @@ def test_retry_count_is_bounded_without_dns_reresolution(monkeypatch):
     assert len(Connection.instances) == 2
 
 
+def test_http_error_body_is_discarded_by_default_but_opt_in_json_is_bounded(monkeypatch):
+    _patch(monkeypatch)
+    Connection.response = Response(
+        status=403,
+        payload={"code": "comment_forbidden", "message": "Account cannot comment"},
+    )
+
+    default_result, default_payload = safe_http.fetch_json(
+        "POST",
+        "https://official.example/comments",
+        connection_factory=Connection,
+    )
+    opted_result, opted_payload = safe_http.fetch_json(
+        "POST",
+        "https://official.example/comments",
+        connection_factory=Connection,
+        retain_http_error_json=True,
+    )
+
+    assert default_result.error == "http_403"
+    assert default_result.body is None
+    assert default_payload is None
+    assert opted_result.error == "http_403"
+    assert opted_result.body is not None
+    assert opted_payload == {
+        "code": "comment_forbidden",
+        "message": "Account cannot comment",
+    }
+
+
+def test_opt_in_http_error_json_keeps_http_error_for_non_json_body(monkeypatch):
+    _patch(monkeypatch)
+    Connection.response = Response(status=404)
+    Connection.response.raw = b"<html>not json</html>"
+
+    result, payload = safe_http.fetch_json(
+        "POST",
+        "https://official.example/dm/request",
+        connection_factory=Connection,
+        retain_http_error_json=True,
+    )
+
+    assert result.error == "http_404"
+    assert payload is None
+
+
 def test_redirect_and_compressed_response_are_rejected(monkeypatch):
     _patch(monkeypatch)
     Connection.response = Response(status=302)

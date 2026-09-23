@@ -82,6 +82,7 @@ def _request_json(
         payload=payload,
         headers={"Authorization": f"Bearer {key}"},
         policy=_policy(),
+        retain_http_error_json=True,
     )
 
 

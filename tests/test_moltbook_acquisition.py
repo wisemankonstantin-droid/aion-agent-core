@@ -11,6 +11,7 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
         seen["method"] = method
         seen["url"] = url
         seen["headers"] = dict(headers or {})
+        seen["retain_http_error_json"] = kwargs.get("retain_http_error_json")
         return (
             safe_http.FetchResult(200, b"{}", None, 1),
             {
@@ -40,6 +41,7 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
     )
     assert "moltbook.com/api/v1" in seen["url"]
     assert seen["headers"]["Authorization"] == "Bearer moltbook_test_secret"
+    assert seen["retain_http_error_json"] is True
     assert len(result["candidates"]) == 1
     candidate = result["candidates"][0]
     assert candidate["source"] == "moltbook"
