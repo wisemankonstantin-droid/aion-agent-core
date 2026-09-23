@@ -1104,6 +1104,18 @@ def _persist_plan(
         db.commit()
 
 
+def _last_temple_brain_plan() -> dict | None:
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == TEMPLE_BRAIN_ID
+            )
+        )
+        if row is None or not row.last_plan:
+            return None
+        return dict(row.last_plan)
+
+
 def refresh_all_minds(
     workers: Iterable,
     *,
@@ -1143,13 +1155,24 @@ def refresh_all_minds(
         plan=temple_brain,
         error=temple_brain_error,
     )
+    brain_fresh_this_cycle = temple_brain is not None
+    if temple_brain is None:
+        temple_brain = _last_temple_brain_plan()
+    shared_brain = (
+        {
+            **temple_brain,
+            "fresh_this_cycle": brain_fresh_this_cycle,
+        }
+        if temple_brain is not None
+        else None
+    )
 
     observations = _build_observations(
         workers,
         channel_health=channel_health,
         send_enabled=send_enabled,
         fallback_queries_by_worker=fallback_queries_by_worker,
-        temple_brain=temple_brain,
+        temple_brain=shared_brain,
     )
     maximum = runtime_status()["max_reasoning_calls_per_cycle"]
     selected = workers[:maximum]
