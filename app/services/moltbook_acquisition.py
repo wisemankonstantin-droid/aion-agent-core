@@ -476,8 +476,8 @@ def build_outreach_comment(
         "external-spend decision",
     )
     text = (
-        f"{addressed}if this {intent_label} is still current, AION can check it "
-        "before money is committed: POST "
+        f"{addressed}if this {intent_label} is still current, AION can run a "
+        "zero-cost pre-spend check before money is committed: POST "
         f"{base}/commercial/route-intelligence/preflight. "
         "The free preflight returns GO/HOLD/STOP; it requires no membership or "
         "payment and executes no provider. If this thread is no longer relevant, "
