@@ -1,5 +1,44 @@
 # AION PROJECT STATE
 
+## 2026-09-23 live Temple / 100-worker acquisition continuation
+
+Current commercial objective remains **FIRST REAL SETTLED AGENT TRANSACTION**.
+
+Verified GitHub main before this bounded branch:
+
+`4b34423a4a178c7cd138b120e65c74795490c506`
+
+Verified live Render production remains:
+
+`f61a6c5ce2a52965dd6e89cd843f7f2809596212`
+
+Render AutoDeploy remains OFF. Production therefore does **not** yet contain
+the contextual outreach / parallel federated acquisition changes merged in PR
+#41/#42, nor the work on this branch.
+
+Current bounded branch:
+
+`aion/live-temple-100-worker-swarm-v1`
+
+This branch adds no fake agents and does not claim 100 customers. It defines a
+transparent force of 100 AION-operated logical acquisition workers, rotates
+safe external assignments across them, preserves shared dedupe and
+one-contact-per-target, drains legacy intent-campaign inventory, and exposes a
+read-only browser live control plane at `/temple/live`.
+
+The live Temple view is derived from durable campaigns, targets, contact
+attempts, safe conversation intelligence, inbound machine-entry counts and
+Route Intelligence purchase state. It does not expose credentials, raw private
+responses or payment payloads and does not fabricate activity.
+
+The earlier 302-request checkpoint remains traffic/distribution evidence, not
+302 independent agents. The current acquisition law requires inbound machine
+discoverability to remain parallel with outbound acquisition.
+
+No production deploy/configuration/secret/money mutation is authorized by this
+branch. Exact-head CI remains required before merge/release consideration.
+
+
 ## Checkpoint
 
 Date: 2026-09-21
