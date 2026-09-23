@@ -288,6 +288,18 @@ def test_moltbook_platform_error_summary_is_bounded_and_non_secret():
     assert redacted == "redacted_platform_error"
 
 
+def test_moltbook_comment_pacing_handles_naive_persisted_timestamp():
+    from datetime import datetime
+
+    class FakeDB:
+        def scalar(self, statement):
+            return datetime.utcnow()
+
+    wait = acquisition_swarm._seconds_until_moltbook_comment_allowed(FakeDB())
+
+    assert 0 <= wait <= acquisition_swarm.MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS
+
+
 def test_moltbook_comment_pacing_exceeds_official_twenty_second_floor():
     assert acquisition_swarm.MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS == 21
     assert acquisition_swarm.MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS > 20
