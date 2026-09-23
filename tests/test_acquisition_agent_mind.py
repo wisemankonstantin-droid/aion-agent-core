@@ -135,6 +135,72 @@ def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkey
     )
 
 
+def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-secret-header-only")
+    monkeypatch.delenv("AION_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("AION_AGENT_REASONING_EFFORT", raising=False)
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(_plan(WORKERS[0].id)),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen["url"] = url
+        seen["headers"] = dict(headers)
+        seen["json"] = json
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    observation = {
+        "worker_id": WORKERS[0].id,
+        "cognitive_profile": acquisition_agent_mind.cognitive_profile(WORKERS[0]),
+        "historical_performance": {
+            "targets": 2,
+            "qualified": 1,
+            "contacts": 1,
+            "delivered": 1,
+            "responses": 1,
+            "response_signal_counts": {"pricing_commercial_interest": 1},
+            "routing_feedback_count": 0,
+        },
+        "safe_memory": {"recent_outcomes": [], "channel_performance": {}, "lessons": []},
+        "channel_health": {"federated_a2a": {"public_discovery": True}},
+        "send_enabled": True,
+        "fallback_queries": ["provider selection"],
+        "hard_constraints": {"no_model_direct_network_write": True},
+    }
+
+    plan = acquisition_agent_mind._call_model(WORKERS[0].id, observation)
+
+    assert plan["contact_policy"] == "contact_one_if_qualified"
+    assert seen["url"] == acquisition_agent_mind.RESPONSES_URL
+    assert seen["headers"]["Authorization"] == "Bearer test-secret-header-only"
+    assert seen["json"]["model"] == "gpt-6-luna"
+    assert seen["json"]["reasoning"] == {"effort": "low"}
+    assert seen["json"]["store"] is False
+    assert seen["json"]["text"]["format"]["type"] == "json_schema"
+    assert seen["json"]["text"]["format"]["strict"] is True
+    assert seen["json"]["text"]["format"]["schema"]["additionalProperties"] is False
+    serialized_payload = json.dumps(seen["json"])
+    assert "test-secret-header-only" not in serialized_payload
+
+
 def test_plan_validation_and_executor_policy_fail_closed():
     plan = acquisition_agent_mind._validate_plan(
         {
