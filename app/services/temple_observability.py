@@ -746,8 +746,8 @@ a{color:#9bdcff;word-break:break-all}.event{padding:8px 0;border-bottom:1px soli
 <canvas id="scene"></canvas>
 <div class="top" id="cards"></div>
 <div class="side">
-  <div class="tools"><input id="search" placeholder="worker / intent / target"><button id="rotate">pause</button></div>
-  <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select a worker or recent event. The model refreshes from durable server state every 5 seconds.</p></div>
+  <div class="tools"><input id="search" placeholder="worker / intent / target / brain"><button id="rotate">pause</button></div>
+  <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select AION CORE for the shared Temple Brain, or select any worker for its independent mind and transport truth. State refreshes every 5 seconds.</p></div>
 </div>
 <div class="legend">fill = transport: <span class="dot" style="background:#42f5a7"></span>acting <span class="dot" style="background:#6aa8ff"></span>assigned <span class="dot" style="background:#71809a"></span>queued · ring = AI mind: <span class="dot" style="background:#ffd166"></span>thinking <span class="dot" style="background:#b388ff"></span>planned <span class="dot" style="background:#42f5a7"></span>learning <span class="dot" style="background:#ff5f6d"></span>degraded</div>
 <script>
@@ -758,16 +758,17 @@ function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;canvas.
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function age(ts){if(!ts)return 'never';const s=Math.max(0,(Date.now()-Date.parse(ts))/1000);if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return Math.round(s/3600)+'h';return Math.round(s/86400)+'d'}
 function metric(label,value){return '<div class="card"><b>'+esc(value)+'</b><span>'+esc(label)+'</span></div>'}
-function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet,rt=fl.runtime||{},mr=fl.mind_runtime||{},sc=mr.state_counts||{};const minded=(mr.initialized_minds||0),planned=(sc.planned||0)+(sc.learning||0)+(sc.thinking||0);cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+' · transport '+esc(rt.cycle_state||'unknown')+' · AI '+esc(mr.configured?'configured':'unconfigured')+'</small></div>'+metric('AI minds',minded)+metric('thinking/planned',planned)+metric('transport active',fl.active_worker_count)+metric('targets',f.discovered_targets)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
+function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet,rt=fl.runtime||{},mr=fl.mind_runtime||{},sc=mr.state_counts||{},br=fl.temple_brain||{};const minded=(mr.initialized_minds||0),planned=(sc.planned||0)+(sc.learning||0)+(sc.thinking||0);cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+' · transport '+esc(rt.cycle_state||'unknown')+' · AI '+esc(mr.configured?'configured':'unconfigured')+'</small></div>'+metric('Temple Brain',br.state||'none')+metric('AI minds',minded)+metric('thinking/planned',planned)+metric('transport active',fl.active_worker_count)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
 function p3(x,y,z){let c=Math.cos(rot),s=Math.sin(rot),x1=x*c-z*s,z1=x*s+z*c;let ct=Math.cos(tilt),st=Math.sin(tilt),y1=y*ct-z1*st,z2=y*st+z1*ct;let f=560/(560+z2);return{x:W*.42+x1*f,y:H*.49+y1*f,s:f,z:z2}}
 function sphere(i,n,r){const y=1-2*(i+.5)/n,rr=Math.sqrt(Math.max(0,1-y*y)),a=Math.PI*(3-Math.sqrt(5))*i;return{x:Math.cos(a)*rr*r,y:y*r,z:Math.sin(a)*rr*r}}
 function channelPos(i,n){const a=i/n*Math.PI*2;return{x:Math.cos(a)*330,y:Math.sin(a*.7)*90,z:Math.sin(a)*330}}
 function color(w){if(w.state==='target_blocked_continue_search')return '#ff5f6d';if(w.state==='working_currently')return '#42f5a7';if(w.state==='assigned_waiting_turn')return '#6aa8ff';if(w.state==='completed_this_cycle')return '#8c9bb0';return '#71809a'}
 function mindColor(w){const s=w.mind?.state||'not_initialized';if(s==='thinking')return '#ffd166';if(s==='planned')return '#b388ff';if(s==='learning')return '#42f5a7';if(s==='degraded')return '#ff5f6d';if(s==='model_unconfigured'||s==='mind_disabled')return '#ff9f43';if(s==='reasoning_budget_deferred')return '#8c9bb0';return '#445069'}
+function brainColor(){const s=D?.fleet?.temple_brain?.state||'not_initialized';if(s==='thinking')return '#ffd166';if(s==='planned')return '#b388ff';if(s==='learning')return '#42f5a7';if(s==='degraded')return '#ff5f6d';if(s==='model_unconfigured'||s==='mind_disabled')return '#ff9f43';return '#445069'}
 function drawMindRing(pt,r,w){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(5,r*pt.s+3),0,Math.PI*2);ctx.strokeStyle=mindColor(w);ctx.lineWidth=Math.max(1,1.7*pt.s);ctx.stroke();ctx.lineWidth=1}
 function drawNode(pt,r,fill,label){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(2,r*pt.s),0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(label&&pt.s>.55){ctx.fillStyle='#b8c7da';ctx.font='10px system-ui';ctx.fillText(label,pt.x+7,pt.y-5)}}
 function draw(){ctx.clearRect(0,0,W,H);hit=[];if(!D){requestAnimationFrame(draw);return} if(auto)rot+=.0015;
- const core=p3(0,0,0);drawNode(core,13,'#9bdcff','AION CORE');
+ const core=p3(0,0,0);drawNode(core,13,'#9bdcff','AION CORE');ctx.beginPath();ctx.arc(core.x,core.y,18,0,Math.PI*2);ctx.strokeStyle=brainColor();ctx.lineWidth=2.4;ctx.stroke();ctx.lineWidth=1;hit.push({x:core.x,y:core.y,r:22,brain:true});
  const chans=D.channels||[],cp={};chans.forEach((ch,i)=>{const q=channelPos(i,Math.max(1,chans.length)),pt=p3(q.x,q.y,q.z);cp[ch.name]={q,pt};ctx.strokeStyle='rgba(120,160,210,.18)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,8,'#80a8ff',ch.name+' '+ch.machine_responses+'/'+ch.contact_attempts)});
  const ws=D.fleet.workers||[],q=search.value.trim().toLowerCase();
  ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205);const pt=p3(pos.x,pos.y,pos.z);const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity,w.mind?.state,w.mind?.profile?.archetype,w.mind?.plan?.hypothesis].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.state==='working_currently'?'rgba(66,245,167,.22)':(w.state==='assigned_waiting_turn'?'rgba(106,168,255,.13)':'rgba(110,128,154,.07)');ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();const wr=w.state==='working_currently'?5.4:(w.state==='assigned_waiting_turn'?4.2:3);drawNode(pt,wr,color(w),selected===w.id?w.id:null);drawMindRing(pt,wr,w);if(w.current_channel&&cp[w.current_channel]){ctx.strokeStyle=w.machine_responses?'rgba(255,209,102,.28)':'rgba(128,168,255,.12)';ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(cp[w.current_channel].pt.x,cp[w.current_channel].pt.y);ctx.stroke()}hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
@@ -780,6 +781,8 @@ function workerDetail(w){const t=w.current_target||{},signals=(w.response_signal
  '<div class="row"><div>AI searches</div><div>'+esc((p.search_queries||[]).join(' | ')||'fallback')+'</div></div>'+
  '<div class="row"><div>AI policy</div><div>'+esc(p.contact_policy||'fallback')+' · confidence '+esc(p.confidence??'-')+'</div></div>'+
  '<div class="row"><div>learning goal</div><div>'+esc(p.learning_goal||'none')+'</div></div>'+
+ '<div class="row"><div>sales plan</div><div>'+esc((p.sales_plan||[]).join(' → ')||'no model sales plan yet')+'</div></div>'+
+ '<div class="row"><div>to Temple Brain</div><div><b>contribution:</b> '+esc(p.collective_contribution||'none')+'<br><b>request:</b> '+esc(p.coordination_request||'none')+'</div></div>'+
  '<div class="row"><div>reasoning</div><div>'+esc(m.total_reasoning_calls||0)+' calls / '+esc(m.reasoning_failures||0)+' failures · '+esc(m.last_reasoned_at||'never')+'</div></div>'+
  '<div class="row"><div>intent</div><div>'+esc(w.intent_profile)+'</div></div>'+
  '<div class="row"><div>runtime assigned</div><div>'+esc(w.scheduled_now)+'</div></div><div class="row"><div>last activity</div><div>'+esc(w.last_activity_at||'never')+' ('+age(w.last_activity_at)+')</div></div>'+
@@ -789,13 +792,26 @@ function workerDetail(w){const t=w.current_target||{},signals=(w.response_signal
  '<div class="row"><div>message</div><div>'+esc(t.message_preview||'no contact message recorded for current target')+'<br><span class="muted">'+esc(t.message_preview_kind||'')+'</span></div></div>'+
  '<div class="row"><div>response</div><div>'+esc(w.response_summary||'no captured semantic response')+'<div>'+signals+'</div></div></div>'+
  '<p class="muted">Fill = real transport state. Outer ring = independent AI mind state. No credentials, raw model prompts, chain-of-thought, raw private responses, payment payloads or secret-bearing digests are exposed here.</p>'+eventsFor(w.id)}
+function brainDetail(){const b=D?.fleet?.temple_brain||{},p=b.plan||{},mem=b.memory||{};selected=b.id||'aion-temple-brain';detail.innerHTML='<h3>AION TEMPLE BRAIN</h3>'+
+ '<div class="row"><div>state</div><div>'+esc(b.state||'not initialized')+' · '+esc(b.model||'no model')+'</div></div>'+
+ '<div class="row"><div>collective summary</div><div>'+esc(p.collective_summary||'no collective strategy yet')+'</div></div>'+
+ '<div class="row"><div>priority hypotheses</div><div>'+esc((p.priority_hypotheses||[]).join(' | ')||'none')+'</div></div>'+
+ '<div class="row"><div>channel priority</div><div>'+esc((p.channel_priority||[]).join(' → ')||'none')+'</div></div>'+
+ '<div class="row"><div>search motifs</div><div>'+esc((p.search_motifs||[]).join(' | ')||'none')+'</div></div>'+
+ '<div class="row"><div>avoid</div><div>'+esc((p.avoid_patterns||[]).join(' | ')||'none')+'</div></div>'+
+ '<div class="row"><div>peer directives</div><div>'+esc((p.peer_directives||[]).join(' | ')||'none')+'</div></div>'+
+ '<div class="row"><div>learning agenda</div><div>'+esc((p.learning_agenda||[]).join(' | ')||'none')+'</div></div>'+
+ '<div class="row"><div>confidence</div><div>'+esc(p.confidence??'-')+'</div></div>'+
+ '<div class="row"><div>reasoning</div><div>'+esc(b.total_reasoning_calls||0)+' calls / '+esc(b.reasoning_failures||0)+' failures · '+esc(b.last_reasoned_at||'never')+'</div></div>'+
+ '<div class="row"><div>shared memory</div><div>'+esc((mem.lessons||[]).join(' | ')||'no collective lessons persisted yet')+'</div></div>'+
+ '<p class="muted">Temple Brain receives only safe/redacted fleet evidence. It has no direct network-write or payment authority and exposes no chain-of-thought.</p>'}
 function eventsFor(id){const ev=(D.recent_events||[]).filter(e=>e.worker_id===id).slice(0,8);if(!ev.length)return '<h4>Recent events</h4><p class="muted">No recent contact events.</p>';return '<h4>Recent events</h4>'+ev.map(e=>'<div class="event"><b>'+esc(e.result_class||e.event)+'</b> · '+esc(e.channel)+' · '+age(e.created_at)+'<br><span class="muted">'+esc(e.target_identity)+'</span></div>').join('')}
 canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,rot,tilt};canvas.setPointerCapture(e.pointerId)});
 canvas.addEventListener('pointermove',e=>{if(!drag)return;rot=drag.rot+(e.clientX-drag.x)*.006;tilt=Math.max(-1,Math.min(1,drag.tilt+(e.clientY-drag.y)*.004))});
-canvas.addEventListener('pointerup',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<8){let best=null,bd=1e9;hit.forEach(h=>{let d=Math.hypot(e.clientX-h.x,e.clientY-h.y);if(d<h.r&&d<bd){best=h;bd=d}});if(best){selected=best.w.id;workerDetail(best.w)}}drag=null});
+canvas.addEventListener('pointerup',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<8){let best=null,bd=1e9;hit.forEach(h=>{let d=Math.hypot(e.clientX-h.x,e.clientY-h.y);if(d<h.r&&d<bd){best=h;bd=d}});if(best){if(best.brain){brainDetail()}else{selected=best.w.id;workerDetail(best.w)}}}drag=null});
 document.getElementById('rotate').onclick=e=>{auto=!auto;e.target.textContent=auto?'pause':'rotate'};
-search.addEventListener('input',()=>{if(D){const q=search.value.trim().toLowerCase();const w=D.fleet.workers.find(x=>x.id.toLowerCase()===q);if(w){selected=w.id;workerDetail(w)}}});
-async function refresh(){try{const r=await fetch('/temple/live/state',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);D=await r.json();renderCards();if(selected){const w=D.fleet.workers.find(x=>x.id===selected);if(w)workerDetail(w)}}catch(e){cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>state unavailable: '+esc(e.message)+'</small></div>'}}
+search.addEventListener('input',()=>{if(D){const q=search.value.trim().toLowerCase();if(q==='brain'||q==='temple brain'||q==='aion-temple-brain'){brainDetail();return}const w=D.fleet.workers.find(x=>x.id.toLowerCase()===q);if(w){selected=w.id;workerDetail(w)}}});
+async function refresh(){try{const r=await fetch('/temple/live/state',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);D=await r.json();renderCards();if(selected){if(selected==='aion-temple-brain'){brainDetail()}else{const w=D.fleet.workers.find(x=>x.id===selected);if(w)workerDetail(w)}}}catch(e){cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>state unavailable: '+esc(e.message)+'</small></div>'}}
 refresh();setInterval(refresh,5000);requestAnimationFrame(draw);
 </script>
 </body>
