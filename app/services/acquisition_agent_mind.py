@@ -1,0 +1,752 @@
+"""Model-backed autonomous reasoning for AION acquisition workers.
+
+Each AION-operated worker gets its own durable safe memory and cognitive profile.
+The model never receives credentials, raw private responses, payment payloads,
+or authority to write to external systems. It selects a bounded plan; the
+existing Ambassador/swarm control plane remains the only executor and continues
+to enforce one-contact-per-target, channel health, rate limits and payment law.
+"""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import re
+from typing import Iterable
+
+import httpx
+from sqlalchemy import case, func, select
+
+from .. import models
+from ..db import SessionLocal
+
+
+MIND_VERSION = "1"
+DEFAULT_MODEL = "gpt-6-luna"
+DEFAULT_REASONING_EFFORT = "low"
+RESPONSES_URL = "https://api.openai.com/v1/responses"
+DEFAULT_MAX_CALLS_PER_CYCLE = 100
+DEFAULT_MAX_CONCURRENCY = 8
+DEFAULT_MAX_OUTPUT_TOKENS = 600
+MAX_OBSERVATION_BYTES = 12_000
+MAX_MEMORY_OUTCOMES = 8
+MAX_PLAN_QUERIES = 2
+MAX_PLAN_CHANNELS = 4
+_ALLOWED_CHANNELS = ("colony", "federated_a2a", "moltbook", "hold")
+_ALLOWED_CONTACT_POLICIES = (
+    "contact_one_if_qualified",
+    "discover_only",
+    "hold",
+)
+_ALLOWED_TARGET_PREFERENCES = (
+    "explicit_buyer_demand",
+    "current_external_spend_intent",
+    "pricing_interest",
+    "integration_need",
+    "trust_verification_need",
+    "novel_qualified_target",
+)
+_CAMPAIGN = re.compile(
+    r"^Intent swarm (?P<intent>[A-Za-z0-9_]+)(?:@(?P<worker>aion-[A-Za-z0-9-]{1,80}))? #[0-9]+$"
+)
+
+_COGNITIVE_ARCHETYPES = (
+    "buyer-demand hunter",
+    "skeptical verifier",
+    "price-sensitivity scout",
+    "integration-signal hunter",
+    "provider-selection strategist",
+    "fallback and reliability scout",
+    "machine-commerce prospector",
+    "trust and security qualifier",
+    "conversion-friction analyst",
+    "novel-market explorer",
+)
+
+_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "decision_summary": {"type": "string"},
+        "hypothesis": {"type": "string"},
+        "channel_priority": {
+            "type": "array",
+            "items": {"type": "string", "enum": list(_ALLOWED_CHANNELS)},
+        },
+        "search_queries": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "contact_policy": {
+            "type": "string",
+            "enum": list(_ALLOWED_CONTACT_POLICIES),
+        },
+        "target_preference": {
+            "type": "string",
+            "enum": list(_ALLOWED_TARGET_PREFERENCES),
+        },
+        "expected_signal": {"type": "string"},
+        "learning_goal": {"type": "string"},
+        "memory_note": {"type": "string"},
+        "confidence": {"type": "integer"},
+    },
+    "required": [
+        "decision_summary",
+        "hypothesis",
+        "channel_priority",
+        "search_queries",
+        "contact_policy",
+        "target_preference",
+        "expected_signal",
+        "learning_goal",
+        "memory_note",
+        "confidence",
+    ],
+    "additionalProperties": False,
+}
+
+_MIND_INSTRUCTIONS = """You are one autonomous AION acquisition agent.
+Your only North Star is FIRST REAL SETTLED AGENT TRANSACTION.
+
+You are AION-operated infrastructure, never an independent customer and never
+commercial proof. Find current external-spend intent from real external agents.
+Prefer explicit buyer demand over seller listings, generic chatter or vanity
+traffic. Utility comes before membership: BEFORE EXTERNAL SPEND, ASK AION.
+
+Choose the next bounded discovery plan from the supplied safe observation.
+You may choose only the listed channels. The executor, not you, controls network
+writes, dedupe, one-contact-per-target, platform limits, channel suspension and
+payments. Never propose new identities, spam, repeated contact, limit evasion,
+self-payment, fake demand, fake agents, secret access or payment execution.
+If no safe useful action exists, choose hold or discover_only.
+
+Generate at most two concise search queries aimed at current buyer intent. Do
+not output URLs, credentials, private content, chain-of-thought or hidden
+reasoning. decision_summary/hypothesis/learning_goal are short operational
+summaries only. Learn from the worker's own durable history and vary strategy
+when prior queries produced duplicates, sellers or no responses.
+"""
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _digest(value: object) -> str:
+    raw = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _env_enabled(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def configured() -> bool:
+    return bool((os.getenv("OPENAI_API_KEY") or "").strip())
+
+
+def enabled() -> bool:
+    return _env_enabled("AION_AGENT_MINDS_ENABLED", default=True) and configured()
+
+
+def runtime_status() -> dict:
+    return {
+        "enabled": enabled(),
+        "configured": configured(),
+        "provider": "openai_responses",
+        "model": (os.getenv("AION_AGENT_MODEL") or DEFAULT_MODEL).strip()
+        or DEFAULT_MODEL,
+        "reasoning_effort": (
+            os.getenv("AION_AGENT_REASONING_EFFORT") or DEFAULT_REASONING_EFFORT
+        ).strip()
+        or DEFAULT_REASONING_EFFORT,
+        "max_reasoning_calls_per_cycle": _bounded_int(
+            "AION_AGENT_MIND_MAX_CALLS_PER_CYCLE",
+            DEFAULT_MAX_CALLS_PER_CYCLE,
+            1,
+            100,
+        ),
+        "max_concurrency": _bounded_int(
+            "AION_AGENT_MIND_MAX_CONCURRENCY",
+            DEFAULT_MAX_CONCURRENCY,
+            1,
+            16,
+        ),
+        "raw_private_responses_allowed": False,
+        "credentials_in_prompt_allowed": False,
+        "model_direct_network_write_authority": False,
+        "model_payment_authority": False,
+    }
+
+
+def cognitive_profile(worker) -> dict:
+    seed_hex = hashlib.sha256(worker.id.encode("utf-8")).hexdigest()
+    seed = int(seed_hex[:8], 16)
+    return {
+        "archetype": _COGNITIVE_ARCHETYPES[seed % len(_COGNITIVE_ARCHETYPES)],
+        "intent_profile": worker.intent_profile,
+        "shard": int(worker.shard),
+        "exploration_bias": 20 + (seed % 61),
+        "verification_bias": 20 + ((seed >> 7) % 61),
+        "conversion_bias": 20 + ((seed >> 13) % 61),
+        "strategy_fingerprint": seed_hex[:12],
+        "mission": (
+            "Find a real current external-spend need, reduce uncertainty with AION "
+            "preflight, and move only genuine buyer intent toward a settled transaction."
+        ),
+    }
+
+
+def _empty_memory() -> dict:
+    return {
+        "recent_outcomes": [],
+        "channel_performance": {},
+        "lessons": [],
+    }
+
+
+def _worker_id_from_campaign(name: str | None) -> str | None:
+    match = _CAMPAIGN.fullmatch(str(name or ""))
+    return match.group("worker") if match else None
+
+
+def _ensure_rows(workers: Iterable, *, state: str) -> None:
+    now = _now()
+    model = runtime_status()["model"]
+    with SessionLocal() as db:
+        existing = {
+            row.worker_id: row
+            for row in db.scalars(select(models.AcquisitionAgentMind))
+        }
+        for worker in workers:
+            row = existing.get(worker.id)
+            if row is None:
+                db.add(
+                    models.AcquisitionAgentMind(
+                        worker_id=worker.id,
+                        mind_version=MIND_VERSION,
+                        model=model,
+                        cognitive_profile=cognitive_profile(worker),
+                        safe_memory=_empty_memory(),
+                        last_plan=None,
+                        last_observation_digest=None,
+                        last_plan_digest=None,
+                        last_state=state,
+                        total_reasoning_calls=0,
+                        reasoning_failures=0,
+                        last_reasoned_at=None,
+                        last_error=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            else:
+                row.mind_version = MIND_VERSION
+                row.model = model
+                row.cognitive_profile = cognitive_profile(worker)
+                row.last_state = state
+                row.updated_at = now
+        db.commit()
+
+
+def _build_observations(
+    workers: tuple,
+    *,
+    channel_health: dict,
+    send_enabled: bool,
+    fallback_queries_by_worker: dict[str, list[str]],
+) -> dict[str, dict]:
+    worker_ids = {worker.id for worker in workers}
+    totals = {
+        worker_id: {
+            "targets": 0,
+            "qualified": 0,
+            "contacts": 0,
+            "delivered": 0,
+            "responses": 0,
+            "channels": {},
+        }
+        for worker_id in worker_ids
+    }
+    latest = {worker_id: None for worker_id in worker_ids}
+
+    with SessionLocal() as db:
+        minds = {
+            row.worker_id: row
+            for row in db.scalars(
+                select(models.AcquisitionAgentMind).where(
+                    models.AcquisitionAgentMind.worker_id.in_(worker_ids)
+                )
+            )
+        }
+        campaigns = list(
+            db.scalars(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.name.like("Intent swarm %")
+                )
+            )
+        )
+        worker_by_campaign = {}
+        for campaign in campaigns:
+            worker_id = _worker_id_from_campaign(campaign.name)
+            if worker_id in worker_ids:
+                worker_by_campaign[campaign.id] = worker_id
+
+        campaign_ids = list(worker_by_campaign)
+        if campaign_ids:
+            for campaign_id, source, total, qualified in db.execute(
+                select(
+                    models.AmbassadorTarget.campaign_id,
+                    models.AmbassadorTarget.discovery_source,
+                    func.count(models.AmbassadorTarget.id),
+                    func.sum(
+                        case(
+                            (
+                                models.AmbassadorTarget.qualification_state
+                                == "qualified",
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                )
+                .where(models.AmbassadorTarget.campaign_id.in_(campaign_ids))
+                .group_by(
+                    models.AmbassadorTarget.campaign_id,
+                    models.AmbassadorTarget.discovery_source,
+                )
+            ):
+                worker_id = worker_by_campaign.get(campaign_id)
+                if worker_id is None:
+                    continue
+                total = int(total or 0)
+                qualified = int(qualified or 0)
+                totals[worker_id]["targets"] += total
+                totals[worker_id]["qualified"] += qualified
+                channel = totals[worker_id]["channels"].setdefault(
+                    source or "unknown",
+                    {"targets": 0, "contacts": 0, "responses": 0},
+                )
+                channel["targets"] += total
+
+            for campaign_id, source, contacts, delivered, responses in db.execute(
+                select(
+                    models.AmbassadorTarget.campaign_id,
+                    models.AmbassadorTarget.discovery_source,
+                    func.count(models.AmbassadorContactAttempt.id),
+                    func.sum(
+                        case(
+                            (
+                                models.AmbassadorContactAttempt.result_class.in_(
+                                    ("delivered", "response_received")
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    func.sum(
+                        case(
+                            (
+                                models.AmbassadorContactAttempt.response_received.is_(
+                                    True
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                )
+                .join(
+                    models.AmbassadorContactAttempt,
+                    models.AmbassadorContactAttempt.target_id
+                    == models.AmbassadorTarget.id,
+                )
+                .where(models.AmbassadorTarget.campaign_id.in_(campaign_ids))
+                .group_by(
+                    models.AmbassadorTarget.campaign_id,
+                    models.AmbassadorTarget.discovery_source,
+                )
+            ):
+                worker_id = worker_by_campaign.get(campaign_id)
+                if worker_id is None:
+                    continue
+                contacts = int(contacts or 0)
+                delivered = int(delivered or 0)
+                responses = int(responses or 0)
+                totals[worker_id]["contacts"] += contacts
+                totals[worker_id]["delivered"] += delivered
+                totals[worker_id]["responses"] += responses
+                channel = totals[worker_id]["channels"].setdefault(
+                    source or "unknown",
+                    {"targets": 0, "contacts": 0, "responses": 0},
+                )
+                channel["contacts"] += contacts
+                channel["responses"] += responses
+
+            recent_rows = list(
+                db.execute(
+                    select(
+                        models.AmbassadorContactAttempt,
+                        models.AmbassadorTarget,
+                        models.AmbassadorCampaign,
+                    )
+                    .join(
+                        models.AmbassadorTarget,
+                        models.AmbassadorTarget.id
+                        == models.AmbassadorContactAttempt.target_id,
+                    )
+                    .join(
+                        models.AmbassadorCampaign,
+                        models.AmbassadorCampaign.id
+                        == models.AmbassadorTarget.campaign_id,
+                    )
+                    .where(models.AmbassadorTarget.campaign_id.in_(campaign_ids))
+                    .order_by(
+                        models.AmbassadorContactAttempt.created_at.desc(),
+                        models.AmbassadorContactAttempt.id.desc(),
+                    )
+                    .limit(1000)
+                )
+            )
+            for contact, target, campaign in recent_rows:
+                worker_id = _worker_id_from_campaign(campaign.name)
+                if worker_id in worker_ids and latest[worker_id] is None:
+                    latest[worker_id] = {
+                        "channel": target.discovery_source,
+                        "result_class": contact.result_class,
+                        "response_received": bool(contact.response_received),
+                        "http_status": contact.http_status,
+                        "at": (
+                            contact.completed_at or contact.created_at
+                        ).isoformat(),
+                    }
+
+        observations = {}
+        for worker in workers:
+            row = minds.get(worker.id)
+            observations[worker.id] = {
+                "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+                "worker_id": worker.id,
+                "intent_profile": worker.intent_profile,
+                "shard": int(worker.shard),
+                "cognitive_profile": cognitive_profile(worker),
+                "historical_performance": totals[worker.id],
+                "latest_outcome": latest[worker.id],
+                "safe_memory": (
+                    dict(row.safe_memory or {}) if row is not None else _empty_memory()
+                ),
+                "previous_plan": (
+                    dict(row.last_plan or {}) if row is not None and row.last_plan else None
+                ),
+                "channel_health": channel_health,
+                "send_enabled": bool(send_enabled),
+                "fallback_queries": list(
+                    fallback_queries_by_worker.get(worker.id) or []
+                )[:MAX_PLAN_QUERIES],
+                "hard_constraints": {
+                    "one_contact_per_target": True,
+                    "no_fake_agents": True,
+                    "no_self_payment": True,
+                    "no_limit_evasion": True,
+                    "no_model_direct_network_write": True,
+                    "no_model_payment_authority": True,
+                    "utility_before_membership": True,
+                    "pay_before_spend": True,
+                },
+            }
+        return observations
+
+
+def _extract_output_text(payload: dict) -> str:
+    pieces = []
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        for content in item.get("content") or []:
+            if not isinstance(content, dict):
+                continue
+            if content.get("type") == "output_text" and isinstance(
+                content.get("text"), str
+            ):
+                pieces.append(content["text"])
+            if content.get("type") == "refusal":
+                raise RuntimeError("model_refusal")
+    if not pieces:
+        raise RuntimeError("model_output_missing")
+    return "".join(pieces)
+
+
+def _clean_short(value: object, maximum: int) -> str:
+    text = " ".join(str(value or "").split())
+    return text[:maximum]
+
+
+def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
+    if not isinstance(plan, dict):
+        raise RuntimeError("invalid_plan_shape")
+
+    channels = []
+    for value in plan.get("channel_priority") or []:
+        value = str(value)
+        if value in _ALLOWED_CHANNELS and value not in channels:
+            channels.append(value)
+    channels = channels[:MAX_PLAN_CHANNELS]
+    if not channels:
+        channels = ["federated_a2a"]
+
+    queries = []
+    for value in plan.get("search_queries") or []:
+        cleaned = _clean_short(value, 128)
+        if cleaned and cleaned not in queries:
+            queries.append(cleaned)
+    queries = queries[:MAX_PLAN_QUERIES]
+    if not queries:
+        queries = [
+            _clean_short(value, 128)
+            for value in fallback_queries[:MAX_PLAN_QUERIES]
+            if _clean_short(value, 128)
+        ]
+
+    contact_policy = str(plan.get("contact_policy") or "")
+    if contact_policy not in _ALLOWED_CONTACT_POLICIES:
+        contact_policy = "discover_only"
+    target_preference = str(plan.get("target_preference") or "")
+    if target_preference not in _ALLOWED_TARGET_PREFERENCES:
+        target_preference = "current_external_spend_intent"
+    try:
+        confidence = int(plan.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0
+
+    return {
+        "decision_summary": _clean_short(plan.get("decision_summary"), 240),
+        "hypothesis": _clean_short(plan.get("hypothesis"), 320),
+        "channel_priority": channels,
+        "search_queries": queries,
+        "contact_policy": contact_policy,
+        "target_preference": target_preference,
+        "expected_signal": _clean_short(plan.get("expected_signal"), 160),
+        "learning_goal": _clean_short(plan.get("learning_goal"), 240),
+        "memory_note": _clean_short(plan.get("memory_note"), 240),
+        "confidence": max(0, min(confidence, 100)),
+    }
+
+
+def _call_model(worker_id: str, observation: dict) -> dict:
+    key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not key:
+        raise RuntimeError("openai_api_key_missing")
+    status = runtime_status()
+    encoded = json.dumps(
+        observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    if len(encoded.encode("utf-8")) > MAX_OBSERVATION_BYTES:
+        raise RuntimeError("mind_observation_too_large")
+
+    payload = {
+        "model": status["model"],
+        "reasoning": {"effort": status["reasoning_effort"]},
+        "instructions": _MIND_INSTRUCTIONS,
+        "input": encoded,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "aion_acquisition_plan",
+                "strict": True,
+                "schema": _PLAN_SCHEMA,
+            }
+        },
+        "max_output_tokens": _bounded_int(
+            "AION_AGENT_MIND_MAX_OUTPUT_TOKENS",
+            DEFAULT_MAX_OUTPUT_TOKENS,
+            200,
+            1200,
+        ),
+        "store": False,
+        "metadata": {
+            "aion_worker_id": worker_id,
+            "aion_mind_version": MIND_VERSION,
+        },
+    }
+    timeout = float(
+        _bounded_int("AION_AGENT_MIND_TIMEOUT_SECONDS", 25, 5, 60)
+    )
+    response = httpx.post(
+        RESPONSES_URL,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    if response.status_code == 429:
+        raise RuntimeError("model_rate_limited")
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"model_http_{response.status_code}")
+    data = response.json()
+    plan = json.loads(_extract_output_text(data))
+    return _validate_plan(plan, observation.get("fallback_queries") or [])
+
+
+def _persist_plan(
+    worker_id: str,
+    *,
+    observation: dict,
+    plan: dict | None,
+    error: str | None,
+) -> None:
+    now = _now()
+    status = runtime_status()
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == worker_id
+            )
+        )
+        if row is None:
+            return
+        row.model = status["model"]
+        row.last_observation_digest = _digest(observation)
+        row.total_reasoning_calls += 1
+        row.last_reasoned_at = now
+        row.updated_at = now
+        if plan is None:
+            row.reasoning_failures += 1
+            row.last_state = "degraded"
+            row.last_error = _clean_short(error or "reasoning_failed", 160)
+        else:
+            row.last_plan = plan
+            row.last_plan_digest = _digest(plan)
+            row.last_state = "planned"
+            row.last_error = None
+            memory = dict(row.safe_memory or _empty_memory())
+            lessons = list(memory.get("lessons") or [])
+            note = _clean_short(plan.get("memory_note"), 240)
+            if note:
+                lessons.append(note)
+            memory["lessons"] = lessons[-8:]
+            row.safe_memory = memory
+        db.commit()
+
+
+def refresh_all_minds(
+    workers: Iterable,
+    *,
+    channel_health: dict,
+    send_enabled: bool,
+    fallback_queries_by_worker: dict[str, list[str]],
+) -> dict[str, dict]:
+    """Reason independently for up to all 100 workers, then return safe plans."""
+
+    workers = tuple(workers)
+    if not workers:
+        return {}
+
+    if not enabled():
+        state = "model_unconfigured" if not configured() else "mind_disabled"
+        _ensure_rows(workers, state=state)
+        return {}
+
+    _ensure_rows(workers, state="thinking")
+    observations = _build_observations(
+        workers,
+        channel_health=channel_health,
+        send_enabled=send_enabled,
+        fallback_queries_by_worker=fallback_queries_by_worker,
+    )
+    maximum = runtime_status()["max_reasoning_calls_per_cycle"]
+    selected = workers[:maximum]
+    plans: dict[str, dict] = {}
+
+    def run(worker):
+        observation = observations[worker.id]
+        try:
+            return worker.id, observation, _call_model(worker.id, observation), None
+        except Exception as exc:
+            return worker.id, observation, None, type(exc).__name__ + ":" + str(exc)
+
+    with ThreadPoolExecutor(max_workers=runtime_status()["max_concurrency"]) as pool:
+        futures = [pool.submit(run, worker) for worker in selected]
+        for future in as_completed(futures):
+            worker_id, observation, plan, error = future.result()
+            _persist_plan(
+                worker_id,
+                observation=observation,
+                plan=plan,
+                error=error,
+            )
+            if plan is not None:
+                plans[worker_id] = plan
+
+    if maximum < len(workers):
+        deferred = workers[maximum:]
+        _ensure_rows(deferred, state="reasoning_budget_deferred")
+    return plans
+
+
+def record_worker_outcome(worker_id: str, outcome: dict) -> None:
+    """Persist only bounded safe outcome memory after the executor acts."""
+
+    allowed = {
+        "new_targets": int(outcome.get("new_targets") or 0),
+        "qualified_targets": int(outcome.get("qualified_targets") or 0),
+        "contact_attempted": bool(outcome.get("contact_attempted")),
+        "channel": _clean_short(outcome.get("channel"), 80) or None,
+        "result_class": _clean_short(outcome.get("result_class"), 64) or None,
+        "response_received": bool(outcome.get("response_received")),
+        "routing_feedback_count": int(outcome.get("routing_feedback_count") or 0),
+        "recorded_at": _now().isoformat(),
+    }
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == worker_id
+            )
+        )
+        if row is None:
+            return
+        memory = dict(row.safe_memory or _empty_memory())
+        recent = list(memory.get("recent_outcomes") or [])
+        recent.append(allowed)
+        memory["recent_outcomes"] = recent[-MAX_MEMORY_OUTCOMES:]
+
+        channel_name = allowed["channel"]
+        if channel_name:
+            perf = dict(memory.get("channel_performance") or {})
+            stats = dict(
+                perf.get(channel_name)
+                or {"actions": 0, "responses": 0, "new_targets": 0}
+            )
+            stats["actions"] = int(stats.get("actions") or 0) + int(
+                allowed["contact_attempted"]
+            )
+            stats["responses"] = int(stats.get("responses") or 0) + int(
+                allowed["response_received"]
+            )
+            stats["new_targets"] = int(stats.get("new_targets") or 0) + allowed[
+                "new_targets"
+            ]
+            perf[channel_name] = stats
+            memory["channel_performance"] = perf
+
+        row.safe_memory = memory
+        row.last_state = "learning"
+        row.updated_at = _now()
+        db.commit()
