@@ -308,6 +308,91 @@ def test_temple_brain_reasoning_request_is_structured_safe_and_not_stored(monkey
     assert "brain-test-secret-header-only" not in json.dumps(seen["json"])
 
 
+def test_cloudru_worker_uses_chat_completions_and_structured_output(monkeypatch):
+    monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
+    monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")
+    monkeypatch.setenv(
+        "AION_REASONING_BASE_URL", "https://foundation-models.api.cloud.ru/v1"
+    )
+    monkeypatch.setenv("AION_AGENT_MODEL", "ai-sage/GigaChat3-10B-A1.8B")
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"content": json.dumps(_plan(WORKERS[0].id))}}
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen.update(url=url, headers=dict(headers), json=json, timeout=timeout)
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    observation = {
+        "worker_id": WORKERS[0].id,
+        "fallback_queries": ["provider selection"],
+    }
+
+    plan = acquisition_agent_mind._call_model(WORKERS[0].id, observation)
+
+    assert plan["contact_policy"] == "contact_one_if_qualified"
+    assert seen["url"] == "https://foundation-models.api.cloud.ru/v1/chat/completions"
+    assert seen["headers"]["Authorization"] == "Bearer cloudru-worker-secret"
+    assert seen["json"]["model"] == "ai-sage/GigaChat3-10B-A1.8B"
+    assert seen["json"]["messages"][0]["role"] == "system"
+    assert seen["json"]["messages"][1] == {
+        "role": "user",
+        "content": json.dumps(
+            observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ),
+    }
+    assert seen["json"]["response_format"]["type"] == "json_schema"
+    assert seen["json"]["response_format"]["json_schema"]["strict"] is True
+    assert seen["json"]["max_tokens"] == acquisition_agent_mind.DEFAULT_MAX_OUTPUT_TOKENS
+    assert "store" not in seen["json"]
+    assert "cloudru-worker-secret" not in json.dumps(seen["json"])
+
+
+def test_cloudru_temple_brain_uses_its_model_and_runtime_reports_provider(monkeypatch):
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "1")
+    monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
+    monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-brain-secret")
+    monkeypatch.setenv("AION_TEMPLE_BRAIN_MODEL", "openai/gpt-oss-120b")
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": json.dumps(_brain_plan())}}]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen.update(url=url, headers=dict(headers), json=json, timeout=timeout)
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    plan = acquisition_agent_mind._call_temple_brain(
+        {"north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION"}
+    )
+
+    status = acquisition_agent_mind.runtime_status()
+    assert plan["confidence"] == 81
+    assert status["enabled"] is True
+    assert status["configured"] is True
+    assert status["provider"] == "cloudru_chat_completions"
+    assert seen["json"]["model"] == "openai/gpt-oss-120b"
+    assert seen["json"]["response_format"]["json_schema"]["name"] == (
+        "aion_temple_brain_plan"
+    )
+    assert "cloudru-brain-secret" not in json.dumps(seen["json"])
+
+
 def test_peer_lessons_and_temple_brain_flow_into_each_worker_observation():
     _clean_minds()
     workers = WORKERS[:2]
