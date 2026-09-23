@@ -878,11 +878,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
 
     colony_state = colony_account_status()
     colony_ready = bool(colony_state.get("authenticated"))
-    colony_comments_today = _colony_comments_today(db)
-    colony_comments_remaining_cycle = min(
-        MAX_COLONY_COMMENTS_PER_CYCLE,
-        max(0, MAX_COLONY_COMMENTS_PER_DAY - colony_comments_today),
-    )
 
     moltbook_state = moltbook_account_status()
     moltbook_ready = bool(moltbook_state.get("claimed"))
@@ -892,22 +887,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "pending_request_count": 0,
         "unread_count": 0,
     }
-    moltbook_comments_today = _moltbook_comments_today(db)
-    moltbook_comments_remaining_today = max(
-        0, MOLTBOOK_DAILY_COMMENT_LIMIT - moltbook_comments_today
-    )
-    moltbook_comments_remaining_cycle = min(
-        MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
-        moltbook_comments_remaining_today,
-    )
-    moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
-    moltbook_dm_remaining_today = max(
-        0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
-    )
-    moltbook_dm_remaining_cycle = min(
-        MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
-        moltbook_dm_remaining_today,
-    )
 
     current_moltbook_outbound = moltbook_outbound_status()
     channel_health = {
@@ -942,6 +921,28 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         fallback_queries_by_worker=fallback_queries_by_worker,
     )
     _runtime_cycle_start(active_workers)
+
+    colony_comments_today = _colony_comments_today(db)
+    colony_comments_remaining_cycle = min(
+        MAX_COLONY_COMMENTS_PER_CYCLE,
+        max(0, MAX_COLONY_COMMENTS_PER_DAY - colony_comments_today),
+    )
+    moltbook_comments_today = _moltbook_comments_today(db)
+    moltbook_comments_remaining_today = max(
+        0, MOLTBOOK_DAILY_COMMENT_LIMIT - moltbook_comments_today
+    )
+    moltbook_comments_remaining_cycle = min(
+        MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
+        moltbook_comments_remaining_today,
+    )
+    moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
+    moltbook_dm_remaining_today = max(
+        0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
+    )
+    moltbook_dm_remaining_cycle = min(
+        MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
+        moltbook_dm_remaining_today,
+    )
 
     report = {
         "action": "intent_acquisition_cycle",
