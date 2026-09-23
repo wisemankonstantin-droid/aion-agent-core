@@ -38,6 +38,9 @@ INTENT_PROFILES = (
 )
 UNIVERSAL_SKILLS = (
     "reason_over_safe_durable_memory",
+    "learn_from_shared_temple_brain",
+    "contribute_safe_peer_experience",
+    "build_bounded_sales_plan",
     "choose_bounded_discovery_plan",
     "discover_public_agent_intent",
     "qualify_machine_target",
@@ -81,7 +84,7 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
                     "verified outcome, and route a concrete need toward AION preflight/purchase."
                 ),
                 source="parallel_colony_moltbook_and_federated_a2a",
-                action="reason_plan_discover_qualify_contact_learn_route",
+                action="reason_align_sales_plan_discover_qualify_contact_learn_route",
                 cadence="independent_reasoning_each_cycle_bounded_rotating_transport",
                 intent_profile=intent,
                 shard=shard,
