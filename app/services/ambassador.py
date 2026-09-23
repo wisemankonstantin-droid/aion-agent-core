@@ -41,6 +41,7 @@ from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
     browse_recent_intent as browse_recent_moltbook_intent,
     build_outreach_comment as build_moltbook_outreach_comment,
+    dm_outbound_enabled as moltbook_dm_outbound_enabled,
     dm_request as request_moltbook_dm,
     platform_error_summary as moltbook_platform_error_summary,
     post_comment as post_moltbook_comment,
@@ -877,8 +878,25 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         raise AmbassadorError(404, "target_not_found", "Target not found")
     is_moltbook = target_preview.discovery_source == "moltbook"
     if is_moltbook:
+        campaign_preview = db.get(
+            models.AmbassadorCampaign,
+            target_preview.campaign_id,
+        )
+        lane = ""
+        if campaign_preview is not None:
+            name = str(campaign_preview.name or "")
+            prefix = "Intent swarm "
+            if name.startswith(prefix):
+                lane = name[len(prefix):].split(" #", 1)[0]
+        recipient = (
+            target_preview.source_identifier.split(":", 1)[1]
+            if target_preview.source_identifier.startswith("moltbook:")
+            else None
+        )
         comment = build_moltbook_outreach_comment(
-            public_base_url=canonical_aion_public_base_url()
+            public_base_url=canonical_aion_public_base_url(),
+            recipient=recipient,
+            intent=lane,
         )
         payload = {"content": comment}
     else:
@@ -1168,6 +1186,13 @@ def prepare_and_send_operator_moltbook_dm(
     idempotency_key: str,
 ) -> dict:
     """Send one consent-based Moltbook DM request with durable one-target dedupe."""
+
+    if not moltbook_dm_outbound_enabled():
+        raise AmbassadorError(
+            409,
+            "moltbook_dm_disabled",
+            "Moltbook DM outbound is disabled until an official endpoint is verified",
+        )
 
     if (
         os.getenv("AION_AMBASSADOR_OUTBOUND_ENABLED") != "1"

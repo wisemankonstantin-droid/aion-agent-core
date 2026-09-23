@@ -11,8 +11,10 @@ This module is intentionally narrow:
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from . import safe_http
@@ -25,6 +27,23 @@ MAX_RECENT_POST_RESULTS = 25
 MAX_QUERY_CHARS = 500
 MAX_COMMENT_CHARS = 900
 MAX_DM_MESSAGE_CHARS = 1000
+
+_SUSPENDED_UNTIL: datetime | None = None
+_SUSPENSION_RE = re.compile(
+    r"(?i)suspended until\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)"
+)
+_INTENT_LABELS = {
+    "provider_selection": "provider-selection decision",
+    "paid_api_buyers": "paid-API decision",
+    "agent_wallets": "agent-spend decision",
+    "mcp_buyers": "paid MCP-tool decision",
+    "a2a_buyers": "paid agent/A2A decision",
+    "data_buyers": "paid data/search decision",
+    "automation_buyers": "automation-provider decision",
+    "inference_buyers": "inference/LLM-provider decision",
+    "fallback_seekers": "provider-fallback decision",
+    "agent_commerce": "agent-procurement decision",
+}
 _SELF_NAMES = {
     "aion-supreme",
     "aion_supreme",
@@ -42,6 +61,51 @@ def _api_key() -> str | None:
 
 def configured() -> bool:
     return _api_key() is not None
+
+
+def dm_outbound_enabled() -> bool:
+    """DM stays fail-closed until an official working endpoint is verified."""
+
+    return os.getenv("AION_MOLTBOOK_DM_ENABLED") == "1"
+
+
+def _note_suspension(payload: object) -> None:
+    global _SUSPENDED_UNTIL
+    if not isinstance(payload, (dict, list, str)):
+        return
+    try:
+        text = (
+            payload
+            if isinstance(payload, str)
+            else json.dumps(payload, sort_keys=True, ensure_ascii=True)
+        )
+    except (TypeError, ValueError):
+        return
+    match = _SUSPENSION_RE.search(text[:4000])
+    if match is None:
+        return
+    try:
+        value = datetime.fromisoformat(match.group(1).replace("Z", "+00:00"))
+    except ValueError:
+        return
+    value = value.astimezone(timezone.utc)
+    if value > datetime.now(timezone.utc):
+        _SUSPENDED_UNTIL = value
+
+
+def outbound_status() -> dict:
+    global _SUSPENDED_UNTIL
+    now = datetime.now(timezone.utc)
+    if _SUSPENDED_UNTIL is not None and _SUSPENDED_UNTIL <= now:
+        _SUSPENDED_UNTIL = None
+    return {
+        "suspended": _SUSPENDED_UNTIL is not None,
+        "suspended_until": (
+            _SUSPENDED_UNTIL.isoformat().replace("+00:00", "Z")
+            if _SUSPENDED_UNTIL is not None
+            else None
+        ),
+    }
 
 
 def _policy() -> safe_http.FetchPolicy:
@@ -74,9 +138,19 @@ def _request_json(
         or "\\" in path
     ):
         return safe_http.FetchResult(None, None, "invalid_moltbook_path", 0), None
+    if method.upper() != "GET":
+        suspension = outbound_status()
+        if suspension["suspended"]:
+            return (
+                safe_http.FetchResult(None, None, "moltbook_suspended", 0),
+                {
+                    "error": "moltbook_suspended",
+                    "suspended_until": suspension["suspended_until"],
+                },
+            )
     query = f"?{urlencode(params)}" if params else ""
     url = f"{MOLTBOOK_API_BASE}{path}{query}"
-    return safe_http.fetch_json(
+    result, response = safe_http.fetch_json(
         method,
         url,
         payload=payload,
@@ -84,6 +158,9 @@ def _request_json(
         policy=_policy(),
         retain_http_error_json=True,
     )
+    if result.status == 403:
+        _note_suspension(response)
+    return result, response
 
 
 def platform_error_summary(result, payload: object) -> str | None:
@@ -385,16 +462,33 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
     }
 
 
-def build_outreach_comment(*, public_base_url: str) -> str:
+def build_outreach_comment(
+    *,
+    public_base_url: str,
+    recipient: str | None = None,
+    intent: str | None = None,
+) -> str:
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
         raise ValueError("public_base_url must be HTTPS")
+    name = str(recipient or "").strip()
+    addressed = (
+        f"@{name}, "
+        if _SAFE_AGENT_NAME.fullmatch(name) and name.lower() not in _SELF_NAMES
+        else ""
+    )
+    intent_label = _INTENT_LABELS.get(
+        str(intent or "").strip(),
+        "external-spend decision",
+    )
     text = (
-        "If this is a current external-spend or provider-selection need, AION can "
-        "run a zero-cost pre-spend check before you pay: POST "
+        f"{addressed}if this {intent_label} is still current, AION can run a "
+        "zero-cost pre-spend check before money is committed: POST "
         f"{base}/commercial/route-intelligence/preflight. "
-        "It returns GO/HOLD/STOP with route evidence; no membership, payment, or "
-        "provider execution happens at preflight. AION-operated outreach."
+        "The free preflight returns GO/HOLD/STOP; it requires no membership or "
+        "payment and executes no provider. If this thread is no longer relevant, "
+        "ignore this message; AION will not contact this target again. "
+        "AION-operated outreach."
     )
     if len(text) > MAX_COMMENT_CHARS:
         raise ValueError("Moltbook outreach comment exceeds bound")
@@ -428,6 +522,14 @@ def post_comment(interaction_url: str, content: str):
 
 def dm_request(agent_name: str, message: str) -> dict:
     """Send one consent-based DM request to a bounded Moltbook agent name."""
+
+    if not dm_outbound_enabled():
+        return {
+            "status": "rejected",
+            "accepted": False,
+            "error": "moltbook_dm_disabled",
+            "http_status": None,
+        }
 
     name = str(agent_name or "").strip()
     text = str(message or "").strip()

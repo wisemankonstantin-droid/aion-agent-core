@@ -238,6 +238,7 @@ def test_moltbook_candidate_uses_expanded_url_validation_only_for_moltbook(monke
 
 def test_moltbook_dm_request_is_consent_based_and_official_origin_only(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.setenv("AION_MOLTBOOK_DM_ENABLED", "1")
     seen = {}
 
     def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
@@ -262,6 +263,7 @@ def test_moltbook_dm_request_is_consent_based_and_official_origin_only(monkeypat
 
 def test_moltbook_dm_request_rejects_self_or_unbounded_message(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.setenv("AION_MOLTBOOK_DM_ENABLED", "1")
 
     assert moltbook_acquisition.dm_request(
         "aion-supreme", "this is long enough"
@@ -315,3 +317,122 @@ def test_moltbook_missing_secret_is_fail_closed(monkeypatch):
     assert status["configured"] is False
     assert status["claimed"] is False
     assert status["status"] == "not_configured"
+
+def test_moltbook_outreach_is_contextual_per_target_and_intent():
+    first = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion.example",
+        recipient="BuyerAlpha",
+        intent="provider_selection",
+    )
+    second = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion.example",
+        recipient="BuyerBeta",
+        intent="mcp_buyers",
+    )
+
+    assert first != second
+    assert first.startswith("@BuyerAlpha,")
+    assert "provider-selection decision" in first
+    assert second.startswith("@BuyerBeta,")
+    assert "paid MCP-tool decision" in second
+    assert "commercial/route-intelligence/preflight" in first
+    assert "commercial/route-intelligence/preflight" in second
+    assert "will not contact this target again" in first
+    assert len(first) <= moltbook_acquisition.MAX_COMMENT_CHARS
+    assert len(second) <= moltbook_acquisition.MAX_COMMENT_CHARS
+
+
+def test_moltbook_suspension_stops_writes_but_keeps_read_discovery(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    moltbook_acquisition._SUSPENDED_UNTIL = None
+    seen = []
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        seen.append((method, url))
+        return safe_http.FetchResult(200, b"{}", None, 1), {"results": []}
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    until = (
+        datetime.now(timezone.utc) + timedelta(hours=1)
+    ).isoformat().replace("+00:00", "Z")
+    moltbook_acquisition._note_suspension(
+        {"error": "Forbidden", "message": f"Agent is suspended until {until}. Reason: duplicate_comment"}
+    )
+
+    status = moltbook_acquisition.outbound_status()
+    assert status["suspended"] is True
+    assert status["suspended_until"] is not None
+
+    write_result, write_payload = moltbook_acquisition._request_json(
+        "POST",
+        "/posts/post-123/comments",
+        payload={"content": "bounded outreach"},
+    )
+    assert write_result.error == "moltbook_suspended"
+    assert write_result.attempts == 0
+    assert write_payload["suspended_until"] == status["suspended_until"]
+    assert seen == []
+
+    read_result, _ = moltbook_acquisition._request_json(
+        "GET",
+        "/search",
+        params={"q": "paid api", "type": "posts", "limit": 1},
+    )
+    assert read_result.status == 200
+    assert len(seen) == 1
+    assert seen[0][0] == "GET"
+
+    moltbook_acquisition._SUSPENDED_UNTIL = None
+
+
+def test_moltbook_403_records_platform_suspension(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    moltbook_acquisition._SUSPENDED_UNTIL = None
+    until = (
+        datetime.now(timezone.utc) + timedelta(hours=2)
+    ).isoformat().replace("+00:00", "Z")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        return (
+            safe_http.FetchResult(403, b"", "http_403", 1),
+            {
+                "error": "Forbidden",
+                "message": f"Agent is suspended until {until}. Reason: duplicate_comment",
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result, _ = moltbook_acquisition.post_comment(
+        "https://www.moltbook.com/api/v1/posts/post-123/comments",
+        "AION-operated contextual outreach",
+    )
+
+    assert result.status == 403
+    assert moltbook_acquisition.outbound_status()["suspended"] is True
+    moltbook_acquisition._SUSPENDED_UNTIL = None
+
+def test_moltbook_dm_is_fail_closed_until_verified_endpoint(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    monkeypatch.delenv("AION_MOLTBOOK_DM_ENABLED", raising=False)
+    called = False
+
+    def fail_fetch(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("disabled DM must not call the network")
+
+    monkeypatch.setattr(safe_http, "fetch_json", fail_fetch)
+    result = moltbook_acquisition.dm_request(
+        "BuyerBot",
+        "AION can run a free pre-spend check before an external purchase.",
+    )
+
+    assert result["accepted"] is False
+    assert result["error"] == "moltbook_dm_disabled"
+    assert result["http_status"] is None
+    assert called is False
+

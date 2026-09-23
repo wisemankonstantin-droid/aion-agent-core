@@ -33,6 +33,8 @@ from .ambassador import (
 from .moltbook_acquisition import (
     account_status as moltbook_account_status,
     dm_check as moltbook_dm_check,
+    dm_outbound_enabled as moltbook_dm_outbound_enabled,
+    outbound_status as moltbook_outbound_status,
 )
 
 
@@ -567,6 +569,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "max_requests_per_cycle": MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE,
                 "requests_attempted_this_cycle": 0,
                 "platform_numeric_daily_limit_published": False,
+                "outbound_enabled": moltbook_dm_outbound_enabled(),
                 "activity_status": moltbook_dm_state.get("status"),
                 "pending_incoming_requests": int(
                     moltbook_dm_state.get("pending_request_count") or 0
@@ -579,6 +582,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "contacts_remaining_today": moltbook_comments_remaining_today,
             "max_contacts_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
             "contacts_attempted_this_cycle": 0,
+            "suspended": bool(moltbook_outbound_status().get("suspended")),
+            "suspended_until": moltbook_outbound_status().get("suspended_until"),
         },
         "truth": (
             "Workers are AION-operated acquisition infrastructure. Their traffic is not "
@@ -648,10 +653,22 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
-            # Registries are secondary. Use them when Moltbook is unavailable
-            # or this lane produced no fresh Moltbook target.
-            fallback_queries = queries if not moltbook_ready else queries[:1]
-            if not moltbook_ready or moltbook_created == 0:
+            # Registries are secondary. Keep Moltbook read-only discovery active
+            # during a platform suspension, but force registry/A2A fallback so
+            # outbound acquisition never waits on a blocked comment channel.
+            moltbook_outbound_blocked = bool(
+                moltbook_outbound_status().get("suspended")
+            )
+            fallback_queries = (
+                queries
+                if (not moltbook_ready or moltbook_outbound_blocked)
+                else queries[:1]
+            )
+            if (
+                not moltbook_ready
+                or moltbook_outbound_blocked
+                or moltbook_created == 0
+            ):
                 for query in fallback_queries:
                     current = db.scalar(
                         select(func.count())
@@ -684,10 +701,14 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 for item in lane_report["scout_results"]
                 if isinstance(item, dict)
             )
+            outbound_state = moltbook_outbound_status()
             target = _qualified_unsent_target(
                 db,
                 campaign,
-                allow_moltbook=moltbook_comments_remaining_cycle > 0,
+                allow_moltbook=(
+                    moltbook_comments_remaining_cycle > 0
+                    and not bool(outbound_state.get("suspended"))
+                ),
             )
             contact_attempted_this_cycle = False
             if (
@@ -731,6 +752,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             lane_report["dm_contact"] = None
             if (
                 moltbook_ready
+                and moltbook_dm_outbound_enabled()
+                and not bool(moltbook_outbound_status().get("suspended"))
                 and send_enabled
                 and contacts_remaining > 0
                 and moltbook_dm_remaining_cycle > 0
@@ -789,6 +812,13 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
 
+    final_outbound_state = moltbook_outbound_status()
+    report["moltbook"]["suspended"] = bool(
+        final_outbound_state.get("suspended")
+    )
+    report["moltbook"]["suspended_until"] = final_outbound_state.get(
+        "suspended_until"
+    )
     return report
 
 
