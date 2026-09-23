@@ -33,6 +33,7 @@ _SELF_NAMES = {
 }
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,220}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
+_SAFE_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
 
 
 def _api_key() -> str | None:
@@ -505,15 +506,147 @@ def dm_conversations(limit: int = 50) -> dict:
     }
 
 
+def dm_read(conversation_id: str) -> dict:
+    """Read one approved conversation, returning only bounded message fields.
+
+    Moltbook marks the conversation as read. Callers must not log message text.
+    """
+
+    cid = str(conversation_id or "").strip()
+    if not _SAFE_CONVERSATION_ID.fullmatch(cid):
+        return {
+            "status": "rejected",
+            "error": "invalid_moltbook_conversation_id",
+            "messages": [],
+        }
+    result, payload = _request_json(
+        "GET",
+        f"/agents/dm/conversations/{cid}",
+    )
+    if result.error or result.status != 200 or not isinstance(payload, dict):
+        return {
+            "status": "unavailable",
+            "error": platform_error_summary(result, payload),
+            "http_status": result.status,
+            "messages": [],
+        }
+    raw = payload.get("messages")
+    if not isinstance(raw, list):
+        return {
+            "status": "unavailable",
+            "error": "invalid_moltbook_dm_message_shape",
+            "http_status": result.status,
+            "messages": [],
+        }
+
+    messages = []
+    for item in raw[-50:]:
+        if not isinstance(item, dict):
+            continue
+        sender = item.get("from")
+        sender_name = (
+            str(sender.get("name") or "").strip()
+            if isinstance(sender, dict)
+            else ""
+        )
+        message = item.get("message")
+        if (
+            not _SAFE_AGENT_NAME.fullmatch(sender_name)
+            or not isinstance(message, str)
+            or not message.strip()
+        ):
+            continue
+        text = message.strip()[:MAX_DM_MESSAGE_CHARS]
+        messages.append(
+            {
+                "from_name": sender_name,
+                "from_self": sender_name.lower() in _SELF_NAMES,
+                "message": text,
+                "created_at": str(item.get("created_at") or "")[:64],
+                "needs_human_input": bool(item.get("needs_human_input")),
+            }
+        )
+    return {
+        "status": "success",
+        "error": None,
+        "http_status": result.status,
+        "messages": messages,
+    }
+
+
+def build_routine_dm_reply(*, message: str, public_base_url: str) -> dict:
+    """Classify one inbound DM and build a deterministic routine reply."""
+
+    text = str(message or "").strip()
+    base = str(public_base_url or "").strip().rstrip("/")
+    if not text or len(text) > MAX_DM_MESSAGE_CHARS or not base.startswith("https://"):
+        return {"action": "human_gate", "reason": "invalid_or_unbounded_message"}
+
+    lowered = text.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "unsubscribe",
+            "do not contact",
+            "don't contact",
+            "stop messaging",
+            "not interested",
+            "no thanks",
+            "leave me alone",
+        )
+    ):
+        return {"action": "no_reply", "reason": "opt_out"}
+
+    relevant = any(
+        marker in lowered
+        for marker in (
+            "price",
+            "cost",
+            "how much",
+            "what do you do",
+            "what can you",
+            "provider",
+            "api",
+            "mcp",
+            "tool",
+            "agent service",
+            "route",
+            "preflight",
+            "spend",
+            "pay",
+            "paid",
+            "purchase",
+            "buy",
+            "need ",
+            "looking for",
+        )
+    )
+    if not relevant:
+        return {"action": "no_reply", "reason": "not_commercially_relevant"}
+
+    currency = (os.getenv("AION_ROUTE_INTELLIGENCE_CURRENCY") or "").strip()
+    price = (os.getenv("AION_ROUTE_INTELLIGENCE_PRICE") or "").strip()
+    if not currency or not price:
+        return {"action": "human_gate", "reason": "commercial_price_not_configured"}
+
+    reply = (
+        "AION helps an agent check an external-spend/provider choice before paying. "
+        f"Free preflight: POST {base}/commercial/route-intelligence/preflight. "
+        f"If a qualified route exists, Verified Route Intelligence is {price} {currency}. "
+        "No membership is required. Send the current need here or use the preflight endpoint."
+    )
+    if len(reply) > MAX_DM_MESSAGE_CHARS:
+        return {"action": "human_gate", "reason": "reply_bound_exceeded"}
+    return {"action": "reply", "reason": "routine_commercial_question", "reply": reply}
+
+
 def dm_send(conversation_id: str, message: str) -> dict:
     """Send one bounded reply inside an already-approved conversation."""
 
     cid = str(conversation_id or "").strip()
     text = str(message or "").strip()
     if (
-        not cid
-        or len(cid) > 160
-        or any(ord(ch) <= 32 or ord(ch) == 127 for ch in cid)
+        not _SAFE_CONVERSATION_ID.fullmatch(cid)
         or not 1 <= len(text) <= MAX_DM_MESSAGE_CHARS
     ):
         return {
