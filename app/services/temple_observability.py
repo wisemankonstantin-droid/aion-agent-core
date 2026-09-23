@@ -20,6 +20,7 @@ from ..payment_models import RouteIntelligencePurchase
 from ..public_origin import canonical_public_origin
 from ..release_identity import release_identity
 from .acquisition_swarm import acquisition_runtime_snapshot
+from .acquisition_agent_mind import runtime_status as acquisition_mind_runtime_status
 from .moltbook_acquisition import (
     build_outreach_comment,
     outbound_status as moltbook_outbound_status,
@@ -151,6 +152,28 @@ def build_temple_live_state(db: Session) -> dict:
     active_ids = set(runtime.get("active_worker_ids") or [])
     completed_ids = set(runtime.get("completed_worker_ids") or [])
     current_worker_id = runtime.get("current_worker_id")
+    mind_rows = {
+        row.worker_id: row
+        for row in db.scalars(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id.in_(worker_ids)
+            )
+        )
+    }
+    mind_state_counts = Counter(
+        row.last_state or "unknown" for row in mind_rows.values()
+    )
+    mind_runtime = {
+        **acquisition_mind_runtime_status(),
+        "initialized_minds": len(mind_rows),
+        "state_counts": dict(sorted(mind_state_counts.items())),
+        "reasoning_calls_total": sum(
+            int(row.total_reasoning_calls or 0) for row in mind_rows.values()
+        ),
+        "reasoning_failures_total": sum(
+            int(row.reasoning_failures or 0) for row in mind_rows.values()
+        ),
+    }
 
     campaigns = list(
         db.scalars(
@@ -379,6 +402,48 @@ def build_temple_live_state(db: Session) -> dict:
         if current_target and current_target["contact_state"] == "blocked":
             state = "target_blocked_continue_search"
 
+        mind_row = mind_rows.get(worker_id)
+        mind_view = {
+            "state": "not_initialized",
+            "model": acquisition_mind_runtime_status().get("model"),
+            "profile": None,
+            "plan": None,
+            "memory": None,
+            "total_reasoning_calls": 0,
+            "reasoning_failures": 0,
+            "last_reasoned_at": None,
+            "last_error": None,
+        }
+        if mind_row is not None:
+            profile = dict(mind_row.cognitive_profile or {})
+            plan = dict(mind_row.last_plan or {}) if mind_row.last_plan else None
+            memory = dict(mind_row.safe_memory or {})
+            mind_view = {
+                "state": mind_row.last_state,
+                "model": mind_row.model,
+                "profile": {
+                    "archetype": profile.get("archetype"),
+                    "exploration_bias": profile.get("exploration_bias"),
+                    "verification_bias": profile.get("verification_bias"),
+                    "conversion_bias": profile.get("conversion_bias"),
+                    "strategy_fingerprint": profile.get("strategy_fingerprint"),
+                },
+                "plan": plan,
+                "memory": {
+                    "recent_outcomes": list(memory.get("recent_outcomes") or [])[-5:],
+                    "channel_performance": dict(
+                        memory.get("channel_performance") or {}
+                    ),
+                    "lessons": list(memory.get("lessons") or [])[-5:],
+                },
+                "total_reasoning_calls": int(
+                    mind_row.total_reasoning_calls or 0
+                ),
+                "reasoning_failures": int(mind_row.reasoning_failures or 0),
+                "last_reasoned_at": _iso(mind_row.last_reasoned_at),
+                "last_error": mind_row.last_error,
+            }
+
         latest_campaign = latest_campaign_by_worker.get(worker_id)
         worker_states.append(
             {
@@ -402,6 +467,7 @@ def build_temple_live_state(db: Session) -> dict:
                 "current_target": current_target,
                 "response_summary": response_summary,
                 "response_signals": response_signals,
+                "mind": mind_view,
             }
         )
 
@@ -529,13 +595,15 @@ def build_temple_live_state(db: Session) -> dict:
             "active_worker_count": len(active_ids),
             "queued_rotation": len(workers) - len(active_ids),
             "runtime": runtime,
+            "mind_runtime": mind_runtime,
             "legacy_campaigns_preserved": legacy_campaigns,
             "workers": worker_states,
             "truth": (
-                "Workers are AION-operated logical acquisition workers. Runtime state "
-                "comes from the executing swarm process, not a wall-clock schedule. "
-                "No runtime event means no worker is shown as actively working. Workers "
-                "are not external agents, customers, adoption, revenue or SAT evidence."
+                "Workers are AION-operated logical acquisition agents. Transport state "
+                "comes from the executing swarm process, never a wall-clock guess. AI mind "
+                "state is separate durable truth: thinking/planned/learning/degraded are not "
+                "network-write claims. Only bounded transport may write externally. Workers "
+                "are not external customers, adoption, revenue or SAT evidence."
             ),
         },
         "channels": channels,
@@ -598,6 +666,9 @@ def build_temple_live_state(db: Session) -> dict:
             "credentials_exposed": False,
             "payment_payloads_exposed": False,
             "response_digests_exposed": False,
+            "model_credentials_exposed": False,
+            "model_raw_prompts_exposed": False,
+            "model_chain_of_thought_exposed": False,
             "conversation_view": "safe evidence and deterministic classifications only",
         },
     }
@@ -639,7 +710,7 @@ a{color:#9bdcff;word-break:break-all}.event{padding:8px 0;border-bottom:1px soli
   <div class="tools"><input id="search" placeholder="worker / intent / target"><button id="rotate">pause</button></div>
   <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select a worker or recent event. The model refreshes from durable server state every 5 seconds.</p></div>
 </div>
-<div class="legend"><span class="dot" style="background:#42f5a7"></span>working now <span class="dot" style="background:#6aa8ff"></span>assigned <span class="dot" style="background:#8c9bb0"></span>completed cycle <span class="dot" style="background:#71809a"></span>queued <span class="dot" style="background:#ff5f6d"></span>blocked</div>
+<div class="legend">fill = transport: <span class="dot" style="background:#42f5a7"></span>acting <span class="dot" style="background:#6aa8ff"></span>assigned <span class="dot" style="background:#71809a"></span>queued · ring = AI mind: <span class="dot" style="background:#ffd166"></span>thinking <span class="dot" style="background:#b388ff"></span>planned <span class="dot" style="background:#42f5a7"></span>learning <span class="dot" style="background:#ff5f6d"></span>degraded</div>
 <script>
 const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d');
 const cards=document.getElementById('cards'),detail=document.getElementById('detail'),search=document.getElementById('search');
@@ -648,27 +719,37 @@ function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;canvas.
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function age(ts){if(!ts)return 'never';const s=Math.max(0,(Date.now()-Date.parse(ts))/1000);if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return Math.round(s/3600)+'h';return Math.round(s/86400)+'d'}
 function metric(label,value){return '<div class="card"><b>'+esc(value)+'</b><span>'+esc(label)+'</span></div>'}
-function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet,rt=fl.runtime||{};cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+' · '+esc(rt.cycle_state||'runtime unknown')+'</small></div>'+metric('workers',fl.worker_count)+metric('active runtime',fl.active_worker_count)+metric('targets',f.discovered_targets)+metric('delivered',f.delivered_contacts)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
+function renderCards(){if(!D)return;const f=D.funnel,fl=D.fleet,rt=fl.runtime||{},mr=fl.mind_runtime||{},sc=mr.state_counts||{};const minded=(mr.initialized_minds||0),planned=(sc.planned||0)+(sc.learning||0)+(sc.thinking||0);cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>'+esc(D.release?.release_sha||'release unknown')+' · transport '+esc(rt.cycle_state||'unknown')+' · AI '+esc(mr.configured?'configured':'unconfigured')+'</small></div>'+metric('AI minds',minded)+metric('thinking/planned',planned)+metric('transport active',fl.active_worker_count)+metric('targets',f.discovered_targets)+metric('responses',f.machine_responses)+metric('SAT',f.sat_count)}
 function p3(x,y,z){let c=Math.cos(rot),s=Math.sin(rot),x1=x*c-z*s,z1=x*s+z*c;let ct=Math.cos(tilt),st=Math.sin(tilt),y1=y*ct-z1*st,z2=y*st+z1*ct;let f=560/(560+z2);return{x:W*.42+x1*f,y:H*.49+y1*f,s:f,z:z2}}
 function sphere(i,n,r){const y=1-2*(i+.5)/n,rr=Math.sqrt(Math.max(0,1-y*y)),a=Math.PI*(3-Math.sqrt(5))*i;return{x:Math.cos(a)*rr*r,y:y*r,z:Math.sin(a)*rr*r}}
 function channelPos(i,n){const a=i/n*Math.PI*2;return{x:Math.cos(a)*330,y:Math.sin(a*.7)*90,z:Math.sin(a)*330}}
 function color(w){if(w.state==='target_blocked_continue_search')return '#ff5f6d';if(w.state==='working_currently')return '#42f5a7';if(w.state==='assigned_waiting_turn')return '#6aa8ff';if(w.state==='completed_this_cycle')return '#8c9bb0';return '#71809a'}
+function mindColor(w){const s=w.mind?.state||'not_initialized';if(s==='thinking')return '#ffd166';if(s==='planned')return '#b388ff';if(s==='learning')return '#42f5a7';if(s==='degraded')return '#ff5f6d';if(s==='model_unconfigured'||s==='mind_disabled')return '#ff9f43';if(s==='reasoning_budget_deferred')return '#8c9bb0';return '#445069'}
+function drawMindRing(pt,r,w){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(5,r*pt.s+3),0,Math.PI*2);ctx.strokeStyle=mindColor(w);ctx.lineWidth=Math.max(1,1.7*pt.s);ctx.stroke();ctx.lineWidth=1}
 function drawNode(pt,r,fill,label){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(2,r*pt.s),0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(label&&pt.s>.55){ctx.fillStyle='#b8c7da';ctx.font='10px system-ui';ctx.fillText(label,pt.x+7,pt.y-5)}}
 function draw(){ctx.clearRect(0,0,W,H);hit=[];if(!D){requestAnimationFrame(draw);return} if(auto)rot+=.0015;
  const core=p3(0,0,0);drawNode(core,13,'#9bdcff','AION CORE');
  const chans=D.channels||[],cp={};chans.forEach((ch,i)=>{const q=channelPos(i,Math.max(1,chans.length)),pt=p3(q.x,q.y,q.z);cp[ch.name]={q,pt};ctx.strokeStyle='rgba(120,160,210,.18)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,8,'#80a8ff',ch.name+' '+ch.machine_responses+'/'+ch.contact_attempts)});
  const ws=D.fleet.workers||[],q=search.value.trim().toLowerCase();
- ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205);const pt=p3(pos.x,pos.y,pos.z);const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.state==='working_currently'?'rgba(66,245,167,.22)':(w.state==='assigned_waiting_turn'?'rgba(106,168,255,.13)':'rgba(110,128,154,.07)');ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,w.state==='working_currently'?5.4:(w.state==='assigned_waiting_turn'?4.2:3),color(w),selected===w.id?w.id:null);if(w.current_channel&&cp[w.current_channel]){ctx.strokeStyle=w.machine_responses?'rgba(255,209,102,.28)':'rgba(128,168,255,.12)';ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(cp[w.current_channel].pt.x,cp[w.current_channel].pt.y);ctx.stroke()}hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
+ ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205);const pt=p3(pos.x,pos.y,pos.z);const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity,w.mind?.state,w.mind?.profile?.archetype,w.mind?.plan?.hypothesis].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.state==='working_currently'?'rgba(66,245,167,.22)':(w.state==='assigned_waiting_turn'?'rgba(106,168,255,.13)':'rgba(110,128,154,.07)');ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();const wr=w.state==='working_currently'?5.4:(w.state==='assigned_waiting_turn'?4.2:3);drawNode(pt,wr,color(w),selected===w.id?w.id:null);drawMindRing(pt,wr,w);if(w.current_channel&&cp[w.current_channel]){ctx.strokeStyle=w.machine_responses?'rgba(255,209,102,.28)':'rgba(128,168,255,.12)';ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(cp[w.current_channel].pt.x,cp[w.current_channel].pt.y);ctx.stroke()}hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
  requestAnimationFrame(draw)}
-function workerDetail(w){const t=w.current_target||{},signals=(w.response_signals||[]).map(x=>'<span class="tag">'+esc(x)+'</span>').join('');detail.innerHTML='<h3>'+esc(w.id)+'</h3>'+
- '<div class="row"><div>state</div><div>'+esc(w.state)+'</div></div><div class="row"><div>intent</div><div>'+esc(w.intent_profile)+'</div></div>'+
+function workerDetail(w){const t=w.current_target||{},signals=(w.response_signals||[]).map(x=>'<span class="tag">'+esc(x)+'</span>').join(''),m=w.mind||{},p=m.plan||{},prof=m.profile||{};detail.innerHTML='<h3>'+esc(w.id)+'</h3>'+
+ '<div class="row"><div>transport state</div><div>'+esc(w.state)+'</div></div><div class="row"><div>AI mind</div><div>'+esc(m.state||'not initialized')+' · '+esc(m.model||'no model')+'</div></div>'+
+ '<div class="row"><div>AI profile</div><div>'+esc(prof.archetype||'none')+' · explore '+esc(prof.exploration_bias??'-')+' / verify '+esc(prof.verification_bias??'-')+' / convert '+esc(prof.conversion_bias??'-')+'<br><span class="muted">'+esc(prof.strategy_fingerprint||'')+'</span></div></div>'+
+ '<div class="row"><div>hypothesis</div><div>'+esc(p.hypothesis||'no plan yet')+'</div></div>'+
+ '<div class="row"><div>AI channels</div><div>'+esc((p.channel_priority||[]).join(' → ')||'fallback')+'</div></div>'+
+ '<div class="row"><div>AI searches</div><div>'+esc((p.search_queries||[]).join(' | ')||'fallback')+'</div></div>'+
+ '<div class="row"><div>AI policy</div><div>'+esc(p.contact_policy||'fallback')+' · confidence '+esc(p.confidence??'-')+'</div></div>'+
+ '<div class="row"><div>learning goal</div><div>'+esc(p.learning_goal||'none')+'</div></div>'+
+ '<div class="row"><div>reasoning</div><div>'+esc(m.total_reasoning_calls||0)+' calls / '+esc(m.reasoning_failures||0)+' failures · '+esc(m.last_reasoned_at||'never')+'</div></div>'+
+ '<div class="row"><div>intent</div><div>'+esc(w.intent_profile)+'</div></div>'+
  '<div class="row"><div>runtime assigned</div><div>'+esc(w.scheduled_now)+'</div></div><div class="row"><div>last activity</div><div>'+esc(w.last_activity_at||'never')+' ('+age(w.last_activity_at)+')</div></div>'+
  '<div class="row"><div>channel</div><div>'+esc(w.current_channel||'none')+'</div></div><div class="row"><div>targets</div><div>'+w.targets_discovered+' discovered / '+w.targets_qualified+' qualified</div></div>'+
  '<div class="row"><div>contacts</div><div>'+w.contact_attempts+' attempts / '+w.delivered_contacts+' delivered / '+w.machine_responses+' responses</div></div>'+
  '<div class="row"><div>target</div><div>'+esc(t.identity||'none')+(t.url?'<br><a target="_blank" rel="noreferrer" href="'+esc(t.url)+'">'+esc(t.url)+'</a>':'')+'</div></div>'+
  '<div class="row"><div>message</div><div>'+esc(t.message_preview||'no contact message recorded for current target')+'<br><span class="muted">'+esc(t.message_preview_kind||'')+'</span></div></div>'+
  '<div class="row"><div>response</div><div>'+esc(w.response_summary||'no captured semantic response')+'<div>'+signals+'</div></div></div>'+
- '<p class="muted">No credentials, raw private responses, payment payloads or secret-bearing digests are exposed here.</p>'+eventsFor(w.id)}
+ '<p class="muted">Fill = real transport state. Outer ring = independent AI mind state. No credentials, raw model prompts, chain-of-thought, raw private responses, payment payloads or secret-bearing digests are exposed here.</p>'+eventsFor(w.id)}
 function eventsFor(id){const ev=(D.recent_events||[]).filter(e=>e.worker_id===id).slice(0,8);if(!ev.length)return '<h4>Recent events</h4><p class="muted">No recent contact events.</p>';return '<h4>Recent events</h4>'+ev.map(e=>'<div class="event"><b>'+esc(e.result_class||e.event)+'</b> · '+esc(e.channel)+' · '+age(e.created_at)+'<br><span class="muted">'+esc(e.target_identity)+'</span></div>').join('')}
 canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,rot,tilt};canvas.setPointerCapture(e.pointerId)});
 canvas.addEventListener('pointermove',e=>{if(!drag)return;rot=drag.rot+(e.clientX-drag.x)*.006;tilt=Math.max(-1,Math.min(1,drag.tilt+(e.clientY-drag.y)*.004))});
