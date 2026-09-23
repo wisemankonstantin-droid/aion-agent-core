@@ -108,6 +108,16 @@ def test_unconfigured_model_fails_open_to_existing_transport_without_fake_thinki
     assert len(rows) == 3
     assert {row.last_state for row in rows} == {"model_unconfigured"}
     assert all(row.total_reasoning_calls == 0 for row in rows)
+    with SessionLocal() as db:
+        brain = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id
+                == acquisition_agent_mind.TEMPLE_BRAIN_ID
+            )
+        )
+        assert brain is not None
+        assert brain.last_state == "model_unconfigured"
+        assert brain.total_reasoning_calls == 0
 
 
 def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkeypatch):
@@ -246,6 +256,114 @@ def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypat
     assert "test-secret-header-only" not in serialized_payload
 
 
+def test_temple_brain_reasoning_request_is_structured_safe_and_not_stored(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "brain-test-secret-header-only")
+    monkeypatch.delenv("AION_AGENT_MODEL", raising=False)
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(_brain_plan()),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen["url"] = url
+        seen["headers"] = dict(headers)
+        seen["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    observation = {
+        "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+        "worker_count": 100,
+        "safe_response_signal_counts": {"pricing_commercial_interest": 3},
+        "peer_lessons": [{"worker_id": "aion-scout-a2a", "lesson": "prefer current buyer intent"}],
+        "hard_constraints": {"no_model_payment_authority": True},
+    }
+
+    plan = acquisition_agent_mind._call_temple_brain(observation)
+
+    assert plan["collective_summary"]
+    assert plan["confidence"] == 81
+    assert seen["url"] == acquisition_agent_mind.RESPONSES_URL
+    assert seen["headers"]["Authorization"] == "Bearer brain-test-secret-header-only"
+    assert seen["json"]["model"] == "gpt-5.6-luna"
+    assert seen["json"]["store"] is False
+    assert seen["json"]["metadata"]["aion_worker_id"] == acquisition_agent_mind.TEMPLE_BRAIN_ID
+    assert seen["json"]["metadata"]["collective_cognition"] == "true"
+    assert seen["json"]["text"]["format"]["name"] == "aion_temple_brain_plan"
+    assert "brain-test-secret-header-only" not in json.dumps(seen["json"])
+
+
+def test_peer_lessons_and_temple_brain_flow_into_each_worker_observation():
+    _clean_minds()
+    workers = WORKERS[:2]
+    now = acquisition_agent_mind._now()
+    with SessionLocal() as db:
+        for index, worker in enumerate(workers):
+            db.add(
+                models.AcquisitionAgentMind(
+                    worker_id=worker.id,
+                    mind_version="2",
+                    model="gpt-5.6-luna",
+                    cognitive_profile=acquisition_agent_mind.cognitive_profile(worker),
+                    safe_memory={
+                        "recent_outcomes": [],
+                        "channel_performance": {},
+                        "lessons": [f"peer lesson {index}"],
+                    },
+                    last_plan=_plan(worker.id),
+                    last_observation_digest=None,
+                    last_plan_digest=None,
+                    last_state="planned",
+                    total_reasoning_calls=1,
+                    reasoning_failures=0,
+                    last_reasoned_at=now,
+                    last_error=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        db.commit()
+
+    brain_plan = _brain_plan()
+    observations = acquisition_agent_mind._build_observations(
+        workers,
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+        fallback_queries_by_worker={worker.id: ["fallback"] for worker in workers},
+        temple_brain=brain_plan,
+    )
+
+    first = observations[workers[0].id]
+    second = observations[workers[1].id]
+    assert first["temple_brain"] == brain_plan
+    assert second["temple_brain"] == brain_plan
+    assert first["peer_experience"] == [
+        {"worker_id": workers[1].id, "lesson": "peer lesson 1"}
+    ]
+    assert second["peer_experience"] == [
+        {"worker_id": workers[0].id, "lesson": "peer lesson 0"}
+    ]
+    assert all(
+        "raw_response" not in json.dumps(observation)
+        for observation in observations.values()
+    )
+
+
 def test_plan_validation_and_executor_policy_fail_closed():
     plan = acquisition_agent_mind._validate_plan(
         {
@@ -360,6 +478,52 @@ def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatc
         assert row.safe_memory["channel_performance"]["federated_a2a"][
             "responses"
         ] == 12
+
+
+def test_live_temple_exposes_shared_brain_separately_from_100_worker_minds(monkeypatch):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "brain-secret-must-not-leak")
+    now = acquisition_agent_mind._now()
+    acquisition_agent_mind._ensure_temple_brain_row(state="planned")
+    with SessionLocal() as db:
+        brain = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id
+                == acquisition_agent_mind.TEMPLE_BRAIN_ID
+            )
+        )
+        brain.last_plan = _brain_plan()
+        brain.safe_memory = {
+            "recent_outcomes": [],
+            "channel_performance": {},
+            "lessons": ["fleet learned to prefer explicit current buyer demand"],
+        }
+        brain.total_reasoning_calls = 4
+        brain.reasoning_failures = 1
+        brain.last_reasoned_at = now
+        brain.updated_at = now
+        db.commit()
+
+    response = client.get("/temple/live/state")
+    assert response.status_code == 200
+    data = response.json()
+    brain = data["fleet"]["temple_brain"]
+    assert brain["id"] == acquisition_agent_mind.TEMPLE_BRAIN_ID
+    assert brain["state"] == "planned"
+    assert brain["plan"]["collective_summary"]
+    assert brain["plan"]["peer_directives"]
+    assert brain["total_reasoning_calls"] == 4
+    assert data["fleet"]["mind_runtime"]["initialized_minds"] == 0
+    assert data["privacy"]["temple_brain_uses_only_safe_redacted_fleet_evidence"] is True
+    assert data["privacy"]["peer_learning_exposes_raw_private_responses"] is False
+    serialized = json.dumps(data)
+    assert "brain-secret-must-not-leak" not in serialized
+
+    html = client.get("/temple/live").text
+    assert "AION TEMPLE BRAIN" in html
+    assert "collective summary" in html
+    assert "peer directives" in html
+    assert "sales plan" in html
 
 
 def test_live_temple_exposes_safe_separate_mind_and_transport_state(monkeypatch):
