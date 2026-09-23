@@ -878,7 +878,12 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     is_moltbook = target_preview.discovery_source == "moltbook"
     if is_moltbook:
         comment = build_moltbook_outreach_comment(
-            public_base_url=canonical_aion_public_base_url()
+            public_base_url=canonical_aion_public_base_url(),
+            target_key=(
+                target_preview.interaction_url
+                or target_preview.source_identifier
+                or target_preview.target_id
+            ),
         )
         payload = {"content": comment}
     else:
