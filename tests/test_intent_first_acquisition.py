@@ -430,6 +430,51 @@ def test_live_temple_is_read_only_truth_view_with_100_workers():
     assert "payment_payload_digest" not in serialized
 
 
+def test_acquisition_runtime_truth_does_not_fake_wall_clock_activity():
+    cohort = acquisition_swarm._active_worker_specs_for_cycle(now_seconds=0)[:2]
+    acquisition_swarm._runtime_cycle_start(cohort)
+
+    running = acquisition_swarm.acquisition_runtime_snapshot()
+    assert running["cycle_state"] == "running"
+    assert running["active_worker_ids"] == [worker.id for worker in cohort]
+    assert running["current_worker_id"] is None
+
+    acquisition_swarm._runtime_worker_started(cohort[0].id)
+    current = acquisition_swarm.acquisition_runtime_snapshot()
+    assert current["current_worker_id"] == cohort[0].id
+
+    acquisition_swarm._runtime_worker_completed(cohort[0].id)
+    completed = acquisition_swarm.acquisition_runtime_snapshot()
+    assert cohort[0].id in completed["completed_worker_ids"]
+    assert completed["current_worker_id"] is None
+
+    acquisition_swarm._runtime_cycle_completed()
+    sleeping = acquisition_swarm.acquisition_runtime_snapshot()
+    assert sleeping["cycle_state"] == "sleeping"
+    assert sleeping["active_worker_ids"] == []
+    assert sleeping["last_cycle_worker_ids"] == [worker.id for worker in cohort]
+
+
+def test_live_temple_does_not_show_scheduled_work_without_runtime_event():
+    acquisition_swarm._runtime_cycle_completed()
+
+    response = client.get("/temple/live/state")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["fleet"]["runtime"]["cycle_state"] == "sleeping"
+    assert data["fleet"]["active_worker_count"] == 0
+    assert data["fleet"]["scheduled_now"] == 0
+    assert all(
+        worker["state"] != "working_currently"
+        for worker in data["fleet"]["workers"]
+    )
+    assert all(
+        worker["state"] != "assigned_waiting_turn"
+        for worker in data["fleet"]["workers"]
+    )
+
+
 def test_live_temple_html_renders_dependency_free_3d_control_plane():
     response = client.get("/temple/live")
 
@@ -439,3 +484,6 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "<canvas id=\"scene\"></canvas>" in response.text
     assert "/temple/live/state" in response.text
     assert "setInterval(refresh,5000)" in response.text
+    assert "working now" in response.text
+    assert "assigned" in response.text
+    assert "completed cycle" in response.text
