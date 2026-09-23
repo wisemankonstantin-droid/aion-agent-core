@@ -28,6 +28,7 @@ from ..db import SessionLocal
 MIND_VERSION = "2"
 TEMPLE_BRAIN_ID = "aion-temple-brain"
 DEFAULT_MODEL = "gpt-5.6-luna"
+DEFAULT_TEMPLE_BRAIN_MODEL = "gpt-5.6-sol"
 DEFAULT_REASONING_EFFORT = "low"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_MAX_CALLS_PER_CYCLE = 100
@@ -258,6 +259,10 @@ def runtime_status() -> dict:
         "provider": "openai_responses",
         "model": (os.getenv("AION_AGENT_MODEL") or DEFAULT_MODEL).strip()
         or DEFAULT_MODEL,
+        "temple_brain_model": (
+            os.getenv("AION_TEMPLE_BRAIN_MODEL") or DEFAULT_TEMPLE_BRAIN_MODEL
+        ).strip()
+        or DEFAULT_TEMPLE_BRAIN_MODEL,
         "reasoning_effort": (
             os.getenv("AION_AGENT_REASONING_EFFORT") or DEFAULT_REASONING_EFFORT
         ).strip()
@@ -357,7 +362,7 @@ def _ensure_rows(workers: Iterable, *, state: str) -> None:
 
 def _ensure_temple_brain_row(*, state: str) -> None:
     now = _now()
-    model = runtime_status()["model"]
+    model = runtime_status()["temple_brain_model"]
     profile = {
         "archetype": "collective_temple_brain",
         "intent_profile": "cross_fleet_strategy",
@@ -960,7 +965,7 @@ def _call_temple_brain(observation: dict) -> dict:
         raise RuntimeError("temple_brain_observation_too_large")
 
     payload = {
-        "model": status["model"],
+        "model": status["temple_brain_model"],
         "reasoning": {"effort": status["reasoning_effort"]},
         "instructions": _TEMPLE_BRAIN_INSTRUCTIONS,
         "input": encoded,
@@ -1080,7 +1085,11 @@ def _persist_plan(
         )
         if row is None:
             return
-        row.model = status["model"]
+        row.model = (
+            status["temple_brain_model"]
+            if worker_id == TEMPLE_BRAIN_ID
+            else status["model"]
+        )
         row.last_observation_digest = _digest(observation)
         row.total_reasoning_calls += 1
         row.last_reasoned_at = now
