@@ -294,15 +294,18 @@ def commercial_knowledge_snapshot() -> dict:
             .limit(1)
         )
         if latest_entitled is not None:
+            entitled_at = latest_entitled.entitled_at
+            if entitled_at is not None:
+                entitled_at = (
+                    entitled_at.replace(tzinfo=timezone.utc)
+                    if entitled_at.tzinfo is None
+                    else entitled_at.astimezone(timezone.utc)
+                )
             latest_entitled_quote = {
                 "product_sku": latest_entitled.product_sku,
                 "currency": latest_entitled.quote_currency,
                 "amount": latest_entitled.quote_amount,
-                "entitled_at": (
-                    latest_entitled.entitled_at.isoformat()
-                    if latest_entitled.entitled_at is not None
-                    else None
-                ),
+                "entitled_at": entitled_at.isoformat() if entitled_at is not None else None,
             }
 
     route_blockers = list(route.get("blocking_reasons") or [])
