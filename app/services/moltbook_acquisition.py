@@ -21,10 +21,16 @@ from . import safe_http
 MOLTBOOK_ORIGIN = "https://www.moltbook.com"
 MOLTBOOK_API_BASE = f"{MOLTBOOK_ORIGIN}/api/v1"
 MAX_SEARCH_RESULTS = 5
+MAX_RECENT_POST_RESULTS = 25
 MAX_QUERY_CHARS = 500
 MAX_COMMENT_CHARS = 900
 MAX_DM_MESSAGE_CHARS = 1000
-_SELF_NAMES = {"aion-supreme", "aion_supreme", "aion supreme"}
+_SELF_NAMES = {
+    "aion-supreme",
+    "aion_supreme",
+    "aion supreme",
+    "aion_temple_herald",
+}
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,220}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
 
@@ -196,7 +202,11 @@ def _post_id(item: dict) -> str | None:
     return None
 
 
-def _candidate(item: dict) -> dict | None:
+def _candidate(
+    item: dict,
+    *,
+    evidence_state: str = "semantic_public_intent_match",
+) -> dict | None:
     author = _author_name(item)
     post_id = _post_id(item)
     if (
@@ -219,7 +229,109 @@ def _candidate(item: dict) -> dict | None:
         "payment_required": False,
         "moltbook_post_id": post_id,
         "moltbook_author": author,
-        "evidence_state": "semantic_public_intent_match",
+        "evidence_state": evidence_state,
+    }
+
+
+def _item_text(item: dict) -> str:
+    parts = []
+    for key in ("title", "content", "text", "body", "description"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return " ".join(parts).lower()
+
+
+def _looks_like_external_spend_intent(item: dict) -> bool:
+    text = _item_text(item)
+    if not text:
+        return False
+
+    direct_spend = (
+        "pay", "paid", "price", "pricing", "budget", "purchase", "buy",
+        "spend", "cost", "subscription", "billing", "metered", "x402",
+        "fee", "vendor",
+    )
+    provider_need = (
+        "provider", "recommend", "recommendation", "choose", "selection",
+        "alternative", "fallback", "replacement", "outage", "reliable",
+    )
+    capability = (
+        "api", "mcp", "agent", "tool", "service", "browser", "automation",
+        "data", "search", "inference", "llm", "model", "gateway",
+    )
+    need_language = (
+        "i need", "we need", "looking for", "seeking", "need a",
+        "need an", "hire", "hiring",
+    )
+
+    has_capability = any(marker in text for marker in capability)
+    return (
+        has_capability and any(marker in text for marker in direct_spend)
+    ) or (
+        has_capability
+        and any(marker in text for marker in provider_need)
+        and any(marker in text for marker in need_language)
+    )
+
+
+def _recent_post_items(payload: dict) -> list[dict]:
+    for key in ("posts", "items", "results"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("posts", "items", "results"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def browse_recent_intent(limit: int = 15) -> dict:
+    """Scan the global newest-post stream and keep only external-spend intent."""
+
+    bounded_limit = max(1, min(int(limit), MAX_RECENT_POST_RESULTS))
+    result, payload = _request_json(
+        "GET",
+        "/posts",
+        params={"sort": "new", "limit": bounded_limit},
+    )
+    if result.error or result.status != 200 or not isinstance(payload, dict):
+        return {
+            "status": "unavailable",
+            "error": platform_error_summary(result, payload),
+            "http_status": result.status,
+            "candidates": [],
+            "outbound_contact_performed": False,
+        }
+
+    candidates = []
+    scanned = 0
+    for item in _recent_post_items(payload):
+        scanned += 1
+        if not _looks_like_external_spend_intent(item):
+            continue
+        candidate = _candidate(
+            item,
+            evidence_state="recent_global_public_intent_match",
+        )
+        if candidate is not None:
+            candidates.append(candidate)
+
+    return {
+        "status": "success",
+        "error": None,
+        "http_status": result.status,
+        "candidates": candidates,
+        "outbound_contact_performed": False,
+        "resource_bounds": {
+            "candidate_limit": bounded_limit,
+            "recent_posts_scanned": scanned,
+            "api_attempts": result.attempts,
+            "sort": "new",
+        },
     }
 
 
