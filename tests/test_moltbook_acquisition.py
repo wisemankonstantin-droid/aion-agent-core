@@ -185,11 +185,14 @@ def test_moltbook_target_has_separate_non_a2a_qualification(monkeypatch):
     assert reasons == ["qualified_moltbook_public_intent_thread"]
 
 
-def test_moltbook_is_primary_but_platform_contact_budget_is_hard_bounded():
+def test_moltbook_contact_budget_stays_bounded_inside_multichannel_swarm():
     assert set(acquisition_swarm.MOLTBOOK_INTENT_QUERIES) == set(
         acquisition_swarm.INTENT_WORKERS
     )
-    assert len(acquisition_swarm.INTENT_WORKERS) == 10
+    assert len(acquisition_swarm.INTENT_WORKERS) == 15
+    assert set(acquisition_swarm.INTENT_WORKERS).issubset(
+        moltbook_acquisition._INTENT_LABELS
+    )
     assert acquisition_swarm.MOLTBOOK_DAILY_COMMENT_LIMIT == 50
     assert acquisition_swarm.MOLTBOOK_MAX_COMMENTS_PER_CYCLE == 2
     assert acquisition_swarm.MOLTBOOK_DM_DAILY_REQUEST_LIMIT == 20

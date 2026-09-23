@@ -79,6 +79,26 @@ INTENT_WORKERS: dict[str, tuple[str, ...]] = {
         "agent procurement", "agent commerce", "machine procurement",
         "autonomous purchase", "agent buying service", "external spend agent",
     ),
+    "security_buyers": (
+        "security api", "agent security service", "provider security assessment",
+        "api security vendor", "secret management service", "external security tool",
+    ),
+    "observability_buyers": (
+        "observability api", "monitoring provider", "uptime monitoring service",
+        "agent tracing service", "logging vendor", "reliability monitoring",
+    ),
+    "storage_compute_buyers": (
+        "cloud database provider", "vector database service", "object storage api",
+        "gpu compute provider", "agent hosting service", "serverless provider",
+    ),
+    "payments_buyers": (
+        "payment api provider", "agent payment rail", "usdc payment service",
+        "x402 facilitator", "machine payment provider", "settlement api",
+    ),
+    "verification_buyers": (
+        "provider verification", "agent trust verification", "endpoint verification service",
+        "capability verification", "pre purchase verification", "supplier due diligence",
+    ),
 }
 
 MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
@@ -162,6 +182,46 @@ MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
         "Agent commerce workflow needs a qualified external route",
         "Need to purchase an external capability for an AI agent",
     ),
+    "security_buyers": (
+        "I need a security API or external security service before spending",
+        "Looking for an agent security provider for a production workflow",
+        "Need to compare API security vendors before purchase",
+        "Need secret management or security tooling for an autonomous agent",
+        "Which external security service should this agent pay for",
+        "Need to qualify a security provider before integrating it",
+    ),
+    "observability_buyers": (
+        "I need a monitoring or observability provider for an agent workload",
+        "Looking for paid uptime monitoring or tracing before purchase",
+        "Need to compare logging or observability services for production",
+        "Which monitoring provider should an autonomous agent use",
+        "Need an external reliability service with clear pricing",
+        "Looking for agent tracing or monitoring before spending",
+    ),
+    "storage_compute_buyers": (
+        "I need a database, storage, hosting, or compute provider for an agent",
+        "Looking for a paid vector database or object storage service",
+        "Need to compare GPU or serverless compute providers before spending",
+        "Which hosting or database provider should this agent buy",
+        "Need external compute with predictable cost for an agent workflow",
+        "Looking for storage or compute infrastructure before purchase",
+    ),
+    "payments_buyers": (
+        "I need a payment API or machine payment rail for an agent",
+        "Looking for a USDC or x402 payment provider before integrating",
+        "Need to compare payment or settlement services for autonomous agents",
+        "Which payment provider should this agent use before moving money",
+        "Need a machine payment service with clear fees and settlement behavior",
+        "Looking for an x402 facilitator or settlement API",
+    ),
+    "verification_buyers": (
+        "I need to verify an external provider before paying or integrating",
+        "Looking for provider trust or endpoint verification for an agent",
+        "Need capability verification before selecting an external service",
+        "Which verification service can qualify this supplier before purchase",
+        "Need due diligence on an external agent API or provider",
+        "Looking for pre-purchase provider verification",
+    ),
 }
 
 MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
@@ -241,6 +301,20 @@ def _recent_global_scan_lane(*, now_seconds: float | None = None) -> str:
     current = time.time() if now_seconds is None else float(now_seconds)
     slot = int(current // DEFAULT_INTERVAL_SECONDS)
     return lanes[slot % len(lanes)]
+
+
+def _registry_queries_for_cycle(
+    queries: tuple[str, ...],
+    *,
+    moltbook_ready: bool,
+    moltbook_outbound_blocked: bool,
+    moltbook_created: int,
+) -> tuple[str, ...]:
+    """Keep federated A2A discovery parallel instead of making one platform a choke point."""
+
+    if not moltbook_ready or moltbook_outbound_blocked or moltbook_created == 0:
+        return tuple(queries)
+    return tuple(queries[:1])
 
 
 def _worker_daily_plan() -> dict:
@@ -548,6 +622,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "daily_worker_plan": _worker_daily_plan(),
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "moltbook",
+        "acquisition_channel_strategy": "parallel_moltbook_and_federated_a2a",
         "moltbook_recent_global_scan_lane": _recent_global_scan_lane(),
         "moltbook": {
             "configured": bool(moltbook_state.get("configured")),
@@ -653,44 +728,41 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
-            # Registries are secondary. Keep Moltbook read-only discovery active
-            # during a platform suspension, but force registry/A2A fallback so
-            # outbound acquisition never waits on a blocked comment channel.
+            # Keep federated registry/A2A discovery alive in parallel with
+            # Moltbook. A healthy social channel may receive priority for
+            # context-rich intent, but it must never suppress independent
+            # machine discovery or become a single acquisition choke point.
             moltbook_outbound_blocked = bool(
                 moltbook_outbound_status().get("suspended")
             )
-            fallback_queries = (
-                queries
-                if (not moltbook_ready or moltbook_outbound_blocked)
-                else queries[:1]
+            registry_queries = _registry_queries_for_cycle(
+                queries,
+                moltbook_ready=moltbook_ready,
+                moltbook_outbound_blocked=moltbook_outbound_blocked,
+                moltbook_created=moltbook_created,
             )
-            if (
-                not moltbook_ready
-                or moltbook_outbound_blocked
-                or moltbook_created == 0
-            ):
-                for query in fallback_queries:
-                    current = db.scalar(
-                        select(func.count())
-                        .select_from(models.AmbassadorTarget)
-                        .where(models.AmbassadorTarget.campaign_id == campaign.id)
-                    ) or 0
-                    if current >= campaign.maximum_targets:
+            for query in registry_queries:
+                current = db.scalar(
+                    select(func.count())
+                    .select_from(models.AmbassadorTarget)
+                    .where(models.AmbassadorTarget.campaign_id == campaign.id)
+                ) or 0
+                if current >= campaign.maximum_targets:
+                    break
+                try:
+                    lane_report["scout_results"].append(
+                        scout_campaign(
+                            db,
+                            campaign_id=campaign.campaign_id,
+                            query=query,
+                        )
+                    )
+                except AmbassadorError as exc:
+                    lane_report["scout_results"].append(
+                        {"channel": "registry_parallel", "query": query, "error": exc.code}
+                    )
+                    if exc.code == "campaign_target_limit_reached":
                         break
-                    try:
-                        lane_report["scout_results"].append(
-                            scout_campaign(
-                                db,
-                                campaign_id=campaign.campaign_id,
-                                query=query,
-                            )
-                        )
-                    except AmbassadorError as exc:
-                        lane_report["scout_results"].append(
-                            {"channel": "registry_fallback", "query": query, "error": exc.code}
-                        )
-                        if exc.code == "campaign_target_limit_reached":
-                            break
 
             if campaign.state != "ready":
                 set_campaign_state(db, campaign.campaign_id, "ready")
