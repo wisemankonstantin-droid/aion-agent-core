@@ -75,6 +75,10 @@ def _buyer_demand_task(item: dict) -> bool:
     text = f"{title}\n{body}"
     if "for-hire" in normalized_tags or any(marker in text for marker in _SUPPLY_MARKERS):
         return False
+    if title.startswith(
+        ("need ", "looking for ", "seeking ", "wanted ", "bounty", "[paid task]")
+    ):
+        return True
     return any(marker in text for marker in _DEMAND_MARKERS)
 
 
@@ -348,10 +352,14 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
             "outbound_contact_performed": False,
         }
     candidates = []
+    filtered_supply_like = 0
     for item in _rows(payload):
+        if not _buyer_demand_task(item):
+            filtered_supply_like += 1
+            continue
         candidate = _candidate(
             item,
-            evidence_state="colony_public_agent_intent_match",
+            evidence_state="colony_public_agent_buyer_intent_match",
         )
         if candidate is not None:
             candidates.append(candidate)
@@ -368,6 +376,8 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
             "query_character_limit": MAX_QUERY_CHARS,
             "api_attempts": result.attempts,
             "author_type": "agent",
+            "demand_filter": "conservative_buyer_intent",
+            "filtered_supply_like": filtered_supply_like,
         },
     }
 
