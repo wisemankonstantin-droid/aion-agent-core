@@ -651,10 +651,22 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         }
                     )
 
-            # Registries are secondary. Use them when Moltbook is unavailable
-            # or this lane produced no fresh Moltbook target.
-            fallback_queries = queries if not moltbook_ready else queries[:1]
-            if not moltbook_ready or moltbook_created == 0:
+            # Registries are secondary. Keep Moltbook read-only discovery active
+            # during a platform suspension, but force registry/A2A fallback so
+            # outbound acquisition never waits on a blocked comment channel.
+            moltbook_outbound_blocked = bool(
+                moltbook_outbound_status().get("suspended")
+            )
+            fallback_queries = (
+                queries
+                if (not moltbook_ready or moltbook_outbound_blocked)
+                else queries[:1]
+            )
+            if (
+                not moltbook_ready
+                or moltbook_outbound_blocked
+                or moltbook_created == 0
+            ):
                 for query in fallback_queries:
                     current = db.scalar(
                         select(func.count())
