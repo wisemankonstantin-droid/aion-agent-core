@@ -22,6 +22,7 @@ from .conversation_intelligence import campaign_intelligence_report
 from .ambassador import (
     AmbassadorError,
     MAX_CAMPAIGN_TARGETS,
+    canonical_aion_public_base_url,
     create_campaign,
     prepare_and_send_operator_contact,
     prepare_and_send_operator_moltbook_dm,
@@ -32,7 +33,11 @@ from .ambassador import (
 )
 from .moltbook_acquisition import (
     account_status as moltbook_account_status,
+    build_routine_dm_reply as moltbook_build_routine_dm_reply,
     dm_check as moltbook_dm_check,
+    dm_conversations as moltbook_dm_conversations,
+    dm_read as moltbook_dm_read,
+    dm_send as moltbook_dm_send,
 )
 
 
@@ -176,6 +181,7 @@ MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
 MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
+MOLTBOOK_DM_MAX_CONVERSATIONS_PER_CYCLE = 5
 
 _START_LOCK = Lock()
 _STARTED = False
@@ -493,6 +499,103 @@ def _campaign_response_snapshot(db: Session, campaign_id: str) -> dict:
     )
 
 
+def _run_moltbook_dm_conversation_cycle(*, send_enabled: bool) -> dict:
+    """Handle routine replies only inside already-approved Moltbook conversations."""
+
+    report = {
+        "status": "disabled" if not send_enabled else "idle",
+        "conversations_checked": 0,
+        "unread_conversations": 0,
+        "conversations_read": 0,
+        "routine_replies_sent": 0,
+        "human_gates": 0,
+        "opt_outs": 0,
+        "irrelevant_no_reply": 0,
+        "read_failures": 0,
+        "send_failures": 0,
+        "stopped_on_rate_limit": False,
+        "private_message_text_logged": False,
+    }
+    if not send_enabled:
+        return report
+
+    listing = moltbook_dm_conversations(limit=20)
+    if listing.get("status") != "success":
+        report["status"] = "unavailable"
+        report["error"] = listing.get("error")
+        return report
+
+    conversations = [
+        row
+        for row in (listing.get("conversations") or [])
+        if isinstance(row, dict) and int(row.get("unread_count") or 0) > 0
+    ]
+    report["status"] = "working" if conversations else "idle"
+    report["unread_conversations"] = len(conversations)
+
+    try:
+        public_base_url = canonical_aion_public_base_url()
+    except AmbassadorError:
+        report["status"] = "blocked"
+        report["error"] = "trusted_public_url_unavailable"
+        return report
+
+    for conversation in conversations[:MOLTBOOK_DM_MAX_CONVERSATIONS_PER_CYCLE]:
+        report["conversations_checked"] += 1
+        conversation_id = str(conversation.get("conversation_id") or "")
+        read = moltbook_dm_read(conversation_id)
+        if read.get("status") != "success":
+            report["read_failures"] += 1
+            continue
+        report["conversations_read"] += 1
+
+        messages = read.get("messages") or []
+        inbound = [
+            item
+            for item in messages
+            if isinstance(item, dict) and not item.get("from_self")
+        ]
+        if not inbound:
+            report["irrelevant_no_reply"] += 1
+            continue
+        latest = inbound[-1]
+        if latest.get("needs_human_input"):
+            report["human_gates"] += 1
+            continue
+
+        decision = moltbook_build_routine_dm_reply(
+            message=str(latest.get("message") or ""),
+            public_base_url=public_base_url,
+        )
+        action = decision.get("action")
+        if action == "human_gate":
+            report["human_gates"] += 1
+            continue
+        if action == "no_reply":
+            if decision.get("reason") == "opt_out":
+                report["opt_outs"] += 1
+            else:
+                report["irrelevant_no_reply"] += 1
+            continue
+        if action != "reply":
+            report["human_gates"] += 1
+            continue
+
+        sent = moltbook_dm_send(
+            conversation_id,
+            str(decision.get("reply") or ""),
+        )
+        if sent.get("sent"):
+            report["routine_replies_sent"] += 1
+            continue
+        report["send_failures"] += 1
+        if sent.get("http_status") == 429:
+            report["stopped_on_rate_limit"] = True
+            break
+
+    return report
+
+
 def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> dict:
     """Run one bounded discovery/contact cycle across independent intent lanes."""
 
@@ -781,6 +884,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
 
+    report["moltbook"]["dm"]["conversation_cycle"] = (
+        _run_moltbook_dm_conversation_cycle(
+            send_enabled=bool(send_enabled and moltbook_ready)
+        )
+    )
     return report
 
 
