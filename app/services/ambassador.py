@@ -47,6 +47,13 @@ from .moltbook_acquisition import (
     post_comment as post_moltbook_comment,
     search_intent as search_moltbook_intent,
 )
+from .colony_acquisition import (
+    browse_paid_tasks as browse_colony_paid_tasks,
+    build_outreach_comment as build_colony_outreach_comment,
+    platform_error_summary as colony_platform_error_summary,
+    post_comment as post_colony_comment,
+    search_intent as search_colony_intent,
+)
 from .package5_proof import qualifying_return_identity_ids
 
 
@@ -210,6 +217,48 @@ def _qualification(candidate: dict) -> tuple[str, list[str]]:
     source = str(candidate.get("source") or "").strip().lower()
     identifier = str(candidate.get("identifier") or candidate.get("name") or "").lower()
 
+    if source == "colony":
+        interaction_url = str(candidate.get("interaction_url") or "")
+        try:
+            parsed = urlsplit(interaction_url)
+            path = parsed.path.rstrip("/")
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname not in {"thecolony.ai", "thecolony.cc"}
+                or not path.startswith("/api/v1/posts/")
+                or not path.endswith("/comments")
+            ):
+                reasons.append("colony_interaction_destination_invalid")
+        except Exception:
+            reasons.append("colony_interaction_destination_invalid")
+        if not candidate.get("interaction_url_validated"):
+            reasons.append("interaction_destination_not_validated")
+        if candidate.get("authentication_requirement") != "colony_bearer":
+            reasons.append("colony_auth_contract_invalid")
+        if candidate.get("payment_required"):
+            reasons.append("payment_required_initial_contact")
+        if any(
+            marker in identifier
+            for marker in (
+                "colony:aion-supreme",
+                "colony:aion_supreme",
+                "synthetic",
+                "fixture",
+                "test-agent",
+                "probe-test",
+            )
+        ):
+            reasons.append("self_or_test_target")
+        try:
+            canonical_aion_public_base_url()
+        except AmbassadorError:
+            reasons.append("trusted_public_origin_unavailable")
+        return (
+            ("qualified", ["qualified_colony_public_intent_thread"])
+            if not reasons
+            else ("rejected", sorted(set(reasons)))
+        )
+
     if source == "moltbook":
         interaction_url = str(candidate.get("interaction_url") or "")
         try:
@@ -294,7 +343,7 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
         return None, "candidate_metadata_too_large"
     source = str(candidate.get("source") or "").strip().lower()
     try:
-        if source == "moltbook":
+        if source in {"moltbook", "colony"}:
             card_url = _canonical_public_url(card_url, max_addresses=32)
             interaction_url = _canonical_public_url(
                 interaction_url,
@@ -473,6 +522,106 @@ def scout_moltbook_recent_campaign(
         return {
             "campaign_id": campaign_id,
             "channel": "moltbook_recent_global",
+            "discovery_status": discovery.get("status"),
+            "created_target_ids": target_ids,
+            "outcomes": dict(sorted(outcomes.items())),
+            "resource_bounds": discovery.get("resource_bounds") or {},
+            "outbound_contact_performed": False,
+            "error": discovery.get("error"),
+        }
+
+
+def scout_colony_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
+    """Discover public agent spend-intent on The Colony without contacting."""
+
+    with _guard(db):
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.campaign_id == campaign_id
+                ),
+                db,
+            )
+        )
+        if campaign is None:
+            raise AmbassadorError(404, "campaign_not_found", "Campaign not found")
+        if campaign.state not in {"draft", "ready"}:
+            raise AmbassadorError(
+                409, "campaign_not_scoutable", "Campaign is paused or closed"
+            )
+        current = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        remaining = campaign.maximum_targets - current
+        if remaining <= 0:
+            raise AmbassadorError(
+                409, "campaign_target_limit_reached", "Campaign target limit reached"
+            )
+        discovery = search_colony_intent(query, min(5, remaining))
+        outcomes = Counter()
+        target_ids = []
+        for candidate in discovery.get("candidates", [])[:remaining]:
+            row, outcome = _insert_candidate(db, campaign, candidate)
+            outcomes[outcome] += 1
+            if row is not None and outcome == "created":
+                target_ids.append(row.target_id)
+        campaign.updated_at = _now()
+        db.commit()
+        return {
+            "campaign_id": campaign_id,
+            "channel": "colony",
+            "discovery_status": discovery.get("status"),
+            "created_target_ids": target_ids,
+            "outcomes": dict(sorted(outcomes.items())),
+            "resource_bounds": discovery.get("resource_bounds") or {},
+            "outbound_contact_performed": False,
+            "error": discovery.get("error"),
+        }
+
+
+def scout_colony_paid_tasks_campaign(db: Session, *, campaign_id: str, limit: int = 5) -> dict:
+    """Discover explicit paid-task intent on The Colony marketplace."""
+
+    with _guard(db):
+        campaign = db.scalar(
+            _for_update(
+                select(models.AmbassadorCampaign).where(
+                    models.AmbassadorCampaign.campaign_id == campaign_id
+                ),
+                db,
+            )
+        )
+        if campaign is None:
+            raise AmbassadorError(404, "campaign_not_found", "Campaign not found")
+        if campaign.state not in {"draft", "ready"}:
+            raise AmbassadorError(
+                409, "campaign_not_scoutable", "Campaign is paused or closed"
+            )
+        current = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        remaining = campaign.maximum_targets - current
+        if remaining <= 0:
+            raise AmbassadorError(
+                409, "campaign_target_limit_reached", "Campaign target limit reached"
+            )
+        discovery = browse_colony_paid_tasks(min(int(limit), remaining))
+        outcomes = Counter()
+        target_ids = []
+        for candidate in discovery.get("candidates", [])[:remaining]:
+            row, outcome = _insert_candidate(db, campaign, candidate)
+            outcomes[outcome] += 1
+            if row is not None and outcome == "created":
+                target_ids.append(row.target_id)
+        campaign.updated_at = _now()
+        db.commit()
+        return {
+            "campaign_id": campaign_id,
+            "channel": "colony_paid_tasks",
             "discovery_status": discovery.get("status"),
             "created_target_ids": target_ids,
             "outcomes": dict(sorted(outcomes.items())),
@@ -877,7 +1026,8 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     if target_preview is None:
         raise AmbassadorError(404, "target_not_found", "Target not found")
     is_moltbook = target_preview.discovery_source == "moltbook"
-    if is_moltbook:
+    is_colony = target_preview.discovery_source == "colony"
+    if is_moltbook or is_colony:
         campaign_preview = db.get(
             models.AmbassadorCampaign,
             target_preview.campaign_id,
@@ -887,16 +1037,25 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
             name = str(campaign_preview.name or "")
             prefix = "Intent swarm "
             if name.startswith(prefix):
-                lane = name[len(prefix):].split(" #", 1)[0]
+                lane = name[len(prefix):].split(" #", 1)[0].split("@", 1)[0]
+        source_prefix = "moltbook:" if is_moltbook else "colony:"
         recipient = (
             target_preview.source_identifier.split(":", 1)[1]
-            if target_preview.source_identifier.startswith("moltbook:")
+            if target_preview.source_identifier.startswith(source_prefix)
             else None
         )
-        comment = build_moltbook_outreach_comment(
-            public_base_url=canonical_aion_public_base_url(),
-            recipient=recipient,
-            intent=lane,
+        comment = (
+            build_moltbook_outreach_comment(
+                public_base_url=canonical_aion_public_base_url(),
+                recipient=recipient,
+                intent=lane,
+            )
+            if is_moltbook
+            else build_colony_outreach_comment(
+                public_base_url=canonical_aion_public_base_url(),
+                recipient=recipient,
+                intent=lane,
+            )
         )
         payload = {"content": comment}
     else:
@@ -973,11 +1132,18 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
         db.commit()
         raise
 
-    if is_moltbook:
+    if is_moltbook or is_colony:
         try:
-            result, response = post_moltbook_comment(
-                target.interaction_url,
-                str(payload["content"]),
+            result, response = (
+                post_moltbook_comment(
+                    target.interaction_url,
+                    str(payload["content"]),
+                )
+                if is_moltbook
+                else post_colony_comment(
+                    target.interaction_url,
+                    str(payload["content"]),
+                )
             )
         except Exception:
             result, response = safe_http.FetchResult(None, None, "transport_exception", 0), None
@@ -995,26 +1161,25 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     contact.http_status = result.status
     contact.completed_at = _now()
     contact.response_digest = _digest_json(response) if response is not None else None
-    platform_error = (
-        moltbook_platform_error_summary(result, response)
-        if is_moltbook and not (
-            result.status is not None and 200 <= result.status < 300
-        )
-        else None
-    )
+    platform_error = None
+    if not (result.status is not None and 200 <= result.status < 300):
+        if is_moltbook:
+            platform_error = moltbook_platform_error_summary(result, response)
+        elif is_colony:
+            platform_error = colony_platform_error_summary(result, response)
 
     if result.status == 402 or result.error == "http_402":
         contact.result_class, target.contact_state = "payment_required", "blocked"
-    elif is_moltbook and result.status == 401:
+    elif (is_moltbook or is_colony) and result.status == 401:
         contact.result_class, target.contact_state = "credentials_required", "blocked"
     elif is_moltbook and result.status == 403:
         # Moltbook uses 403 for platform/content policy states as well as auth.
         # Account status/search are checked separately, so do not falsely label
         # every 403 as an invalid API credential.
         contact.result_class, target.contact_state = "rejected", "contacted"
-    elif not is_moltbook and result.status in {401, 403}:
+    elif not is_moltbook and not is_colony and result.status in {401, 403}:
         contact.result_class, target.contact_state = "credentials_required", "blocked"
-    elif is_moltbook and result.status is not None and 200 <= result.status < 300:
+    elif (is_moltbook or is_colony) and result.status is not None and 200 <= result.status < 300:
         success = not isinstance(response, dict) or response.get("success") is not False
         if success:
             contact.result_class, target.contact_state = "delivered", "contacted"
@@ -1034,8 +1199,10 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     contact_id = contact.contact_id
     db.commit()
 
-    conversation_capture_state = "not_applicable_moltbook" if is_moltbook else (
-        "no_response" if response is None else "invalid_protocol_response"
+    conversation_capture_state = (
+        "not_applicable_public_social_comment"
+        if is_moltbook or is_colony
+        else ("no_response" if response is None else "invalid_protocol_response")
     )
     if semantic_response is not None:
         from .conversation_intelligence import capture_ambassador_response
@@ -1046,7 +1213,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
     return {
         "contact_id": contact_id,
         "target_id": target.target_id,
-        "channel": "moltbook" if is_moltbook else "a2a",
+        "channel": "moltbook" if is_moltbook else "colony" if is_colony else "a2a",
         "result_class": contact.result_class,
         "http_status": contact.http_status,
         "response_received": contact.response_received,

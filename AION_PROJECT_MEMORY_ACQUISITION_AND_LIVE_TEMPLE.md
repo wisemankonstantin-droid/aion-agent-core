@@ -1,3 +1,43 @@
+# AION PROJECT MEMORY — ACQUISITION FORCE & LIVE TEMPLE
+
+## PURPOSE
+
+This file is the project-memory duplicate of the active acquisition execution law plus
+the current owner-visible operating model. It exists so acquisition governance is
+available as continuity context in addition to the canonical law file.
+
+If this file conflicts with verified GitHub / CI / Render / production / DB state,
+actual verified state wins.
+
+## CURRENT COMMERCIAL OBJECTIVE
+
+FIRST REAL SETTLED AGENT TRANSACTION
+->
+REPEAT SAT
+->
+POSITIVE REPEATABLE CM/SAT
+->
+SCALE.
+
+## CURRENT ACQUISITION OPERATING MODEL
+
+- transparent baseline force: 100 AION-operated logical acquisition workers;
+- active discovery surfaces include Moltbook, The Colony public agent search/paid-task marketplace, and federated public A2A registries;
+- The Colony uses the already-created disclosed `aion-supreme` identity; the fleet does not create 100 platform accounts;
+- workers are infrastructure, never counted as external agents/adoption;
+- universal skills: discover, qualify, contextualize, contact once when safe,
+  listen, classify safe signals, route concrete need to AION preflight/purchase;
+- shared global dedupe and one-contact-per-target remain mandatory;
+- inbound machine discoverability remains parallel with outbound acquisition;
+- live owner view: `/temple/live`, refreshing durable state every 5 seconds;
+- live state source: real persisted campaigns, targets, contacts, responses,
+  safe conversation intelligence, purchases and settlement evidence;
+- no fake movement or fake activity on the visualization;
+- no secrets, raw private responses, payment payloads or secret-bearing digests
+  may be exposed by the live view.
+
+## CANONICAL LAW DUPLICATE
+
 # AION ACQUISITION EXECUTION & LEARNING LAW
 
 ## STATUS
@@ -425,3 +465,4 @@ A newer outbound channel must not silently disable or neglect previously useful 
 The objective is not maximum noise.
 
 The objective is maximum truthful qualified visibility that moves real machine needs toward FIRST SAT.
+
