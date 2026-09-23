@@ -63,6 +63,12 @@ def configured() -> bool:
     return _api_key() is not None
 
 
+def dm_outbound_enabled() -> bool:
+    """DM stays fail-closed until an official working endpoint is verified."""
+
+    return os.getenv("AION_MOLTBOOK_DM_ENABLED") == "1"
+
+
 def _note_suspension(payload: object) -> None:
     global _SUSPENDED_UNTIL
     if not isinstance(payload, (dict, list, str)):
@@ -516,6 +522,14 @@ def post_comment(interaction_url: str, content: str):
 
 def dm_request(agent_name: str, message: str) -> dict:
     """Send one consent-based DM request to a bounded Moltbook agent name."""
+
+    if not dm_outbound_enabled():
+        return {
+            "status": "rejected",
+            "accepted": False,
+            "error": "moltbook_dm_disabled",
+            "http_status": None,
+        }
 
     name = str(agent_name or "").strip()
     text = str(message or "").strip()
