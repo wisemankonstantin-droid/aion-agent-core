@@ -13,11 +13,12 @@ import time
 from datetime import datetime, timezone
 from threading import Lock, Thread
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import SessionLocal
+from ..acquisition import WORKERS as NETWORK_WORKERS, WORKER_SHARDS, WORKERS_PER_CYCLE
 from .conversation_intelligence import campaign_intelligence_report
 from .ambassador import (
     AmbassadorError,
@@ -224,8 +225,9 @@ MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-MAX_WORKERS_PER_CYCLE = len(INTENT_WORKERS)
+MAX_WORKERS_PER_CYCLE = WORKERS_PER_CYCLE
 MAX_CONTACTS_PER_CYCLE = len(INTENT_WORKERS)
+MOLTBOOK_MAX_SEARCHES_PER_CYCLE = 8
 DEFAULT_INTERVAL_SECONDS = 15 * 60
 MIN_INTERVAL_SECONDS = 15 * 60
 MAX_INTERVAL_SECONDS = 24 * 60 * 60
@@ -240,7 +242,59 @@ MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 
 _START_LOCK = Lock()
+_RUNTIME_LOCK = Lock()
 _STARTED = False
+_WORKER_RUNTIME: dict[str, dict] = {}
+
+
+def _active_workers_for_cycle(*, now_seconds: float | None = None):
+    current = time.time() if now_seconds is None else float(now_seconds)
+    slot = int(current // DEFAULT_INTERVAL_SECONDS)
+    shard = slot % WORKER_SHARDS
+    active = tuple(worker for worker in NETWORK_WORKERS if worker.shard == shard)
+    return active[:MAX_WORKERS_PER_CYCLE]
+
+
+def _update_worker_runtime(worker, **fields) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _RUNTIME_LOCK:
+        current = dict(_WORKER_RUNTIME.get(worker.id) or {})
+        current.update(
+            {
+                "worker_id": worker.id,
+                "lane": worker.lane,
+                "preferred_channel": worker.preferred_channel,
+                "shard": worker.shard,
+                "updated_at": now,
+            }
+        )
+        current.update(fields)
+        _WORKER_RUNTIME[worker.id] = current
+
+
+def worker_runtime_snapshot() -> dict:
+    active_ids = {worker.id for worker in _active_workers_for_cycle()}
+    with _RUNTIME_LOCK:
+        runtime = {key: dict(value) for key, value in _WORKER_RUNTIME.items()}
+    workers = []
+    for worker in NETWORK_WORKERS:
+        state = runtime.get(worker.id) or {
+            "worker_id": worker.id,
+            "lane": worker.lane,
+            "preferred_channel": worker.preferred_channel,
+            "shard": worker.shard,
+            "status": "awaiting_first_cycle",
+            "updated_at": None,
+        }
+        state["scheduled_now"] = worker.id in active_ids
+        workers.append(state)
+    return {
+        "worker_count": len(NETWORK_WORKERS),
+        "active_worker_count": len(active_ids),
+        "workers_per_cycle": MAX_WORKERS_PER_CYCLE,
+        "worker_shards": WORKER_SHARDS,
+        "workers": workers,
+    }
 
 
 def _aware(value: datetime) -> datetime:
@@ -333,6 +387,7 @@ def _worker_daily_plan() -> dict:
 def _daily_worker_accountability(
     db: Session,
     lane: str,
+    worker_id: str,
     *,
     send_enabled: bool,
     cycle_new_targets: int,
@@ -356,12 +411,21 @@ def _daily_worker_accountability(
             models.AmbassadorTarget.created_at >= day_start,
         )
     ) or 0
+    worker_contact_filter = or_(
+        models.AmbassadorContactAttempt.idempotency_key.like(
+            f"intent-{worker_id}-%"
+        ),
+        models.AmbassadorContactAttempt.idempotency_key.like(
+            f"dm-{worker_id}-%"
+        ),
+    )
     contacts = db.scalar(
         select(func.count())
         .select_from(models.AmbassadorContactAttempt)
         .where(
             models.AmbassadorContactAttempt.target_id.in_(target_ids),
             models.AmbassadorContactAttempt.created_at >= day_start,
+            worker_contact_filter,
         )
     ) or 0
     responses = db.scalar(
@@ -370,6 +434,7 @@ def _daily_worker_accountability(
         .where(
             models.AmbassadorContactAttempt.target_id.in_(target_ids),
             models.AmbassadorContactAttempt.created_at >= day_start,
+            worker_contact_filter,
             models.AmbassadorContactAttempt.response_received.is_(True),
         )
     ) or 0
@@ -400,14 +465,13 @@ def _daily_worker_accountability(
         "blocker": blocker,
         "plan": plan,
         "today": {
-            "new_unique_targets": int(new_targets),
+            "new_unique_targets_attributed": None,
+            "lane_new_unique_targets": int(new_targets),
             "unique_contact_attempts": int(contacts),
             "valid_machine_responses": int(responses),
         },
         "remaining": {
-            "new_unique_targets": max(
-                0, DAILY_NEW_TARGET_GOAL_PER_WORKER - int(new_targets)
-            ),
+            "new_unique_targets_attributed": None,
             "unique_contact_attempts": max(
                 0, DAILY_CONTACT_GOAL_PER_WORKER - int(contacts)
             ),
@@ -578,8 +642,9 @@ def _campaign_response_snapshot(db: Session, campaign_id: str) -> dict:
 
 
 def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> dict:
-    """Run one bounded discovery/contact cycle across independent intent lanes."""
+    """Run one bounded discovery/contact cycle across the 100-worker roster."""
 
+    active_workers = _active_workers_for_cycle()
     send_enabled = (
         _env_enabled("AION_AMBASSADOR_OUTBOUND_ENABLED")
         and _env_enabled("AION_AMBASSADOR_OPERATOR")
@@ -611,10 +676,16 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         moltbook_dm_remaining_today,
     )
 
+    recent_worker = active_workers[0] if active_workers else None
     report = {
         "action": "intent_acquisition_cycle",
         "workers": {},
-        "worker_count": len(INTENT_WORKERS),
+        "worker_count": len(NETWORK_WORKERS),
+        "active_worker_count": len(active_workers),
+        "active_worker_ids": [worker.id for worker in active_workers],
+        "worker_shards": WORKER_SHARDS,
+        "workers_per_cycle": MAX_WORKERS_PER_CYCLE,
+        "intent_lane_count": len(INTENT_WORKERS),
         "theoretical_unique_target_capacity": len(INTENT_WORKERS) * MAX_CAMPAIGN_TARGETS,
         "send_enabled": send_enabled,
         "contacts_attempted": 0,
@@ -623,7 +694,13 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "moltbook",
         "acquisition_channel_strategy": "parallel_moltbook_and_federated_a2a",
-        "moltbook_recent_global_scan_lane": _recent_global_scan_lane(),
+        "moltbook_recent_global_scan_lane": (
+            recent_worker.lane if recent_worker is not None else None
+        ),
+        "moltbook_recent_global_scan_worker_id": (
+            recent_worker.id if recent_worker is not None else None
+        ),
+        "moltbook_max_search_workers_per_cycle": MOLTBOOK_MAX_SEARCHES_PER_CYCLE,
         "moltbook": {
             "configured": bool(moltbook_state.get("configured")),
             "claimed": moltbook_ready,
@@ -667,14 +744,20 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
     }
 
     contacts_remaining = MAX_CONTACTS_PER_CYCLE
-    for lane, query_bank in INTENT_WORKERS.items():
+    moltbook_searches_remaining = MOLTBOOK_MAX_SEARCHES_PER_CYCLE
+    for worker in active_workers:
+        lane = worker.lane
+        query_bank = INTENT_WORKERS[lane]
         queries = _queries_for_cycle(lane, query_bank)
         moltbook_query = _moltbook_query_for_cycle(
             lane,
             MOLTBOOK_INTENT_QUERIES[lane],
         )
         lane_report = {
-            "worker_id": f"aion-intent-{lane}",
+            "worker_id": worker.id,
+            "lane": lane,
+            "preferred_channel": worker.preferred_channel,
+            "shard": worker.shard,
             "queries": list(queries),
             "query_bank_size": len(query_bank),
             "moltbook_query": moltbook_query,
@@ -684,14 +767,26 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "response_intelligence": None,
             "daily_accountability": None,
         }
-        report["workers"][lane] = lane_report
+        report["workers"][worker.id] = lane_report
+        _update_worker_runtime(
+            worker,
+            status="running",
+            current_queries=list(queries),
+            current_moltbook_query=moltbook_query,
+            last_contact=None,
+        )
 
         try:
             campaign = _campaign_for_lane(db, lane)
             moltbook_created = 0
 
-            if moltbook_ready:
-                if lane == report["moltbook_recent_global_scan_lane"]:
+            if (
+                moltbook_ready
+                and moltbook_searches_remaining > 0
+                and worker.preferred_channel in {"moltbook", "hybrid"}
+            ):
+                moltbook_searches_remaining -= 1
+                if worker.id == report["moltbook_recent_global_scan_worker_id"]:
                     try:
                         recent_result = scout_moltbook_recent_campaign(
                             db,
@@ -740,7 +835,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 moltbook_ready=moltbook_ready,
                 moltbook_outbound_blocked=moltbook_outbound_blocked,
                 moltbook_created=moltbook_created,
-            )
+            )[:1]
             for query in registry_queries:
                 current = db.scalar(
                     select(func.count())
@@ -803,7 +898,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     result = prepare_and_send_operator_contact(
                         db,
                         target_id=target.target_id,
-                        idempotency_key=f"intent-{lane}-{target.target_id}",
+                        idempotency_key=f"intent-{worker.id}-{target.target_id}",
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
@@ -844,7 +939,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         dm_result = prepare_and_send_operator_moltbook_dm(
                             db,
                             target_id=dm_target.target_id,
-                            idempotency_key=f"dm-{lane}-{dm_target.target_id}",
+                            idempotency_key=f"dm-{worker.id}-{dm_target.target_id}",
                         )
                         lane_report["dm_contact"] = {
                             "target_id": dm_target.target_id,
@@ -877,12 +972,30 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             lane_report["daily_accountability"] = _daily_worker_accountability(
                 db,
                 lane,
+                worker.id,
                 send_enabled=send_enabled,
                 cycle_new_targets=cycle_new_targets,
                 contact_attempted_this_cycle=contact_attempted_this_cycle,
             )
+            _update_worker_runtime(
+                worker,
+                status=str(
+                    (lane_report["daily_accountability"] or {}).get("status")
+                    or "working"
+                ).lower(),
+                last_contact=lane_report.get("contact") or lane_report.get("dm_contact"),
+                last_response_intelligence=lane_report.get("response_intelligence"),
+                last_daily_accountability=lane_report.get("daily_accountability"),
+                scout_results=lane_report.get("scout_results"),
+            )
         except Exception as exc:
             lane_report["worker_error"] = type(exc).__name__
+            _update_worker_runtime(
+                worker,
+                status="error",
+                worker_error=type(exc).__name__,
+                scout_results=lane_report.get("scout_results"),
+            )
 
     final_outbound_state = moltbook_outbound_status()
     report["moltbook"]["suspended"] = bool(
