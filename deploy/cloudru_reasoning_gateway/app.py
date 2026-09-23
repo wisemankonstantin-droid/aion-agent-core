@@ -130,3 +130,13 @@ async def chat_completions(
         payload = {"error": {"message": "upstream_non_json_response"}}
 
     return JSONResponse(status_code=response.status_code, content=payload)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8080")),
+    )
