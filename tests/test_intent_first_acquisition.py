@@ -126,9 +126,12 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     )
     assert message["purpose"] == "bounded_machine_utility_invitation"
     assert message["intent"] == "before_external_spend"
-    assert message["optional_structured_feedback"]["part_type"] == "A2A data part"
-    assert message["optional_structured_feedback"]["reply_if"] == "current real provider-selection or external-spend need"
-    assert message["optional_structured_feedback"]["shape"]["aion_feedback"]["currency"] == "USD"
+    feedback = message["optional_structured_feedback"]
+    assert feedback["part_type"] == "A2A data part"
+    assert feedback["preferred_when_applicable"] is True
+    assert "reply with one A2A data part" in feedback["reply_if"]
+    assert "do not invent a need" in feedback["reply_if"]
+    assert feedback["shape"]["aion_feedback"]["currency"] == "USD"
     assert message["pre_spend_preflight"]["url"].endswith(
         "/commercial/route-intelligence/preflight"
     )
@@ -136,10 +139,41 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     assert message["pre_spend_preflight"]["payment_or_provider_execution"] is False
     assert message["join"]["optional"] is True
     assert message["join"]["not_required_for_utility_or_purchase"] is True
-    assert message["next_actions"][0] == "inspect_pre_spend_preflight"
+    assert message["next_actions"][0] == "reply_with_aion_feedback_if_current_need"
     assert len(
         json.dumps(message, sort_keys=True, separators=(",", ":")).encode()
     ) <= ambassador.MAX_MESSAGE_BYTES
+
+
+def test_machine_discovery_surfaces_make_zero_cost_preflight_first_class():
+    card = client.get("/.well-known/agent-card.json")
+    assert card.status_code == 200
+    preflight_skill = next(
+        skill
+        for skill in card.json()["skills"]
+        if skill["id"] == "aion_pre_spend_preflight"
+    )
+    assert "zero-price" in preflight_skill["description"]
+    assert "no membership" in preflight_skill["description"]
+    assert "/commercial/route-intelligence/preflight" in preflight_skill["description"]
+
+    manifest = client.get("/.well-known/aion.json")
+    assert manifest.status_code == 200
+    before_spend = manifest.json()["before_external_spend"]
+    assert before_spend["url"].endswith("/commercial/route-intelligence/preflight")
+    assert before_spend["cost"] == "known_zero"
+    assert before_spend["membership_required"] is False
+    assert before_spend["payment_required"] is False
+    assert before_spend["provider_execution"] is False
+    assert before_spend["decision"] == "GO|HOLD|STOP"
+
+    skill = client.get("/skill.md")
+    llms = client.get("/llms.txt")
+    assert skill.status_code == llms.status_code == 200
+    assert "BEFORE EXTERNAL SPEND:" in skill.text
+    assert "BEFORE EXTERNAL SPEND:" in llms.text
+    assert "/commercial/route-intelligence/preflight" in skill.text
+    assert "/commercial/route-intelligence/preflight" in llms.text
 
 
 def test_swarm_has_100_transparent_workers_and_3000_target_capacity(monkeypatch):
