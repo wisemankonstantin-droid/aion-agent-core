@@ -84,6 +84,7 @@ def test_colony_paid_task_discovery_keeps_buyer_demand_and_rejects_for_hire(monk
                         "metadata_": {
                             "budget_min_sats": 1000,
                             "budget_max_sats": 5000,
+                            "deadline": "2026-12-01T00:00:00Z",
                         },
                         "accepting_submissions": True,
                     },
@@ -129,6 +130,28 @@ def test_colony_demand_filter_fails_closed_on_ambiguous_seller_copy():
             "accepting_submissions": True,
         }
     ) is False
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "Need an agent to build a model",
+            "body": "Looking for experts. Please submit your bids.",
+            "metadata_": {"deadline": "2026-06-20T23:59:59Z"},
+            "accepting_submissions": True,
+        },
+        now=__import__("datetime").datetime(
+            2026, 9, 23, tzinfo=__import__("datetime").timezone.utc
+        ),
+    ) is False
+    assert colony_acquisition._buyer_demand_task(
+        {
+            "title": "Need an agent to build a model",
+            "body": "Looking for experts. Please submit your bids.",
+            "metadata_": {"deadline": "2026-12-01T00:00:00Z"},
+            "accepting_submissions": True,
+        },
+        now=__import__("datetime").datetime(
+            2026, 9, 23, tzinfo=__import__("datetime").timezone.utc
+        ),
+    ) is True
 
 
 def test_colony_missing_secret_keeps_discovery_but_fails_write_auth_closed(monkeypatch):
