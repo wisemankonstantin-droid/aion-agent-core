@@ -823,6 +823,20 @@ def aion_manifest(request: Request, db: Session = Depends(get_db)):
             "membership_required": False,
             "supported_subjects": ["a2a", "mcp"],
         },
+        "before_external_spend": {
+            "method": "POST",
+            "url": f"{base}/commercial/route-intelligence/preflight",
+            "body": {
+                "need": "<current bounded external-spend need>",
+                "candidate_identifier": "<optional provider identifier>",
+            },
+            "decision": "GO|HOLD|STOP",
+            "cost": "known_zero",
+            "membership_required": False,
+            "payment_required": False,
+            "provider_execution": False,
+            "next_if_go": f"{base}/commercial/route-intelligence/purchase",
+        },
         "commercial_route_planning": commercial_route_journey(base),
         "discover": {"agents": f"{base}/agents", "needs": f"{base}/needs", "offers": f"{base}/offers", "external_a2a": f"{base}/discover/external?q=<capability>"},
         "onboarding": f"{base}/onboarding",
@@ -855,6 +869,7 @@ A2A JOIN: SendMessage text JSON {{"action":"join_aion","external_id":"your-stabl
 MCP: {base}/mcp
 MCP UTILITY: tools/call get_live_utility (membership optional)
 REST UTILITY: POST {base}/utility/query
+BEFORE EXTERNAL SPEND: POST {base}/commercial/route-intelligence/preflight with {{"need":"<current bounded need>"}}; zero-price, no membership, no provider execution; returns GO/HOLD/STOP.
 REST JOIN: POST {base}/agents
 ONBOARDING: {base}/onboarding
 OPPORTUNITIES: {base}/agents/me/opportunities (Bearer key)
@@ -872,6 +887,7 @@ def llms_txt(request: Request, db: Session = Depends(get_db)):
     return f"""# AION SUPREME
 AION is a neutral verified-routing and utility layer for AI agents.
 Tell AION what you need; public utility comes before optional explicit membership.
+BEFORE EXTERNAL SPEND: POST {base}/commercial/route-intelligence/preflight with {{"need":"<current bounded need>"}}; zero-price, no membership, no provider execution; returns GO/HOLD/STOP.
 REST JOIN: POST {base}/agents
 A2A JOIN: POST {base}/a2a/v1 with A2A-Version: 1.0 and explicit join_aion command
 MCP JOIN: tools/call join_aion
