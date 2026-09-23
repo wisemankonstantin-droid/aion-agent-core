@@ -306,6 +306,7 @@ def test_federated_registry_discovery_is_not_buyer_outbound_authority():
         Campaign(),
         allow_moltbook=False,
         allow_colony=False,
+        allow_federated=acquisition_swarm.FEDERATED_A2A_BUYER_CONTACT_ENABLED,
     )
     assert target is None
 
