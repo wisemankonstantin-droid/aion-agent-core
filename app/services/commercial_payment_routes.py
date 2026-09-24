@@ -152,6 +152,103 @@ def _payment_response_header(data: dict) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
+
+class PreSpendPreflightError(ValueError):
+    """Bounded public pre-spend request validation error."""
+
+
+def pre_spend_preflight_data(db: Session, payload: dict) -> dict:
+    """Return the canonical zero-price GO/HOLD/STOP pre-spend decision.
+
+    This helper is transport-neutral so REST, MCP and A2A can expose the same
+    bounded decision contract without duplicating commercial or payment logic.
+    It creates no purchase, payment, entitlement or provider interaction.
+    """
+    allowed = {"need", "candidate_identifier"}
+    if not isinstance(payload, dict) or set(payload) - allowed:
+        raise PreSpendPreflightError(
+            "Preflight accepts only need and optional candidate_identifier"
+        )
+    try:
+        from .commercial_router import CommercialRoutePlanRequest, plan_commercial_route
+
+        request = CommercialRoutePlanRequest.model_validate(
+            {
+                "need": payload.get("need"),
+                "candidate_identifier": payload.get("candidate_identifier"),
+                "currency": "USD",
+            }
+        )
+        plan = plan_commercial_route(
+            db,
+            requester_agent_id=0,
+            payload=request,
+        )
+    except (ValidationError, HTTPException) as exc:
+        raise PreSpendPreflightError(
+            "Preflight request failed bounded validation"
+        ) from exc
+
+    selected = plan.get("selected_provider") is not None
+    state = str(plan.get("state") or "unknown")
+    qualified_count = sum(
+        1
+        for candidate in plan.get("candidates") or []
+        if candidate.get("qualification_state") == "declaration_qualified"
+    )
+    payment = direct_base_usdc_readiness()
+
+    if state == "discovery_unavailable":
+        decision = "HOLD"
+    elif selected and payment["launch_ready"]:
+        decision = "GO"
+    elif selected:
+        decision = "HOLD"
+    else:
+        decision = "STOP"
+
+    next_action = {
+        "action": (
+            "purchase_route_intelligence"
+            if decision == "GO"
+            else "retry_or_refine_need"
+            if decision == "HOLD"
+            else "change_need_or_candidate"
+        ),
+        "method": "POST" if decision == "GO" else None,
+        "url": (
+            "/commercial/route-intelligence/purchase"
+            if decision == "GO"
+            else None
+        ),
+        "same_request_body": decision == "GO",
+    }
+    return {
+        "action": "aion_pre_spend_preflight",
+        "decision": decision,
+        "reason_code": state,
+        "qualified_route_available": selected,
+        "qualified_candidate_count": qualified_count,
+        "route_details_released": False,
+        "route_details_available_after_purchase": bool(selected),
+        "membership_required": False,
+        "payment_required": False,
+        "paid_route_launch_ready": bool(payment["launch_ready"]),
+        "next_action": next_action,
+        "buyer_guide": (
+            "https://github.com/wisemankonstantin-droid/"
+            "aion-agent-core/blob/main/docs/FIRST_SAT_BUYER.md"
+        ),
+        "truth_boundaries": {
+            "preflight_is_not_purchase": True,
+            "preflight_creates_no_payment_or_entitlement": True,
+            "provider_interaction_endpoint_contacted": False,
+            "payment_rail_contacted": False,
+            "public_registry_or_manifest_discovery_may_occur": True,
+            "selected_provider_identity_withheld_until_paid_route_intelligence": True,
+        },
+    }
+
 def install_commercial_payment_routes(app) -> None:
     register_paid_route_intelligence_profile()
     _patch_mcp_paid_sku_metadata()
@@ -189,105 +286,21 @@ def install_commercial_payment_routes(app) -> None:
             payload: dict,
             db: Session = Depends(get_db),
         ):
-            allowed = {"need", "candidate_identifier"}
-            if not isinstance(payload, dict) or set(payload) - allowed:
-                return JSONResponse(
-                    status_code=422,
-                    content={
-                        "code": "invalid_pre_spend_preflight",
-                        "message": "Preflight accepts only need and optional candidate_identifier",
-                        "membership_required": False,
-                        "payment_required": False,
-                    },
-                    headers={"Cache-Control": "private, no-store"},
-                )
             try:
-                from .commercial_router import CommercialRoutePlanRequest, plan_commercial_route
-
-                request = CommercialRoutePlanRequest.model_validate(
-                    {
-                        "need": payload.get("need"),
-                        "candidate_identifier": payload.get("candidate_identifier"),
-                        "currency": "USD",
-                    }
-                )
-                plan = plan_commercial_route(
-                    db,
-                    requester_agent_id=0,
-                    payload=request,
-                )
-            except (ValidationError, HTTPException):
+                data = pre_spend_preflight_data(db, payload)
+            except PreSpendPreflightError as exc:
                 return JSONResponse(
                     status_code=422,
                     content={
                         "code": "invalid_pre_spend_preflight",
-                        "message": "Preflight request failed bounded validation",
+                        "message": str(exc),
                         "membership_required": False,
                         "payment_required": False,
                     },
                     headers={"Cache-Control": "private, no-store"},
                 )
-
-            selected = plan.get("selected_provider") is not None
-            state = str(plan.get("state") or "unknown")
-            qualified_count = sum(
-                1
-                for candidate in plan.get("candidates") or []
-                if candidate.get("qualification_state") == "declaration_qualified"
-            )
-            payment = direct_base_usdc_readiness()
-
-            if state == "discovery_unavailable":
-                decision = "HOLD"
-            elif selected and payment["launch_ready"]:
-                decision = "GO"
-            elif selected:
-                decision = "HOLD"
-            else:
-                decision = "STOP"
-
-            next_action = {
-                "action": (
-                    "purchase_route_intelligence"
-                    if decision == "GO"
-                    else "retry_or_refine_need"
-                    if decision == "HOLD"
-                    else "change_need_or_candidate"
-                ),
-                "method": "POST" if decision == "GO" else None,
-                "url": (
-                    "/commercial/route-intelligence/purchase"
-                    if decision == "GO"
-                    else None
-                ),
-                "same_request_body": decision == "GO",
-            }
             return JSONResponse(
-                {
-                    "action": "aion_pre_spend_preflight",
-                    "decision": decision,
-                    "reason_code": state,
-                    "qualified_route_available": selected,
-                    "qualified_candidate_count": qualified_count,
-                    "route_details_released": False,
-                    "route_details_available_after_purchase": bool(selected),
-                    "membership_required": False,
-                    "payment_required": False,
-                    "paid_route_launch_ready": bool(payment["launch_ready"]),
-                    "next_action": next_action,
-                    "buyer_guide": (
-                        "https://github.com/wisemankonstantin-droid/"
-                        "aion-agent-core/blob/main/docs/FIRST_SAT_BUYER.md"
-                    ),
-                    "truth_boundaries": {
-                        "preflight_is_not_purchase": True,
-                        "preflight_creates_no_payment_or_entitlement": True,
-                        "provider_interaction_endpoint_contacted": False,
-                        "payment_rail_contacted": False,
-                        "public_registry_or_manifest_discovery_may_occur": True,
-                        "selected_provider_identity_withheld_until_paid_route_intelligence": True,
-                    },
-                },
+                data,
                 headers={"Cache-Control": "private, no-store"},
             )
 

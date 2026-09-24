@@ -1,18 +1,71 @@
 from __future__ import annotations
 
 import json
+import uuid
+
+import pytest
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.main import app
+from app.main import A2A_RUNTIME, MCP_VERSION, app
 from app.payment_models import RouteIntelligencePurchase
 from app.services import acquisition_swarm, ambassador, commercial_payment_routes, commercial_router, external_registry, moltbook_acquisition
 from app.services.external_registry import DiscoveryResult
 
 
 client = TestClient(app)
+
+
+def _mcp_preflight(arguments: dict):
+    return client.post(
+        "/mcp",
+        headers={
+            "MCP-Protocol-Version": MCP_VERSION,
+            "Mcp-Method": "tools/call",
+            "Mcp-Name": "pre_spend_preflight",
+            "Accept": "application/json, text/event-stream",
+        },
+        json={
+            "jsonrpc": "2.0",
+            "id": "pre-spend-preflight-test",
+            "method": "tools/call",
+            "params": {
+                "name": "pre_spend_preflight",
+                "arguments": arguments,
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": MCP_VERSION,
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                },
+            },
+        },
+    )
+
+
+def _a2a_preflight(command: dict):
+    if A2A_RUNTIME.get("status") != "mounted":
+        pytest.skip("a2a-sdk not installed in this local test environment")
+    response = client.post(
+        "/a2a/v1",
+        headers={"A2A-Version": "1.0"},
+        json={
+            "jsonrpc": "2.0",
+            "id": "pre-spend-" + uuid.uuid4().hex,
+            "method": "SendMessage",
+            "params": {
+                "message": {
+                    "messageId": "msg-" + uuid.uuid4().hex,
+                    "role": "ROLE_USER",
+                    "parts": [{"text": json.dumps(command)}],
+                }
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    rpc = response.json()
+    assert "error" not in rpc, rpc
+    return json.loads(rpc["result"]["message"]["parts"][0]["text"])
 
 
 def _candidate(identifier: str):
@@ -87,6 +140,96 @@ def test_public_pre_spend_preflight_gives_value_without_releasing_paid_route(mon
     assert after == before
 
 
+def test_protocol_native_pre_spend_preflight_matches_rest_without_purchase(monkeypatch):
+    monkeypatch.setattr(
+        commercial_router,
+        "_DISCOVER",
+        lambda *_: _discovery(_candidate("buyer-fit-native")),
+    )
+    monkeypatch.setattr(
+        commercial_payment_routes,
+        "direct_base_usdc_readiness",
+        lambda: {"launch_ready": True},
+    )
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count()).select_from(RouteIntelligencePurchase)) or 0
+
+    rest = client.post(
+        "/commercial/route-intelligence/preflight",
+        json={"need": "paid web research provider"},
+    )
+    mcp = _mcp_preflight({"need": "paid web research provider"})
+    a2a = _a2a_preflight(
+        {
+            "action": "pre_spend_preflight",
+            "need": "paid web research provider",
+        }
+    )
+
+    assert rest.status_code == 200
+    assert mcp.status_code == 200
+    rest_data = rest.json()
+    mcp_data = mcp.json()["result"]["structuredContent"]
+    assert rest_data == mcp_data == a2a
+    assert rest_data["decision"] == "GO"
+    assert rest_data["membership_required"] is False
+    assert rest_data["payment_required"] is False
+    assert rest_data["route_details_released"] is False
+    assert rest_data["truth_boundaries"]["preflight_creates_no_payment_or_entitlement"] is True
+
+    with SessionLocal() as db:
+        after = db.scalar(select(func.count()).select_from(RouteIntelligencePurchase)) or 0
+    assert after == before
+
+
+def test_mcp_tools_list_exposes_public_pre_spend_preflight():
+    response = client.post(
+        "/mcp",
+        headers={
+            "MCP-Protocol-Version": MCP_VERSION,
+            "Mcp-Method": "tools/list",
+            "Accept": "application/json, text/event-stream",
+        },
+        json={
+            "jsonrpc": "2.0",
+            "id": "pre-spend-tools-list",
+            "method": "tools/list",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": MCP_VERSION,
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            },
+        },
+    )
+    assert response.status_code == 200
+    tools = {tool["name"]: tool for tool in response.json()["result"]["tools"]}
+    assert "pre_spend_preflight" in tools
+    schema = tools["pre_spend_preflight"]["inputSchema"]
+    assert schema["required"] == ["need"]
+    assert schema["additionalProperties"] is False
+
+
+def test_protocol_native_preflight_rejects_extra_secret_without_echo(monkeypatch):
+    secret = "non_echo_marker_" + uuid.uuid4().hex
+
+    mcp = _mcp_preflight({"need": "research", "secret": secret})
+    assert mcp.status_code == 400
+    assert mcp.json()["error"]["code"] == -32602
+    assert secret not in mcp.text
+
+    a2a = _a2a_preflight(
+        {
+            "action": "pre_spend_preflight",
+            "need": "research",
+            "secret": secret,
+        }
+    )
+    assert a2a["status"] == "invalid_request"
+    assert a2a["membership_required"] is False
+    assert secret not in json.dumps(a2a)
+
+
 def test_public_pre_spend_preflight_stops_when_no_qualified_route(monkeypatch):
     monkeypatch.setattr(
         commercial_router,
@@ -156,6 +299,9 @@ def test_machine_discovery_surfaces_make_zero_cost_preflight_first_class():
     assert "zero-price" in preflight_skill["description"]
     assert "no membership" in preflight_skill["description"]
     assert "/commercial/route-intelligence/preflight" in preflight_skill["description"]
+    assert "A2A" in preflight_skill["description"]
+    assert "MCP" in preflight_skill["description"]
+    assert "pre_spend_preflight" in preflight_skill["description"]
 
     manifest = client.get("/.well-known/aion.json")
     assert manifest.status_code == 200

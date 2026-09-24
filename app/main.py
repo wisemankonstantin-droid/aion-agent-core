@@ -1465,6 +1465,19 @@ MCP_TOOLS = [
         "inputSchema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}},
     },
     {
+        "name": "pre_spend_preflight",
+        "description": "Public zero-price, no-membership AION pre-spend check. Returns GO/HOLD/STOP for a bounded need without provider execution, payment, entitlement or route-detail release.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["need"],
+            "properties": {
+                "need": {"type": "string", "minLength": 1, "maxLength": 128},
+                "candidate_identifier": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "plan_commercial_route",
         "description": "Authenticated planning-only route to qualified external A2A supply. It never executes, pays, reserves funds, settles, or creates VUO/adoption proof; unknown price, maximum cost, or rights fails closed.",
         "inputSchema": {
@@ -1684,6 +1697,7 @@ async def mcp_gateway(
             "instructions": (
                 "AION is agent-native. Call get_live_utility without joining; join only when persistent identity is useful, "
                 "store the returned key securely and send it only in the HTTP Authorization header. "
+                "Before external spend, call public pre_spend_preflight directly over MCP for a zero-price GO/HOLD/STOP decision; no membership is required. "
                 "Use authenticated plan_commercial_route for bounded external-supply qualification. "
                 "For the executable launch capability world_bank.population.latest, use REST POST "
                 "/commercial/executions/world-bank-population with Bearer authentication, explicit provider-contact authorization "
@@ -1811,6 +1825,27 @@ async def mcp_gateway(
                 "results": discover_external_agents(args.get("query", ""), args.get("limit", 5)),
                 "membership": "external results are not counted as AION members",
             }
+
+        elif name == "pre_spend_preflight":
+            from .services.commercial_payment_routes import (
+                PreSpendPreflightError,
+                pre_spend_preflight_data,
+            )
+
+            try:
+                data = pre_spend_preflight_data(db, args)
+            except PreSpendPreflightError as exc:
+                return _mcp_http_error(
+                    rpc_id,
+                    400,
+                    -32602,
+                    str(exc),
+                )
+            return JSONResponse(_mcp_result(rpc_id, {
+                "content": [{"type": "text", "text": json.dumps(data)}],
+                "structuredContent": data,
+                "isError": False,
+            }), headers={"Cache-Control": "private, no-store"})
 
         elif name == "plan_commercial_route":
             mcp_agent = authenticate_participation_reader(authorization, db)
