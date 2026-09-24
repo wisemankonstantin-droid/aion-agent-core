@@ -519,14 +519,19 @@ def _mind_transport_policy(
     queries and the executor's existing safety controls remain authoritative.
     """
 
+    confidence_present = bool(
+        isinstance(mind_plan, dict) and "confidence" in mind_plan
+    )
     confidence = 0
-    if mind_plan:
+    if confidence_present:
         try:
             confidence = int(mind_plan.get("confidence") or 0)
         except (TypeError, ValueError):
             confidence = 0
 
-    if not mind_plan or confidence < MIN_MODEL_TRANSPORT_CONFIDENCE:
+    if not mind_plan or (
+        confidence_present and confidence < MIN_MODEL_TRANSPORT_CONFIDENCE
+    ):
         return {
             "model_controls_transport": False,
             "queries": tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
