@@ -564,7 +564,19 @@ def _compact_worker_observation(observation: dict) -> dict:
     the existing inference-call budget intact instead of raising the input limit.
     """
 
-    compact = dict(observation)
+    original = dict(observation)
+    original_size = len(
+        json.dumps(
+            original,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    )
+    if original_size <= MAX_OBSERVATION_BYTES:
+        return original
+
+    compact = original
 
     memory = _guard_memory_payload(compact.get("safe_memory"))
     compact["safe_memory"] = {
