@@ -1128,6 +1128,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "platform_numeric_daily_limit_published": False,
                 "outbound_enabled": moltbook_dm_outbound_enabled(),
                 "activity_status": moltbook_dm_state.get("status"),
+                "activity_error": moltbook_dm_state.get("error"),
                 "pending_incoming_requests": int(
                     moltbook_dm_state.get("pending_request_count") or 0
                 ),
