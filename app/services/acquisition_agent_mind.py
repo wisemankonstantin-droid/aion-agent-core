@@ -492,9 +492,16 @@ _SAFE_COMMERCIAL_STRATEGY_TEXT = (
 _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "/registry/",
     "buyer_outbound_contact",
+    "outbound_contact_allowed",
+    "outbound-contact flag",
     "expiry_seconds",
+    "expiry_timestamp",
+    "expiry-window",
     "trust_signal_expiry_window",
     "channel_permissions",
+    "public-discovery registry",
+    "public discovery registry",
+    "authoritative registry snapshot",
 )
 
 
