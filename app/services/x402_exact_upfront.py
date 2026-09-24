@@ -177,9 +177,13 @@ def bound_exact_payment_requirements(purchase_id: str, prepared_result_digest: s
     return requirements
 
 
-def build_exact_payment_required(requirements: dict | None = None) -> dict:
+def build_exact_payment_required(
+    requirements: dict | None = None,
+    *,
+    resource_url: str | None = None,
+) -> dict:
     requirements = exact_payment_requirements() if requirements is None else requirements
-    resource_url = (
+    resource_url = resource_url or (
         canonical_public_origin().rstrip("/")
         + "/commercial/route-intelligence/purchase"
     )
