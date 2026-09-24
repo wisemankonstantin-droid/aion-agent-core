@@ -675,7 +675,12 @@ def _issue_token(db: Session, *, kind: str, campaign_id=None, target_id=None, re
     return row, raw
 
 
-def build_ambassador_message(*, public_base_url: str, distribution_token: str) -> dict:
+def build_ambassador_message(
+    *,
+    public_base_url: str,
+    distribution_token: str,
+    preflight_result: dict | None = None,
+) -> dict:
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
         raise AmbassadorError(422, "public_url_required", "A public HTTPS AION URL is required")
@@ -749,12 +754,24 @@ def build_ambassador_message(*, public_base_url: str, distribution_token: str) -
             "retry the same target."
         ),
     }
+    decision = str((preflight_result or {}).get("decision") or "").upper()
+    if decision in {"GO", "HOLD", "STOP"}:
+        message["pre_spend_preflight"]["decision"] = decision
+        message["pre_spend_preflight"]["decision_scope"] = (
+            "deterministic_intent_lane_not_exact_buyer_quote"
+        )
     encoded = json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     if len(encoded) > MAX_MESSAGE_BYTES:
         raise AmbassadorError(500, "message_bound_exceeded", "Ambassador message exceeded its hard byte bound")
     return message
 
-def prepare_target(db: Session, *, target_id: str, public_base_url: str) -> dict:
+def prepare_target(
+    db: Session,
+    *,
+    target_id: str,
+    public_base_url: str,
+    preflight_result: dict | None = None,
+) -> dict:
     with _guard(db):
         target = db.scalar(_for_update(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_id == target_id), db))
         if target is None:
@@ -767,7 +784,11 @@ def prepare_target(db: Session, *, target_id: str, public_base_url: str) -> dict
         if db.scalar(select(models.DistributionToken).where(models.DistributionToken.target_id == target.id, models.DistributionToken.kind == "ambassador_invite")):
             raise AmbassadorError(409, "invite_already_issued", "Invite already issued; raw token is not recoverable")
         token, raw = _issue_token(db, kind="ambassador_invite", campaign_id=campaign.id, target_id=target.id)
-        message = build_ambassador_message(public_base_url=public_base_url, distribution_token=raw)
+        message = build_ambassador_message(
+            public_base_url=public_base_url,
+            distribution_token=raw,
+            preflight_result=preflight_result,
+        )
         target.prepared_message_digest = _digest_json(message)
         target.contact_state = "ready"
         target.updated_at = _now()
@@ -1064,6 +1085,9 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
                 public_base_url=canonical_aion_public_base_url(),
                 recipient=recipient,
                 intent=lane,
+                preflight_decision=(
+                    (message.get("pre_spend_preflight") or {}).get("decision")
+                ),
             )
             if is_moltbook
             else build_colony_outreach_comment(
@@ -1246,6 +1270,7 @@ def prepare_and_send_operator_contact(
     *,
     target_id: str,
     idempotency_key: str,
+    preflight_result: dict | None = None,
 ) -> dict:
     """Prepare and send one target-bound invitation without exposing its token.
 
@@ -1346,6 +1371,7 @@ def prepare_and_send_operator_contact(
             db,
             target_id=target_id,
             public_base_url=canonical_aion_public_base_url(),
+            preflight_result=preflight_result,
         )
         result = send_contact(
             db,

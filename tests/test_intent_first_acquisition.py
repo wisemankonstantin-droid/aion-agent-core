@@ -266,6 +266,7 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
     message = ambassador.build_ambassador_message(
         public_base_url="https://aion.example",
         distribution_token="aion_dist_" + "x" * 43,
+        preflight_result={"decision": "GO"},
     )
     assert message["purpose"] == "bounded_machine_utility_invitation"
     assert message["intent"] == "before_external_spend"
@@ -279,6 +280,10 @@ def test_ambassador_leads_with_pre_spend_value_not_membership():
         "/commercial/route-intelligence/preflight"
     )
     assert message["pre_spend_preflight"]["membership_required"] is False
+    assert message["pre_spend_preflight"]["decision"] == "GO"
+    assert message["pre_spend_preflight"]["decision_scope"] == (
+        "deterministic_intent_lane_not_exact_buyer_quote"
+    )
     assert message["pre_spend_preflight"]["payment_or_provider_execution"] is False
     assert message["join"]["optional"] is True
     assert message["join"]["not_required_for_utility_or_purchase"] is True
@@ -474,6 +479,40 @@ def test_qualified_target_overrides_model_discover_only_once_actionable():
     assert acquisition_swarm._contact_allowed_for_actionable_target(
         policy, Target()
     ) is True
+
+
+
+def test_outbound_preflight_uses_existing_zero_price_helper(monkeypatch):
+    seen = []
+
+    def fake_preflight(_db, payload):
+        seen.append(payload)
+        return {
+            "decision": "GO",
+            "reason_code": "planned",
+            "qualified_route_available": True,
+        }
+
+    monkeypatch.setattr(acquisition_swarm, "pre_spend_preflight_data", fake_preflight)
+    result = acquisition_swarm._outbound_preflight(object(), "paid_api_buyers")
+
+    assert result["decision"] == "GO"
+    assert result["qualified_route_available"] is True
+    assert result["need_source"] == "deterministic_intent_lane_not_buyer_quote"
+    assert seen == [
+        {"need": acquisition_swarm.MOLTBOOK_INTENT_QUERIES["paid_api_buyers"][0]}
+    ]
+
+
+def test_outbound_preflight_fails_closed_to_hold(monkeypatch):
+    def invalid(_db, _payload):
+        raise acquisition_swarm.PreSpendPreflightError("bounded")
+
+    monkeypatch.setattr(acquisition_swarm, "pre_spend_preflight_data", invalid)
+    result = acquisition_swarm._outbound_preflight(object(), "provider_selection")
+
+    assert result["decision"] == "HOLD"
+    assert result["qualified_route_available"] is False
 
 
 def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
