@@ -32,6 +32,7 @@ from .route_intelligence_purchase import (
     settle_direct_and_release,
 )
 from .x402_exact_upfront import (
+    build_exact_payment_required,
     encode_exact_payment_required,
     exact_upfront_readiness,
 )
@@ -327,6 +328,9 @@ def install_commercial_payment_routes(app) -> None:
                         ),
                         "price": f"{plan.customer_price} {plan.currency}",
                         "inputSchema": _x402_input_schema(),
+                        "accepts": build_exact_payment_required(
+                            resource_url=_x402_resource_url()
+                        )["accepts"],
                     }
                 )
             return JSONResponse(
