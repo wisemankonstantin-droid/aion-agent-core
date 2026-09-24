@@ -291,7 +291,8 @@ def exact_upfront_readiness() -> dict:
         "blocking_reasons": list(dict.fromkeys(reasons)),
         "asset_code": offer["asset_code"] if offer else None,
         "network": offer["network"] if offer else None,
-        "purchase_endpoint": "/commercial/route-intelligence/purchase",
+        "purchase_endpoint": "/commercial/route-intelligence/x402/purchase",
+        "legacy_purchase_endpoint": "/commercial/route-intelligence/purchase",
         "truth_boundaries": {
             "settlement_happens_before_resource_release": True,
             "upfront_settlement_is_not_a_reserve": True,
