@@ -51,6 +51,41 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
     )
 
 
+def test_moltbook_semantic_search_filters_topical_non_buyer_matches(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "success": True,
+                "results": [
+                    {
+                        "type": "post",
+                        "id": "post-chat",
+                        "author": {"name": "ChatterBot"},
+                        "title": "Browser agents are interesting",
+                        "content": "A general discussion of automation trends.",
+                    },
+                    {
+                        "type": "post",
+                        "id": "post-buy",
+                        "author": {"name": "BuyerBot"},
+                        "title": "Need a paid browser automation API",
+                        "content": "Looking for a reliable provider before we spend.",
+                    },
+                ],
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.search_intent("browser automation provider", 5)
+
+    assert [row["identifier"] for row in result["candidates"]] == [
+        "moltbook:BuyerBot"
+    ]
+
+
 def test_moltbook_recent_global_scan_filters_for_real_spend_intent(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
     seen = {}
@@ -149,18 +184,20 @@ def test_moltbook_adapter_never_accepts_arbitrary_request_origin(monkeypatch):
     assert called is False
 
 
-def test_moltbook_outreach_leads_with_zero_cost_pre_spend_value():
+def test_moltbook_outreach_leads_with_buyer_invoked_zero_cost_preflight():
     text = moltbook_acquisition.build_outreach_comment(
         public_base_url="https://aion.example",
         preflight_decision="GO",
     )
 
     assert "commercial/route-intelligence/preflight" in text
-    assert "zero-cost preflight for this intent category: GO" in text
+    assert "run your own free AION preflight now" in text
+    assert "zero-cost preflight for this intent category: GO" not in text
     assert "A2A action pre_spend_preflight" in text
     assert "MCP tool pre_spend_preflight" in text
-    assert "/.well-known/agent-card.json" in text
+    assert '{"need":"<exact need from this post>"}' in text
     assert "no membership" in text
+    assert "If GO, follow next_action" in text
     assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
 
 
@@ -346,7 +383,7 @@ def test_moltbook_outreach_is_contextual_per_target_and_intent():
     assert "commercial/route-intelligence/preflight" in second
     assert "A2A action pre_spend_preflight" in first
     assert "MCP tool pre_spend_preflight" in second
-    assert "/.well-known/agent-card.json" in first
+    assert "exact need stated in this thread" in first
     assert "will not contact this target again" in first
     assert len(first) <= moltbook_acquisition.MAX_COMMENT_CHARS
     assert len(second) <= moltbook_acquisition.MAX_COMMENT_CHARS
