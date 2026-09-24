@@ -1069,6 +1069,40 @@ def test_plan_validation_and_executor_policy_fail_closed():
     assert fallback["contact_allowed"] is True
     assert fallback["channels"] == {"moltbook", "colony", "federated_a2a"}
 
+    low_confidence = acquisition_swarm._mind_transport_policy(
+        {
+            **plan,
+            "confidence": acquisition_swarm.MIN_MODEL_TRANSPORT_CONFIDENCE - 1,
+            "channel_priority": ["hold", "federated_a2a"],
+            "search_queries": [
+                "\"outbound_contact\": true",
+                "public discovery registry snapshot",
+            ],
+            "contact_policy": "hold",
+        },
+        ("provider selection", "external api spend"),
+    )
+    assert low_confidence == {
+        "model_controls_transport": False,
+        "queries": ("provider selection", "external api spend"),
+        "channels": {"moltbook", "colony", "federated_a2a"},
+        "discover_allowed": True,
+        "contact_allowed": True,
+    }
+
+    threshold_hold = acquisition_swarm._mind_transport_policy(
+        {
+            **plan,
+            "confidence": acquisition_swarm.MIN_MODEL_TRANSPORT_CONFIDENCE,
+            "channel_priority": ["hold", "federated_a2a"],
+            "contact_policy": "hold",
+        },
+        ("fallback",),
+    )
+    assert threshold_hold["model_controls_transport"] is True
+    assert threshold_hold["discover_allowed"] is False
+    assert threshold_hold["contact_allowed"] is False
+
 
 def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatch):
     _clean_minds()
