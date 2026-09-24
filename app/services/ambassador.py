@@ -455,7 +455,7 @@ def scout_moltbook_campaign(db: Session, *, campaign_id: str, query: str) -> dic
             raise AmbassadorError(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
-        discovery = search_moltbook_intent(query, min(5, remaining + 4))
+        discovery = search_moltbook_intent(query, min(9, remaining + 4))
         outcomes = Counter()
         target_ids = []
         for candidate in discovery.get("candidates", []):
