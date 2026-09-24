@@ -193,6 +193,12 @@ You may choose only the listed channels. The executor, not you, controls network
 writes, dedupe, one-contact-per-target, platform limits, channel suspension and
 payments. Never propose new identities, spam, repeated contact, limit evasion,
 self-payment, fake demand, fake agents, secret access or payment execution.
+The supplied observation is the complete AION control-plane truth available to
+you. Never invent AION internal endpoints, registry resources, control flags,
+expiry windows, APIs or tools that are not explicitly present in that observation.
+search_queries are public buyer-intent search phrases, never HTTP commands, URLs
+or instructions to fetch imagined AION control-plane state. Missing hypothetical
+metadata is not a reason to hard-hold otherwise permitted bounded discovery.
 If no safe useful action exists, choose hold or discover_only.
 
 For a real external buyer-intent, use this order: external need -> AION
@@ -237,6 +243,11 @@ as read-only deterministic commercial truth. Never invent a product, provider
 price, AION price, discount, payment readiness or settlement state. The Economic
 Kernel remains the sole pricing and financial authority; if price is unknown,
 keep it unknown and direct minds toward preflight rather than a fabricated quote.
+The supplied observation is also the complete AION control-plane truth available
+to the Temple Brain. Never invent AION internal endpoints, registry resources,
+control flags, expiry windows, APIs or tools that are not explicitly present.
+Search motifs are public buyer-intent phrases, not HTTP commands or imagined
+internal lookups. Missing hypothetical metadata must not become a hard-hold gate.
 Do not invent demand, buyers, conversations, outcomes, URLs, credentials or payments.
 Do not expose chain-of-thought. Never recommend spam, duplicate contact, new fake identities,
 platform-limit evasion, self-payment, uncontrolled money movement, or contact
@@ -478,6 +489,19 @@ _SAFE_COMMERCIAL_STRATEGY_TEXT = (
     "bounded buyer-facing contact. Financial execution stays outside model authority."
 )
 
+_UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
+    "/registry/",
+    "buyer_outbound_contact",
+    "expiry_seconds",
+    "trust_signal_expiry_window",
+    "channel_permissions",
+)
+
+
+def _references_unsupported_internal_control(value: object) -> bool:
+    text = " ".join(str(value or "").split()).lower()
+    return any(marker in text for marker in _UNSUPPORTED_INTERNAL_CONTROL_MARKERS)
+
 
 def _commercial_directive_is_forbidden(value: object) -> bool:
     text = " ".join(str(value or "").split()).lower()
@@ -506,6 +530,8 @@ def _commercial_directive_is_forbidden(value: object) -> bool:
 
 def _guard_commercial_text(value: object, maximum: int) -> str:
     cleaned = _clean_short(value, maximum)
+    if _references_unsupported_internal_control(cleaned):
+        return ""
     if _commercial_directive_is_forbidden(cleaned):
         return _clean_short(_SAFE_COMMERCIAL_STRATEGY_TEXT, maximum)
     return cleaned
@@ -514,6 +540,7 @@ def _guard_commercial_text(value: object, maximum: int) -> str:
 def _guard_plan_payload(plan: object) -> dict:
     if not isinstance(plan, dict):
         return {}
+    unsupported_control_dependency = _references_unsupported_internal_control(plan)
     guarded = dict(plan)
     scalar_limits = {
         "decision_summary": 240,
@@ -542,6 +569,21 @@ def _guard_plan_payload(plan: object) -> dict:
                 _guard_commercial_text(value, maximum)
                 for value in list(guarded.get(name) or [])
                 if _guard_commercial_text(value, maximum)
+            ]
+    if unsupported_control_dependency:
+        if "channel_priority" in guarded:
+            guarded["channel_priority"] = [
+                value
+                for value in list(guarded.get("channel_priority") or [])
+                if str(value) != "hold"
+            ]
+        if "contact_policy" in guarded:
+            guarded["contact_policy"] = "discover_only"
+        if "search_queries" in guarded:
+            guarded["search_queries"] = [
+                value
+                for value in list(guarded.get("search_queries") or [])
+                if not _references_unsupported_internal_control(value)
             ]
     return guarded
 
@@ -1324,6 +1366,7 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     if not isinstance(plan, dict):
         raise RuntimeError("invalid_plan_shape")
 
+    unsupported_control_dependency = _references_unsupported_internal_control(plan)
     channels = []
     for value in plan.get("channel_priority") or []:
         value = str(value)
@@ -1336,6 +1379,8 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     queries = []
     for value in plan.get("search_queries") or []:
         cleaned = _clean_short(value, 128)
+        if _references_unsupported_internal_control(cleaned):
+            continue
         if cleaned and cleaned not in queries:
             queries.append(cleaned)
     queries = queries[:MAX_PLAN_QUERIES]
@@ -1349,9 +1394,17 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     contact_policy = str(plan.get("contact_policy") or "")
     if contact_policy not in _ALLOWED_CONTACT_POLICIES:
         contact_policy = "discover_only"
+    if unsupported_control_dependency:
+        channels = [value for value in channels if value != "hold"]
+        if not channels:
+            channels = ["federated_a2a"]
+        contact_policy = "discover_only"
     target_preference = str(plan.get("target_preference") or "")
     if target_preference not in _ALLOWED_TARGET_PREFERENCES:
         target_preference = "current_external_spend_intent"
+    if unsupported_control_dependency:
+        channels = [value for value in channels if value != "hold"]
+
     try:
         confidence = int(plan.get("confidence"))
     except (TypeError, ValueError):
@@ -1387,6 +1440,7 @@ def _validate_temple_brain_plan(plan: object) -> dict:
     if not isinstance(plan, dict):
         raise RuntimeError("invalid_temple_brain_plan_shape")
 
+    unsupported_control_dependency = _references_unsupported_internal_control(plan)
     channels = []
     for value in plan.get("channel_priority") or []:
         value = str(value)
@@ -1398,6 +1452,8 @@ def _validate_temple_brain_plan(plan: object) -> dict:
         result = []
         for value in plan.get(name) or []:
             cleaned = _clean_short(value, maximum_chars)
+            if _references_unsupported_internal_control(cleaned):
+                continue
             if cleaned and cleaned not in result:
                 result.append(cleaned)
         return result[:maximum_items]

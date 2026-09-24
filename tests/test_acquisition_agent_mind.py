@@ -408,6 +408,77 @@ def test_deterministic_guard_blocks_purchase_gated_outreach_from_model_output():
     assert acquisition_agent_mind._SAFE_COMMERCIAL_STRATEGY_TEXT.lower() in brain_text
 
 
+def test_hallucinated_internal_control_dependencies_cannot_hard_hold_transport():
+    fallback_queries = ["paid api provider", "browser provider selection"]
+    worker_plan = _plan(WORKERS[0].id)
+    worker_plan.update(
+        {
+            "decision_summary": (
+                "Hold until GET /registry/temple/trust_signal_expiry_window returns "
+                "expiry_seconds."
+            ),
+            "channel_priority": ["hold", "moltbook"],
+            "search_queries": [
+                "GET /registry/temple/trust_signal_expiry_window",
+                "/registry/channel/moltbook buyer_outbound_contact",
+            ],
+            "contact_policy": "hold",
+            "sales_plan": [
+                "read /registry/channel/moltbook",
+                "wait for buyer_outbound_contact=true",
+            ],
+        }
+    )
+
+    validated = acquisition_agent_mind._validate_plan(
+        worker_plan,
+        fallback_queries,
+    )
+    serialized = json.dumps(validated).lower()
+
+    assert "/registry/" not in serialized
+    assert "buyer_outbound_contact" not in serialized
+    assert "expiry_seconds" not in serialized
+    assert "hold" not in validated["channel_priority"]
+    assert validated["contact_policy"] == "discover_only"
+    assert validated["search_queries"] == fallback_queries
+
+    transport = acquisition_swarm._mind_transport_policy(
+        validated,
+        tuple(fallback_queries),
+    )
+    assert transport["discover_allowed"] is True
+    assert "moltbook" in transport["channels"]
+
+    brain_plan = _brain_plan()
+    brain_plan["collective_summary"] = (
+        "Read /registry/channel/moltbook for buyer_outbound_contact before proceeding."
+    )
+    brain_plan["learning_agenda"] = [
+        "Fetch /registry/temple/trust_signal_expiry_window and cache expiry_seconds."
+    ]
+    brain_plan["channel_priority"] = ["hold", "moltbook"]
+    validated_brain = acquisition_agent_mind._validate_temple_brain_plan(brain_plan)
+    brain_text = json.dumps(validated_brain).lower()
+
+    assert "/registry/" not in brain_text
+    assert "buyer_outbound_contact" not in brain_text
+    assert "expiry_seconds" not in brain_text
+    assert "hold" not in validated_brain["channel_priority"]
+
+
+def test_reasoning_prompts_forbid_invented_aion_control_plane_resources():
+    worker_prompt = " ".join(acquisition_agent_mind._MIND_INSTRUCTIONS.split()).lower()
+    brain_prompt = " ".join(
+        acquisition_agent_mind._TEMPLE_BRAIN_INSTRUCTIONS.split()
+    ).lower()
+
+    assert "never invent aion internal endpoints" in worker_prompt
+    assert "search_queries are public buyer-intent search phrases" in worker_prompt
+    assert "never invent aion internal endpoints" in brain_prompt
+    assert "missing hypothetical metadata must not become a hard-hold gate" in brain_prompt
+
+
 def test_existing_bad_plan_and_memory_are_sanitized_before_reuse():
     _clean_minds()
     worker = WORKERS[0]
