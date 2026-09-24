@@ -16,12 +16,15 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..public_origin import canonical_public_origin
 from .direct_base_usdc import DIRECT_PAYMENT_METHOD, direct_base_usdc_readiness
 from .paid_route_intelligence import (
     ROUTE_INTELLIGENCE_SKU,
+    configured_route_intelligence_plan,
     register_paid_route_intelligence_profile,
 )
 from .route_intelligence_purchase import (
+    X402_PAYMENT_METHOD,
     RouteIntelligencePurchaseError,
     payment_required_response_data,
     prepare_route_intelligence,
@@ -29,6 +32,7 @@ from .route_intelligence_purchase import (
     settle_direct_and_release,
 )
 from .x402_exact_upfront import (
+    build_exact_payment_required,
     encode_exact_payment_required,
     exact_upfront_readiness,
 )
@@ -49,7 +53,10 @@ class _CommercialPurchaseBodyLimit:
             scope.get("type") != "http"
             or scope.get("method") != "POST"
             or scope.get("path", "").rstrip("/")
-            != "/commercial/route-intelligence/purchase"
+            not in {
+                "/commercial/route-intelligence/purchase",
+                "/commercial/route-intelligence/x402/purchase",
+            }
         ):
             return await self.app(scope, receive, send)
 
@@ -132,6 +139,29 @@ def _patch_mcp_paid_sku_metadata() -> None:
             "preference, not funds. Real payment remains separately gated."
         )
         return
+
+
+def _x402_resource_url() -> str:
+    return (
+        canonical_public_origin().rstrip("/")
+        + "/commercial/route-intelligence/x402/purchase"
+    )
+
+
+def _x402_input_schema() -> dict:
+    return {
+        "type": "object",
+        "required": ["need"],
+        "properties": {
+            "need": {"type": "string", "minLength": 1, "maxLength": 128},
+            "candidate_identifier": {
+                "type": ["string", "null"],
+                "minLength": 1,
+                "maxLength": 240,
+            },
+        },
+        "additionalProperties": False,
+    }
 
 
 def _payment_response_header(data: dict) -> str:
@@ -281,6 +311,48 @@ def install_commercial_payment_routes(app) -> None:
             ),
         )
 
+    if "/.well-known/x402" not in existing:
+        def x402_manifest_endpoint():
+            readiness = exact_upfront_readiness()
+            plan = configured_route_intelligence_plan()
+            resources = []
+            if readiness["launch_ready"] and plan is not None:
+                resources.append(
+                    {
+                        "name": "AION Verified Route Intelligence",
+                        "resource": _x402_resource_url(),
+                        "method": "POST",
+                        "description": (
+                            "Bounded verified provider route selection with a frozen "
+                            "result released only after x402 exact/upfront settlement."
+                        ),
+                        "price": f"{plan.customer_price} {plan.currency}",
+                        "inputSchema": _x402_input_schema(),
+                        "accepts": build_exact_payment_required(
+                            resource_url=_x402_resource_url()
+                        )["accepts"],
+                    }
+                )
+            return JSONResponse(
+                {
+                    "version": 1,
+                    "x402Version": 2,
+                    "name": "AION SUPREME",
+                    "description": (
+                        "Machine-first pre-spend routing and verified Route Intelligence."
+                    ),
+                    "resources": resources,
+                },
+                headers={"Cache-Control": "public, max-age=60"},
+            )
+
+        app.add_api_route(
+            "/.well-known/x402",
+            x402_manifest_endpoint,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+
     if "/commercial/route-intelligence/preflight" not in existing:
         def preflight_endpoint(
             payload: dict,
@@ -314,6 +386,86 @@ def install_commercial_payment_routes(app) -> None:
                 "Zero-price, no-membership pre-spend decision surface. It may perform bounded "
                 "public registry/manifest discovery, but never contacts a provider interaction "
                 "endpoint, creates a payment, or releases the selected paid route."
+            ),
+        )
+
+    if "/commercial/route-intelligence/x402/purchase" not in existing:
+        def x402_purchase_endpoint(
+            payload: dict,
+            payment_signature: str | None = Header(
+                default=None,
+                alias="PAYMENT-SIGNATURE",
+            ),
+            db: Session = Depends(get_db),
+        ):
+            readiness = exact_upfront_readiness()
+            if not readiness["launch_ready"]:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "code": "x402_exact_upfront_not_activated",
+                        "product_sku": ROUTE_INTELLIGENCE_SKU,
+                        "blocking_reasons": readiness["blocking_reasons"],
+                        "aion_membership_required": False,
+                        "result_released": False,
+                    },
+                    headers={"Cache-Control": "private, no-store"},
+                )
+
+            try:
+                if payment_signature is not None:
+                    data = settle_and_release(db, payload, payment_signature)
+                    return JSONResponse(
+                        status_code=200,
+                        content=data,
+                        headers={
+                            "PAYMENT-RESPONSE": _payment_response_header(data),
+                            "Cache-Control": "private, no-store",
+                        },
+                    )
+
+                row = prepare_route_intelligence(
+                    db,
+                    payload,
+                    payment_method=X402_PAYMENT_METHOD,
+                )
+                info = payment_required_response_data(
+                    row,
+                    x402_resource_url=_x402_resource_url(),
+                )
+                payment_required = info.pop("payment_required")
+                return JSONResponse(
+                    status_code=402,
+                    content=payment_required,
+                    headers={
+                        "PAYMENT-REQUIRED": encode_exact_payment_required(
+                            payment_required
+                        ),
+                        "Cache-Control": "private, no-store",
+                    },
+                )
+            except RouteIntelligencePurchaseError as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={
+                        "code": exc.code,
+                        "message": exc.message,
+                        "product_sku": ROUTE_INTELLIGENCE_SKU,
+                        "aion_membership_required": False,
+                        "result_released": False,
+                    },
+                    headers={"Cache-Control": "private, no-store"},
+                )
+
+        app.add_api_route(
+            "/commercial/route-intelligence/x402/purchase",
+            x402_purchase_endpoint,
+            methods=["POST"],
+            include_in_schema=True,
+            summary="Purchase AION Route Intelligence over x402 exact/upfront",
+            description=(
+                "Explicit standards-compatible x402 v2 exact/upfront route. "
+                "The preferred direct Base-USDC buyer-broadcast path remains unchanged."
             ),
         )
 

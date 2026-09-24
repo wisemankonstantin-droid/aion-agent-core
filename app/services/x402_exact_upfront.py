@@ -177,9 +177,13 @@ def bound_exact_payment_requirements(purchase_id: str, prepared_result_digest: s
     return requirements
 
 
-def build_exact_payment_required(requirements: dict | None = None) -> dict:
+def build_exact_payment_required(
+    requirements: dict | None = None,
+    *,
+    resource_url: str | None = None,
+) -> dict:
     requirements = exact_payment_requirements() if requirements is None else requirements
-    resource_url = (
+    resource_url = resource_url or (
         canonical_public_origin().rstrip("/")
         + "/commercial/route-intelligence/purchase"
     )
@@ -287,7 +291,8 @@ def exact_upfront_readiness() -> dict:
         "blocking_reasons": list(dict.fromkeys(reasons)),
         "asset_code": offer["asset_code"] if offer else None,
         "network": offer["network"] if offer else None,
-        "purchase_endpoint": "/commercial/route-intelligence/purchase",
+        "purchase_endpoint": "/commercial/route-intelligence/x402/purchase",
+        "legacy_purchase_endpoint": "/commercial/route-intelligence/purchase",
         "truth_boundaries": {
             "settlement_happens_before_resource_release": True,
             "upfront_settlement_is_not_a_reserve": True,
