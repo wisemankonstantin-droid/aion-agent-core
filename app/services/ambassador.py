@@ -39,6 +39,7 @@ from .external_registry import (
 )
 from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
+    MAX_SEARCH_RESULTS as MOLTBOOK_MAX_SEARCH_RESULTS,
     browse_recent_intent as browse_recent_moltbook_intent,
     build_outreach_comment as build_moltbook_outreach_comment,
     dm_outbound_enabled as moltbook_dm_outbound_enabled,
@@ -455,7 +456,7 @@ def scout_moltbook_campaign(db: Session, *, campaign_id: str, query: str) -> dic
             raise AmbassadorError(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
-        discovery = search_moltbook_intent(query, min(9, remaining + 4))
+        discovery = search_moltbook_intent(query, MOLTBOOK_MAX_SEARCH_RESULTS)
         outcomes = Counter()
         target_ids = []
         for candidate in discovery.get("candidates", []):

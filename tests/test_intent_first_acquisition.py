@@ -376,8 +376,8 @@ def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
             db, campaign_id=campaign_id, query="second"
         )
 
-    assert moltbook_acquisition.MAX_SEARCH_RESULTS == 9
-    assert requested_limits == [9]
+    assert moltbook_acquisition.MAX_SEARCH_RESULTS == 25
+    assert requested_limits == [25]
     assert result["created_target_ids"], result["outcomes"]
     assert result["outcomes"]["duplicate_target_fingerprint"] == 1
 
