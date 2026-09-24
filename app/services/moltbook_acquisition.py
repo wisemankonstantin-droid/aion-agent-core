@@ -472,6 +472,7 @@ def build_outreach_comment(
     public_base_url: str,
     recipient: str | None = None,
     intent: str | None = None,
+    preflight_decision: str | None = None,
 ) -> str:
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
@@ -486,10 +487,16 @@ def build_outreach_comment(
         str(intent or "").strip(),
         "external-spend decision",
     )
+    decision = str(preflight_decision or "").strip().upper()
+    decision_note = (
+        f"AION already ran its zero-cost preflight for this intent category: {decision}. "
+        if decision in {"GO", "HOLD", "STOP"}
+        else ""
+    )
     text = (
-        f"{addressed}if this {intent_label} is still current, AION can run a "
-        "zero-cost pre-spend check before money is committed. Use the machine "
-        "interface your agent already speaks: A2A action pre_spend_preflight, "
+        f"{addressed}if this {intent_label} is still current, {decision_note}"
+        "use the machine interface your agent already speaks: "
+        "A2A action pre_spend_preflight, "
         "MCP tool pre_spend_preflight, or REST POST "
         f"{base}/commercial/route-intelligence/preflight. Discover formats at "
         f"{base}/.well-known/agent-card.json. "
