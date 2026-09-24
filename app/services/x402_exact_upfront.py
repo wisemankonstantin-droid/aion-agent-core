@@ -177,6 +177,113 @@ def bound_exact_payment_requirements(purchase_id: str, prepared_result_digest: s
     return requirements
 
 
+def _bazaar_discovery_extension() -> dict:
+    """Return x402 v2 Bazaar metadata matching the real purchase contract.
+
+    AION does not depend on Bazaar for payment correctness. This metadata only
+    makes the already-live paid resource machine-describable to facilitators
+    and indexes that implement the standard Bazaar extension.
+    """
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "need": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": (
+                    "Bounded public provider-selection need; do not include secrets, "
+                    "credentials, private URLs, or token-like material"
+                ),
+            },
+            "candidate_identifier": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Optional public A2A Registry package identifier",
+            },
+        },
+        "required": ["need"],
+        "additionalProperties": False,
+    }
+    output_example = {
+        "state": "entitled",
+        "prepared_result_digest": "sha256:" + ("0" * 64),
+        "result": {
+            "route_version": "commercial_router_v1",
+            "state": "qualified_unpriced",
+            "selected_provider": {"identifier": "example.provider"},
+            "provider_verification_state": "historical_callability_verified",
+        },
+        "payment": {"method": "x402_exact_upfront"},
+    }
+    output_schema = {
+        "type": "object",
+        "properties": {
+            "state": {"type": "string"},
+            "prepared_result_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+            },
+            "result": {"type": "object"},
+            "payment": {"type": "object"},
+        },
+        "required": ["state", "prepared_result_digest", "result", "payment"],
+    }
+    info = {
+        "input": {
+            "type": "http",
+            "method": "POST",
+            "bodyType": "json",
+            "body": {
+                "need": "compare AI API providers for this workload",
+            },
+        },
+        "output": {
+            "type": "json",
+            "example": output_example,
+        },
+    }
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "input": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "const": "http"},
+                    "method": {
+                        "type": "string",
+                        "enum": ["POST", "PUT", "PATCH"],
+                    },
+                    "bodyType": {
+                        "type": "string",
+                        "enum": ["json", "form-data", "text"],
+                    },
+                    "body": input_schema,
+                },
+                "required": ["type", "method", "bodyType", "body"],
+                "additionalProperties": False,
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string"},
+                    "example": output_schema,
+                },
+                "required": ["type"],
+            },
+        },
+        "required": ["input"],
+    }
+    return {
+        "bazaar": {
+            "info": info,
+            "schema": schema,
+        }
+    }
+
+
 def build_exact_payment_required(
     requirements: dict | None = None,
     *,
@@ -197,8 +304,17 @@ def build_exact_payment_required(
                 "verification evidence result"
             ),
             "mimeType": "application/json",
+            "serviceName": "AION Route Intelligence",
+            "tags": [
+                "provider-selection",
+                "pre-spend",
+                "routing",
+                "verification",
+                "x402",
+            ],
         },
         "accepts": [requirements],
+        "extensions": _bazaar_discovery_extension(),
     }
 
 
