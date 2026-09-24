@@ -243,6 +243,46 @@ def install_official_a2a(app):
                             utility_query,
                             now=datetime.now(timezone.utc),
                         )
+            elif action in {"pre_spend_preflight", "aion_pre_spend_preflight"}:
+                from .services.commercial_payment_routes import (
+                    PreSpendPreflightError,
+                    pre_spend_preflight_data,
+                )
+
+                if not isinstance(command, dict):
+                    payload = {
+                        "action": "aion_pre_spend_preflight",
+                        "status": "invalid_request",
+                        "membership_required": False,
+                        "payment_required": False,
+                    }
+                else:
+                    allowed = {"action", "need", "candidate_identifier"}
+                    if set(command) - allowed:
+                        payload = {
+                            "action": "aion_pre_spend_preflight",
+                            "status": "invalid_request",
+                            "membership_required": False,
+                            "payment_required": False,
+                        }
+                    else:
+                        preflight_payload = {"need": command.get("need")}
+                        if "candidate_identifier" in command:
+                            preflight_payload["candidate_identifier"] = command.get(
+                                "candidate_identifier"
+                            )
+                        with SessionLocal() as db:
+                            try:
+                                payload = pre_spend_preflight_data(
+                                    db, preflight_payload
+                                )
+                            except PreSpendPreflightError:
+                                payload = {
+                                    "action": "aion_pre_spend_preflight",
+                                    "status": "invalid_request",
+                                    "membership_required": False,
+                                    "payment_required": False,
+                                }
             elif action == "discover_agents":
                 with SessionLocal() as db:
                     agents = db.scalars(select(models.Agent).order_by(models.Agent.reputation.desc())).all()
@@ -306,6 +346,7 @@ def install_official_a2a(app):
                         '{"action":"first_contact"}',
                         '{"action":"onboarding"}',
                         '{"action":"join_aion","external_id":"my-agent","name":"My Agent","capabilities":["research"]}',
+                        '{"action":"pre_spend_preflight","need":"paid web research provider"}',
                         '{"action":"discover_agents","capability":"web_research"}',
                         '{"action":"discover_external_agents","query":"web_research"}',
                         "discover:web_research",
@@ -371,6 +412,19 @@ def install_official_a2a(app):
                 description=A2A_GUIDANCE_DESCRIPTION,
                 tags=["aion", "guidance", "verified-outcome", "cross-interface"],
                 examples=['{"action":"onboarding"}'],
+            ),
+            AgentSkill(
+                id="aion_pre_spend_preflight",
+                name="AION pre-spend preflight",
+                description=(
+                    "Run the public zero-price GO/HOLD/STOP pre-spend decision "
+                    "directly over A2A. No membership, payment or provider execution "
+                    "is required."
+                ),
+                tags=["aion", "pre-spend", "routing", "zero-price", "public"],
+                examples=[
+                    '{"action":"pre_spend_preflight","need":"paid web research provider"}'
+                ],
             ),
             AgentSkill(
                 id="aion_commercial_route_planning",
