@@ -262,6 +262,34 @@ def test_x402_discovery_aliases_and_empty_probe_are_read_only(monkeypatch):
     assert encoded == body
     assert body["x402Version"] == 2
     assert "discovery-only" in body["error"]
+    assert body["resource"]["serviceName"] == "AION Route Intelligence"
+    assert body["resource"]["tags"] == [
+        "provider-selection",
+        "pre-spend",
+        "routing",
+        "verification",
+        "x402",
+    ]
+    bazaar = body["extensions"]["bazaar"]
+    assert bazaar["info"]["input"] == {
+        "type": "http",
+        "method": "POST",
+        "bodyType": "json",
+        "body": {"need": "compare AI API providers for this workload"},
+    }
+    assert bazaar["info"]["output"]["type"] == "json"
+    assert bazaar["info"]["output"]["example"]["state"] == "entitled"
+    assert bazaar["schema"]["$schema"] == (
+        "https://json-schema.org/draft/2020-12/schema"
+    )
+    input_schema = bazaar["schema"]["properties"]["input"]
+    assert input_schema["required"] == ["type", "method", "bodyType", "body"]
+    assert input_schema["properties"]["method"]["enum"] == ["POST", "PUT", "PATCH"]
+    body_schema = input_schema["properties"]["body"]
+    assert body_schema["required"] == ["need"]
+    assert body_schema["additionalProperties"] is False
+    assert body_schema["properties"]["need"]["maxLength"] == 128
+    assert body_schema["properties"]["candidate_identifier"]["maxLength"] == 240
     accepted = body["accepts"][0]
     assert accepted["scheme"] == "exact"
     assert accepted["network"] == "eip155:8453"
@@ -309,7 +337,14 @@ def test_explicit_x402_route_remains_standard_when_direct_path_is_ready(monkeypa
     assert x402.status_code == 402
     assert x402.headers["cache-control"] == "private, no-store"
     body = x402.json()
-    assert set(body) == {"x402Version", "error", "resource", "accepts"}
+    assert set(body) == {
+        "x402Version",
+        "error",
+        "resource",
+        "accepts",
+        "extensions",
+    }
+    assert body["extensions"]["bazaar"]["info"]["input"]["method"] == "POST"
     assert body["x402Version"] == 2
     assert body["resource"]["url"] == (
         "https://aion.example/commercial/route-intelligence/x402/purchase"
@@ -400,6 +435,19 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
         "/commercial/route-intelligence/purchase"
     )
     required = build_exact_payment_required()
+    assert required["resource"]["serviceName"] == "AION Route Intelligence"
+    assert required["resource"]["tags"] == [
+        "provider-selection",
+        "pre-spend",
+        "routing",
+        "verification",
+        "x402",
+    ]
+    bazaar = required["extensions"]["bazaar"]
+    assert bazaar["info"]["input"]["type"] == "http"
+    assert bazaar["info"]["input"]["method"] == "POST"
+    assert bazaar["info"]["input"]["bodyType"] == "json"
+    assert bazaar["schema"]["required"] == ["input"]
     accepted = required["accepts"][0]
     assert accepted["scheme"] == "exact"
     assert accepted["network"] == "eip155:8453"
