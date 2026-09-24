@@ -240,6 +240,55 @@ def test_x402_manifest_lists_only_launch_ready_explicit_resource(monkeypatch):
     assert resource["accepts"][0]["payTo"] == "0x" + "2" * 40
 
 
+def test_x402_discovery_aliases_and_empty_probe_are_read_only(monkeypatch):
+    _configure(monkeypatch)
+    calls = _mock_plan(monkeypatch)
+
+    canonical = client.get("/.well-known/x402")
+    assert canonical.status_code == 200
+    for alias in ("/.well-known/x402.json", "/.well-known/x402-services.json"):
+        response = client.get(alias)
+        assert response.status_code == 200
+        assert response.json() == canonical.json()
+
+    probe = client.post(
+        "/commercial/route-intelligence/x402/purchase",
+        json={},
+    )
+    assert probe.status_code == 402
+    assert probe.headers["cache-control"] == "private, no-store"
+    body = probe.json()
+    encoded = json.loads(base64.b64decode(probe.headers["PAYMENT-REQUIRED"]))
+    assert encoded == body
+    assert body["x402Version"] == 2
+    assert "discovery-only" in body["error"]
+    accepted = body["accepts"][0]
+    assert accepted["scheme"] == "exact"
+    assert accepted["network"] == "eip155:8453"
+    assert accepted["amount"] == "1250000"
+    assert "aionPurchaseId" not in accepted["extra"]
+    assert "aionPreparedResultDigest" not in accepted["extra"]
+
+    with SessionLocal() as db:
+        assert (
+            db.scalar(select(func.count()).select_from(RouteIntelligencePurchase))
+            or 0
+        ) == 0
+    assert calls == []
+
+    invalid = client.post(
+        "/commercial/route-intelligence/x402/purchase",
+        json={"candidate_identifier": "fixture.provider"},
+    )
+    assert invalid.status_code == 422
+    with SessionLocal() as db:
+        assert (
+            db.scalar(select(func.count()).select_from(RouteIntelligencePurchase))
+            or 0
+        ) == 0
+    assert calls == []
+
+
 def test_explicit_x402_route_remains_standard_when_direct_path_is_ready(monkeypatch):
     _configure(monkeypatch)
     _enable_direct(monkeypatch)
