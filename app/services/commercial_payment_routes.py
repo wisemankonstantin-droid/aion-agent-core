@@ -346,12 +346,17 @@ def install_commercial_payment_routes(app) -> None:
                 headers={"Cache-Control": "public, max-age=60"},
             )
 
-        app.add_api_route(
+        for manifest_path in (
             "/.well-known/x402",
-            x402_manifest_endpoint,
-            methods=["GET"],
-            include_in_schema=False,
-        )
+            "/.well-known/x402.json",
+            "/.well-known/x402-services.json",
+        ):
+            app.add_api_route(
+                manifest_path,
+                x402_manifest_endpoint,
+                methods=["GET"],
+                include_in_schema=False,
+            )
 
     if "/commercial/route-intelligence/preflight" not in existing:
         def preflight_endpoint(
@@ -410,6 +415,31 @@ def install_commercial_payment_routes(app) -> None:
                         "result_released": False,
                     },
                     headers={"Cache-Control": "private, no-store"},
+                )
+
+            # External x402 indexers commonly probe a declared POST resource with
+            # an empty JSON object to learn its live quote. A valid buyer request
+            # still needs a bounded need so AION can freeze a real result and
+            # bind payment to that purchase. For the empty, unsigned discovery
+            # probe only, expose the configured standard quote without creating
+            # a purchase row or contacting the commercial router.
+            if payment_signature is None and payload == {}:
+                payment_required = build_exact_payment_required(
+                    resource_url=_x402_resource_url()
+                )
+                payment_required["error"] = (
+                    "Valid Route Intelligence request body is required before "
+                    "purchase-bound payment; this challenge is discovery-only"
+                )
+                return JSONResponse(
+                    status_code=402,
+                    content=payment_required,
+                    headers={
+                        "PAYMENT-REQUIRED": encode_exact_payment_required(
+                            payment_required
+                        ),
+                        "Cache-Control": "private, no-store",
+                    },
                 )
 
             try:
