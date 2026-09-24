@@ -12,6 +12,7 @@ from app.services.cdp_x402_facilitator import (
     CDP_API_KEY_ID_ENV,
     CDP_API_KEY_SECRET_ENV,
     CDP_SETTLE_URL,
+    XPAY_SETTLE_URL,
     FacilitatorSettlementError,
     generate_cdp_request_jwt,
     settle_exact_upfront,
@@ -136,16 +137,16 @@ def test_non_p256_ec_secret_is_not_locally_ready_or_signed_as_es256(monkeypatch)
 
     readiness = cdp_x402_facilitator.facilitator_credential_readiness()
     assert readiness["credentials_locally_valid"] is False
-    assert "cdp_api_key_secret_invalid" in readiness["blocking_reasons"]
+    assert readiness["facilitator_ready"] is True
+    assert readiness["credentials_required"] is False
+    assert readiness["provider"] == "xpay_public"
+    assert readiness["blocking_reasons"] == []
     with pytest.raises(FacilitatorSettlementError) as error:
         generate_cdp_request_jwt()
     assert error.value.code == "invalid_cdp_api_key_secret"
 
 
-def test_settlement_uses_fixed_endpoint_one_attempt_and_documented_base_alias(monkeypatch):
-    _, secret = _ed25519_secret()
-    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "fixture-key")
-    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+def test_settlement_uses_public_xpay_endpoint_one_attempt_and_documented_base_alias(monkeypatch):
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
     calls = []
 
@@ -171,13 +172,13 @@ def test_settlement_uses_fixed_endpoint_one_attempt_and_documented_base_alias(mo
     assert result["transaction"] == "0x" + "4" * 64
     assert len(calls) == 1
     method, url, body, headers, policy = calls[0]
-    assert method == "POST" and url == CDP_SETTLE_URL
+    assert method == "POST" and url == XPAY_SETTLE_URL
     assert policy.max_attempts == 1
     assert policy.max_response_bytes == 32_768
     assert body["x402Version"] == 2
     assert body["paymentPayload"] == _payload()
     assert body["paymentRequirements"] == _requirements()
-    assert headers["Authorization"].startswith("Bearer ")
+    assert headers == {"Accept": "application/json"}
 
 
 def test_success_network_alias_is_bounded_and_cross_chain_mismatch_is_ambiguous(monkeypatch):
