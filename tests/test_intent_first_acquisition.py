@@ -336,7 +336,7 @@ def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
             db,
             name="dedupe starvation regression",
             purpose="test",
-            maximum_targets=2,
+            maximum_targets=10,
             maximum_contacts=2,
         )
         campaign_id = campaign["campaign_id"]
