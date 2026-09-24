@@ -47,6 +47,10 @@ from .moltbook_acquisition import (
     outbound_status as moltbook_outbound_status,
 )
 from .colony_acquisition import account_status as colony_account_status
+from .commercial_payment_routes import (
+    PreSpendPreflightError,
+    pre_spend_preflight_data,
+)
 
 
 INTENT_WORKERS: dict[str, tuple[str, ...]] = {
@@ -569,6 +573,27 @@ def _contact_allowed_for_actionable_target(
     return source in allowed_channels or (
         source not in {"moltbook", "colony"} and "federated_a2a" in allowed_channels
     )
+
+
+def _outbound_preflight(db: Session, intent_profile: str) -> dict:
+    """Run existing zero-price preflight before consuming an outbound slot."""
+
+    need = MOLTBOOK_INTENT_QUERIES[intent_profile][0]
+    try:
+        result = pre_spend_preflight_data(db, {"need": need})
+    except PreSpendPreflightError:
+        return {
+            "decision": "HOLD",
+            "reason_code": "bounded_preflight_validation_error",
+            "qualified_route_available": False,
+            "need_source": "deterministic_intent_lane_not_buyer_quote",
+        }
+    return {
+        "decision": str(result.get("decision") or "HOLD"),
+        "reason_code": str(result.get("reason_code") or "unknown")[:80],
+        "qualified_route_available": bool(result.get("qualified_route_available")),
+        "need_source": "deterministic_intent_lane_not_buyer_quote",
+    }
 
 
 def _worker_daily_plan() -> dict:
@@ -1177,6 +1202,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             },
             "scout_results": [],
             "contact": None,
+            "preflight": None,
             "response_intelligence": None,
             "daily_accountability": None,
         }
@@ -1342,11 +1368,19 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 allow_federated=FEDERATED_A2A_BUYER_CONTACT_ENABLED,
             )
             contact_attempted_this_cycle = False
+            outbound_preflight = None
             if (
                 target is not None
                 and send_enabled
                 and _contact_allowed_for_actionable_target(mind_policy, target)
                 and contacts_remaining > 0
+            ):
+                outbound_preflight = _outbound_preflight(db, lane)
+                lane_report["preflight"] = outbound_preflight
+            if (
+                target is not None
+                and outbound_preflight is not None
+                and outbound_preflight.get("decision") == "GO"
             ):
                 report["contacts_attempted"] += 1
                 contacts_remaining -= 1
@@ -1367,6 +1401,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         db,
                         target_id=target.target_id,
                         idempotency_key=f"intent-{worker_id}-{target.target_id}",
+                        preflight_result=outbound_preflight,
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
