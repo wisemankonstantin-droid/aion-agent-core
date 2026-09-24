@@ -286,7 +286,11 @@ def prepare_route_intelligence(
     return row
 
 
-def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
+def payment_required_response_data(
+    row: RouteIntelligencePurchase,
+    *,
+    x402_resource_url: str | None = None,
+) -> dict:
     payment_method = (row.accounting_evidence or {}).get(
         "payment_method", X402_PAYMENT_METHOD
     )
@@ -305,7 +309,10 @@ def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
             )
         except ExactUpfrontError as exc:
             raise RouteIntelligencePurchaseError(503, exc.code, exc.message) from exc
-        required = build_exact_payment_required(requirements)
+        required = build_exact_payment_required(
+            requirements,
+            resource_url=x402_resource_url,
+        )
 
     if _digest(requirements) != row.payment_requirements_digest:
         raise RouteIntelligencePurchaseError(
