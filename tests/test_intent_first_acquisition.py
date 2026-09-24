@@ -211,7 +211,7 @@ def test_mcp_tools_list_exposes_public_pre_spend_preflight():
 
 
 def test_protocol_native_preflight_rejects_extra_secret_without_echo(monkeypatch):
-    secret = "sk-proj-native-preflight-must-not-echo"
+    secret = "non_echo_marker_" + uuid.uuid4().hex
 
     mcp = _mcp_preflight({"need": "research", "secret": secret})
     assert mcp.status_code == 400
