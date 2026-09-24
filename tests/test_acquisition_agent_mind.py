@@ -930,6 +930,64 @@ def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatc
         assert row.safe_memory["channel_performance"]["federated_a2a"][
             "responses"
         ] == 12
+        assert row.last_state == "model_unconfigured"
+        assert row.total_reasoning_calls == 0
+
+
+def test_verified_model_plan_transitions_to_learning_after_executor_outcome(monkeypatch):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "true")
+    worker = WORKERS[0]
+    now = acquisition_agent_mind._now()
+    with SessionLocal() as db:
+        db.add(
+            models.AcquisitionAgentMind(
+                worker_id=worker.id,
+                mind_version="2",
+                model="gpt-5.6-luna",
+                cognitive_profile=acquisition_agent_mind.cognitive_profile(worker),
+                safe_memory={
+                    "recent_outcomes": [],
+                    "channel_performance": {},
+                    "lessons": [],
+                },
+                last_plan=_plan(worker.id),
+                last_observation_digest="sha256:" + "a" * 64,
+                last_plan_digest="sha256:" + "b" * 64,
+                last_state="planned",
+                total_reasoning_calls=1,
+                reasoning_failures=0,
+                last_reasoned_at=now,
+                last_error=None,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    acquisition_agent_mind.record_worker_outcome(
+        worker.id,
+        {
+            "new_targets": 1,
+            "qualified_targets": 1,
+            "contact_attempted": True,
+            "channel": "federated_a2a",
+            "result_class": "response_received",
+            "response_received": True,
+            "routing_feedback_count": 1,
+        },
+    )
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == worker.id
+            )
+        )
+        assert row.last_state == "learning"
+        assert row.total_reasoning_calls == 1
+        assert len(row.safe_memory["recent_outcomes"]) == 1
 
 
 def test_commercial_knowledge_uses_configured_deterministic_price(monkeypatch):
