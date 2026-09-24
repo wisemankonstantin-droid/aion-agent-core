@@ -101,11 +101,6 @@ def _configure(monkeypatch, *, real_money=True):
     monkeypatch.setenv(PAY_TO_ENV, "0x" + "2" * 40)
     monkeypatch.setenv(MAX_TIMEOUT_SECONDS_ENV, "60")
     monkeypatch.setenv(ASSET_TRANSFER_METHOD_ENV, "eip3009")
-    monkeypatch.setenv("CDP_API_KEY_ID", "fixture-key-id")
-    monkeypatch.setenv(
-        "CDP_API_KEY_SECRET",
-        base64.b64encode(bytes(range(64))).decode("ascii"),
-    )
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", real_money)
 
 
@@ -332,8 +327,8 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     assert readiness["activation_ready_except_master_gate"] is False
     assert "route_intelligence_quote_not_configured" in readiness["blocking_reasons"]
     assert "x402_exact_upfront_disabled" in readiness["blocking_reasons"]
-    assert "cdp_api_key_id_missing" in readiness["blocking_reasons"]
-    assert "cdp_api_key_secret_missing" in readiness["blocking_reasons"]
+    assert readiness["facilitator_provider"] == "xpay_public"
+    assert readiness["facilitator_credentials_required"] is False
     assert "real_money_execution_disabled" in readiness["blocking_reasons"]
     assert readiness["scheme"] == "exact"
     assert readiness["payment_flow"] == "upfront"
@@ -344,7 +339,9 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     assert ready["launch_ready"] is True
     assert ready["activation_ready_except_master_gate"] is True
     assert ready["blocking_reasons"] == []
-    assert ready["facilitator_credentials_locally_valid"] is True
+    assert ready["facilitator_provider"] == "xpay_public"
+    assert ready["facilitator_credentials_required"] is False
+    assert ready["facilitator_credentials_locally_valid"] is False
     assert ready["pay_to_address_configured"] is True
     assert ready["asset_code"] == "USDC"
     assert ready["purchase_endpoint"] == (
@@ -371,7 +368,7 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     assert "asset_transfer_method_not_eip3009" in exact_upfront_readiness()["blocking_reasons"]
 
 
-def test_readiness_distinguishes_invalid_pay_to_and_invalid_credentials(monkeypatch):
+def test_readiness_invalid_pay_to_blocks_but_unused_cdp_secret_does_not(monkeypatch):
     _configure(monkeypatch, real_money=False)
     monkeypatch.setenv(PAY_TO_ENV, "not-an-address")
     monkeypatch.setenv("CDP_API_KEY_SECRET", "present-but-invalid")
@@ -379,10 +376,14 @@ def test_readiness_distinguishes_invalid_pay_to_and_invalid_credentials(monkeypa
     readiness = exact_upfront_readiness()
 
     assert readiness["pay_to_address_configured"] is False
-    assert readiness["facilitator_credentials_configured"] is True
+    assert readiness["facilitator_provider"] == "xpay_public"
+    assert readiness["facilitator_credentials_required"] is False
+    assert readiness["facilitator_credentials_configured"] is False
     assert readiness["facilitator_credentials_locally_valid"] is False
     assert "pay_to_address_invalid" in readiness["blocking_reasons"]
-    assert "cdp_api_key_secret_invalid" in readiness["blocking_reasons"]
+    assert not any(
+        reason.startswith("cdp_api_key_") for reason in readiness["blocking_reasons"]
+    )
     assert readiness["launch_ready"] is False
 
 
