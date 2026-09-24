@@ -1,5 +1,30 @@
 # AION PROJECT STATE
 
+## 2026-09-24 first-SAT commercial rescue checkpoint
+
+On current `main` (`db12721fe2c51b70e979d3ab20158f16e3e0df6e`), bounded
+acquisition tracing found and fixed two commercial blockers without changing
+payment/security authority:
+
+- a qualified buyer-intent target is now eligible for one bounded contact even
+  when a model plan says `discover_only`; hard hold, channel and transport
+  guardrails remain authoritative;
+- acquisition scouts request a small bounded surplus and continue past
+  duplicate candidates, preventing dedupe starvation while preserving
+  one-contact-per-target and campaign limits.
+
+Regression coverage was added in `tests/test_intent_first_acquisition.py`.
+Targeted acquisition/commercial/payment tests: **80 passed**. Buyer and
+migration/startup verification after installing the optional buyer dependency:
+**43 passed**. Full suite reached **772 passed, 23 skipped**; the earlier
+environment-only failures were missing `eth_account` and Windows temp-folder
+ACLs. `pip check` still reports the pre-existing `aiogram`/`pydantic`
+compatibility warning. Readiness is structurally true except the expected
+`no_bundled_runtime_db` check; secret scan: **0 findings**.
+
+No production deploy, merge, outbound contact, payment or settlement was
+performed. First real SAT remains an external Human Gate.
+
 ## 2026-09-23 live Temple / 100-worker acquisition continuation
 
 Current commercial objective remains **FIRST REAL SETTLED AGENT TRANSACTION**.

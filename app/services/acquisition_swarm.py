@@ -550,6 +550,27 @@ def _mind_transport_policy(
     }
 
 
+def _contact_allowed_for_actionable_target(
+    mind_policy: dict, target: models.AmbassadorTarget
+) -> bool:
+    """Allow one bounded contact when discovery found an actionable target.
+
+    Model planning may narrow transport, but ``discover_only`` is not a
+    material blocker once a verified buyer-intent target is qualified. A hard
+    hold (or a channel the model explicitly excluded) still remains binding.
+    """
+
+    if not mind_policy.get("discover_allowed"):
+        return False
+    if "hold" in (mind_policy.get("channels") or set()):
+        return False
+    source = str(getattr(target, "discovery_source", "") or "")
+    allowed_channels = mind_policy.get("channels") or set()
+    return source in allowed_channels or (
+        source not in {"moltbook", "colony"} and "federated_a2a" in allowed_channels
+    )
+
+
 def _worker_daily_plan() -> dict:
     return {
         "new_unique_targets": DAILY_NEW_TARGET_GOAL_PER_WORKER,
@@ -1133,7 +1154,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         allow_federated_discovery = (
             discover_allowed and "federated_a2a" in mind_channels
         )
-        contact_allowed_by_mind = mind_policy["contact_allowed"]
         moltbook_query = (
             queries[0]
             if mind_controls_transport and queries
@@ -1325,7 +1345,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             if (
                 target is not None
                 and send_enabled
-                and contact_allowed_by_mind
+                and _contact_allowed_for_actionable_target(mind_policy, target)
                 and contacts_remaining > 0
             ):
                 report["contacts_attempted"] += 1
@@ -1370,7 +1390,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 and moltbook_dm_outbound_enabled()
                 and not bool(moltbook_outbound_status().get("suspended"))
                 and send_enabled
-                and contact_allowed_by_mind
                 and (
                     not mind_controls_transport
                     or "moltbook" in mind_channels
@@ -1385,7 +1404,13 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                     allow_colony=False,
                     allow_federated=False,
                 )
-                if dm_target is not None and dm_target.discovery_source == "moltbook":
+                if (
+                    dm_target is not None
+                    and dm_target.discovery_source == "moltbook"
+                    and _contact_allowed_for_actionable_target(
+                        mind_policy, dm_target
+                    )
+                ):
                     report["contacts_attempted"] += 1
                     contacts_remaining -= 1
                     moltbook_dm_remaining_cycle -= 1

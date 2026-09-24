@@ -408,10 +408,12 @@ def scout_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
         remaining = campaign.maximum_targets - current
         if remaining <= 0:
             raise AmbassadorError(409, "campaign_target_limit_reached", "Campaign target limit reached")
-        discovery = discover_external_agents_with_status(query, min(5, remaining))
+        discovery = discover_external_agents_with_status(query, min(5, remaining + 4))
         outcomes = Counter()
         target_ids = []
-        for candidate in discovery.results[:remaining]:
+        for candidate in discovery.results:
+            if len(target_ids) >= remaining:
+                break
             row, outcome = _insert_candidate(db, campaign, candidate)
             outcomes[outcome] += 1
             if row is not None and outcome == "created":
@@ -453,10 +455,12 @@ def scout_moltbook_campaign(db: Session, *, campaign_id: str, query: str) -> dic
             raise AmbassadorError(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
-        discovery = search_moltbook_intent(query, min(5, remaining))
+        discovery = search_moltbook_intent(query, min(5, remaining + 4))
         outcomes = Counter()
         target_ids = []
-        for candidate in discovery.get("candidates", [])[:remaining]:
+        for candidate in discovery.get("candidates", []):
+            if len(target_ids) >= remaining:
+                break
             row, outcome = _insert_candidate(db, campaign, candidate)
             outcomes[outcome] += 1
             if row is not None and outcome == "created":
@@ -509,10 +513,12 @@ def scout_moltbook_recent_campaign(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
 
-        discovery = browse_recent_moltbook_intent(min(int(limit), remaining))
+        discovery = browse_recent_moltbook_intent(min(int(limit), remaining + 4))
         outcomes = Counter()
         target_ids = []
-        for candidate in discovery.get("candidates", [])[:remaining]:
+        for candidate in discovery.get("candidates", []):
+            if len(target_ids) >= remaining:
+                break
             row, outcome = _insert_candidate(db, campaign, candidate)
             outcomes[outcome] += 1
             if row is not None and outcome == "created":
@@ -559,10 +565,12 @@ def scout_colony_campaign(db: Session, *, campaign_id: str, query: str) -> dict:
             raise AmbassadorError(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
-        discovery = search_colony_intent(query, min(5, remaining))
+        discovery = search_colony_intent(query, min(5, remaining + 4))
         outcomes = Counter()
         target_ids = []
-        for candidate in discovery.get("candidates", [])[:remaining]:
+        for candidate in discovery.get("candidates", []):
+            if len(target_ids) >= remaining:
+                break
             row, outcome = _insert_candidate(db, campaign, candidate)
             outcomes[outcome] += 1
             if row is not None and outcome == "created":
@@ -609,10 +617,12 @@ def scout_colony_paid_tasks_campaign(db: Session, *, campaign_id: str, limit: in
             raise AmbassadorError(
                 409, "campaign_target_limit_reached", "Campaign target limit reached"
             )
-        discovery = browse_colony_paid_tasks(min(int(limit), remaining))
+        discovery = browse_colony_paid_tasks(min(int(limit), remaining + 4))
         outcomes = Counter()
         target_ids = []
-        for candidate in discovery.get("candidates", [])[:remaining]:
+        for candidate in discovery.get("candidates", []):
+            if len(target_ids) >= remaining:
+                break
             row, outcome = _insert_candidate(db, campaign, candidate)
             outcomes[outcome] += 1
             if row is not None and outcome == "created":

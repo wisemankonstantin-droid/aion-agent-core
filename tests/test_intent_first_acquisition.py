@@ -311,6 +311,69 @@ def test_federated_registry_discovery_is_not_buyer_outbound_authority():
     assert target is None
 
 
+def test_qualified_target_overrides_model_discover_only_once_actionable():
+    policy = acquisition_swarm._mind_transport_policy(
+        {
+            "channel_priority": ["moltbook"],
+            "search_queries": ["current buyer need"],
+            "contact_policy": "discover_only",
+        },
+        ("fallback",),
+    )
+
+    class Target:
+        discovery_source = "moltbook"
+
+    assert policy["contact_allowed"] is False
+    assert acquisition_swarm._contact_allowed_for_actionable_target(
+        policy, Target()
+    ) is True
+
+
+def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
+    with SessionLocal() as db:
+        campaign = ambassador.create_campaign(
+            db,
+            name="dedupe starvation regression",
+            purpose="test",
+            maximum_targets=2,
+            maximum_contacts=2,
+        )
+        campaign_id = campaign["campaign_id"]
+        first = _candidate("duplicate-first")
+        first["source"] = "moltbook"
+        first["identifier"] = "moltbook:duplicate-first"
+        first["url"] = "https://www.moltbook.com/posts/duplicate-first"
+        first["interaction_url"] = "https://www.moltbook.com/posts/duplicate-first/comments"
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args: {"status": "success", "candidates": [first]},
+        )
+        ambassador.scout_moltbook_campaign(
+            db, campaign_id=campaign_id, query="first"
+        )
+
+        second = dict(first)
+        second["identifier"] = "moltbook:new-second"
+        second["url"] = "https://www.moltbook.com/posts/new-second"
+        second["interaction_url"] = "https://www.moltbook.com/posts/new-second/comments"
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args: {
+                "status": "success",
+                "candidates": [first, second],
+            },
+        )
+        result = ambassador.scout_moltbook_campaign(
+            db, campaign_id=campaign_id, query="second"
+        )
+
+    assert result["created_target_ids"], result["outcomes"]
+    assert result["outcomes"]["duplicate_target_fingerprint"] == 1
+
+
 def test_swarm_daily_plan_is_explicit_and_does_not_fake_sales_quota():
     plan = acquisition_swarm._worker_daily_plan()
 
