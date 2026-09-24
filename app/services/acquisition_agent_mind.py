@@ -491,25 +491,32 @@ _SAFE_COMMERCIAL_STRATEGY_TEXT = (
 
 _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "/registry/",
-    "buyer_outbound_contact",
-    "outbound_contact_allowed",
-    "outbound-contact flag",
-    "expiry_seconds",
-    "expiry_timestamp",
-    "expiry-window",
+    "buyer outbound contact",
+    "outbound contact allowed",
+    "outbound contact flag",
+    "expiry seconds",
+    "expiry timestamp",
     "expiry window",
-    "trust_signal_expiry_window",
-    "channel_permissions",
-    "public-discovery registry",
+    "trust signal expiry window",
+    "channel permissions",
     "public discovery registry",
-    "authoritative registry snapshot",
+    "public discovery endpoint",
+    "public discovery url",
+    "buyer intent registry",
     "authoritative registry",
+    "registry snapshot",
 )
+
+_CONTROL_SEPARATOR_RE = re.compile(r"[_\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]+")
 
 
 def _references_unsupported_internal_control(value: object) -> bool:
     text = " ".join(str(value or "").split()).lower()
-    return any(marker in text for marker in _UNSUPPORTED_INTERNAL_CONTROL_MARKERS)
+    canonical = _CONTROL_SEPARATOR_RE.sub(" ", text)
+    return any(
+        marker in text or marker in canonical
+        for marker in _UNSUPPORTED_INTERNAL_CONTROL_MARKERS
+    )
 
 
 def _commercial_directive_is_forbidden(value: object) -> bool:

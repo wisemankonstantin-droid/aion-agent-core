@@ -529,6 +529,56 @@ def test_hallucinated_internal_control_dependencies_cannot_hard_hold_transport()
     assert "hold" not in guarded_live_brain["channel_priority"]
 
 
+def test_unicode_hyphen_control_hallucinations_are_canonicalized_and_removed():
+    fallback_queries = ["paid api provider", "provider selection buyer"]
+    plan = _plan(WORKERS[0].id)
+    plan.update(
+        {
+            "decision_summary": (
+                "Wait for the buyer-intent registry entry with a valid "
+                "expiry‑timestamp and outbound‑contact flag."
+            ),
+            "channel_priority": ["hold", "federated_a2a"],
+            "search_queries": [
+                "public‑discovery endpoint buyer intent registry",
+                "registry snapshot expiry‑timestamp",
+            ],
+            "contact_policy": "hold",
+            "sales_plan": [
+                "Ask peers for the exact public‑discovery URL.",
+                "Contact only when outbound‑contact flag is true.",
+            ],
+        }
+    )
+
+    validated = acquisition_agent_mind._validate_plan(plan, fallback_queries)
+    serialized = json.dumps(validated).lower()
+
+    for forbidden in (
+        "expiry",
+        "outbound",
+        "buyer-intent registry",
+        "buyer intent registry",
+        "public",
+        "registry snapshot",
+    ):
+        assert forbidden not in " ".join(validated["search_queries"]).lower()
+    assert validated["search_queries"] == fallback_queries
+    assert validated["contact_policy"] == "discover_only"
+    assert "hold" not in validated["channel_priority"]
+    assert "expiry‑timestamp" not in serialized
+    assert "outbound‑contact flag" not in serialized
+
+    for value in (
+        "expiry‑timestamp",
+        "outbound‑contact flag",
+        "public‑discovery endpoint",
+        "buyer‑intent registry",
+        "authoritative registry snapshot",
+    ):
+        assert acquisition_agent_mind._references_unsupported_internal_control(value)
+
+
 def test_reasoning_prompts_forbid_invented_aion_control_plane_resources():
     worker_prompt = " ".join(acquisition_agent_mind._MIND_INSTRUCTIONS.split()).lower()
     brain_prompt = " ".join(
