@@ -347,6 +347,12 @@ def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
     assert ready["facilitator_credentials_locally_valid"] is True
     assert ready["pay_to_address_configured"] is True
     assert ready["asset_code"] == "USDC"
+    assert ready["purchase_endpoint"] == (
+        "/commercial/route-intelligence/x402/purchase"
+    )
+    assert ready["legacy_purchase_endpoint"] == (
+        "/commercial/route-intelligence/purchase"
+    )
     required = build_exact_payment_required()
     accepted = required["accepts"][0]
     assert accepted["scheme"] == "exact"
