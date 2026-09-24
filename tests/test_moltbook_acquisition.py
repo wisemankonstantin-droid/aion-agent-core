@@ -151,11 +151,12 @@ def test_moltbook_adapter_never_accepts_arbitrary_request_origin(monkeypatch):
 
 def test_moltbook_outreach_leads_with_zero_cost_pre_spend_value():
     text = moltbook_acquisition.build_outreach_comment(
-        public_base_url="https://aion.example"
+        public_base_url="https://aion.example",
+        preflight_decision="GO",
     )
 
     assert "commercial/route-intelligence/preflight" in text
-    assert "zero-cost pre-spend check" in text
+    assert "zero-cost preflight for this intent category: GO" in text
     assert "A2A action pre_spend_preflight" in text
     assert "MCP tool pre_spend_preflight" in text
     assert "/.well-known/agent-card.json" in text
