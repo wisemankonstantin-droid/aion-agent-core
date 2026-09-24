@@ -4,6 +4,27 @@
 
 Current commercial objective remains **FIRST REAL SETTLED AGENT TRANSACTION**.
 
+## 2026-09-24 Temple self-payment directive correction
+
+The bounded branch `fix/temple-self-payment-directive` corrects the Temple Brain
+and acquisition-worker reasoning instructions that had incorrectly directed
+external buyer intent toward AION preflight/purchase before buyer-facing
+outreach. AION-operated workers must never purchase or pay for AION's own SKU
+to qualify a lead, unlock outreach, prove demand, or create commercial evidence.
+
+For qualified external buyer intent, the reasoning flow is now: external need
+-> AION preflight -> GO/HOLD/STOP -> qualified buyer-facing route or one bounded
+outbound contact -> buyer chooses/pays AION only if a paid service is justified
+-> external paid execution/spend only after preflight, payment authorization and
+economic justification -> verify -> settle. Economic Kernel authority,
+one-contact-per-target, current five-mind configuration, and all transport
+guardrails remain unchanged. This branch performs no payment, deployment,
+production mutation, or merge.
+
+Local focused acquisition-mind validation passed: `18 passed` (Python 3.11;
+the repository's prescribed Python 3.12 was unavailable on this workstation).
+Four existing FastAPI/Starlette deprecation warnings were emitted.
+
 Verified GitHub main before this bounded branch:
 
 `4b34423a4a178c7cd138b120e65c74795490c506`

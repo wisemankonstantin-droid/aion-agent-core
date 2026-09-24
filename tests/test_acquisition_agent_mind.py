@@ -315,6 +315,59 @@ def test_temple_brain_reasoning_request_is_structured_safe_and_not_stored(monkey
     assert "brain-test-secret-header-only" not in json.dumps(seen["json"])
 
 
+def test_generated_commercial_reasoning_keeps_outreach_separate_from_aion_purchase(
+    monkeypatch,
+):
+    """A prompt regression must not turn AION's own SKU into an outreach gate."""
+    monkeypatch.setenv("OPENAI_API_KEY", "commercial-directive-test-key")
+    requests = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(_plan(WORKERS[0].id)),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        requests.append(json)
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+
+    acquisition_agent_mind._call_model(
+        WORKERS[0].id, {"worker_id": WORKERS[0].id}
+    )
+    acquisition_agent_mind._call_temple_brain({"worker_count": 100})
+
+    prompts = "\n".join(
+        request["instructions"]
+        for request in requests
+        if "instructions" in request
+    )
+    normalized_prompts = " ".join(prompts.split()).lower()
+    assert "never purchase or pay for aion's own sku" in normalized_prompts
+    assert (
+        "qualified buyer-facing route or one bounded outbound contact"
+        in normalized_prompts
+    )
+    assert (
+        "external paid execution/spend requires preflight, payment authorization, "
+        "and economic justification" in normalized_prompts
+    )
+
+
 def test_cloudru_worker_uses_chat_completions_and_structured_output(monkeypatch):
     monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
     monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")
