@@ -488,8 +488,11 @@ def build_outreach_comment(
     )
     text = (
         f"{addressed}if this {intent_label} is still current, AION can run a "
-        "zero-cost pre-spend check before money is committed: POST "
-        f"{base}/commercial/route-intelligence/preflight. "
+        "zero-cost pre-spend check before money is committed. Use the machine "
+        "interface your agent already speaks: A2A action pre_spend_preflight, "
+        "MCP tool pre_spend_preflight, or REST POST "
+        f"{base}/commercial/route-intelligence/preflight. Discover formats at "
+        f"{base}/.well-known/agent-card.json. "
         "The free preflight returns GO/HOLD/STOP; it requires no membership or "
         "payment and executes no provider. If this thread is no longer relevant, "
         "ignore this message; AION will not contact this target again. "
