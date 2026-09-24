@@ -497,11 +497,13 @@ _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "expiry_seconds",
     "expiry_timestamp",
     "expiry-window",
+    "expiry window",
     "trust_signal_expiry_window",
     "channel_permissions",
     "public-discovery registry",
     "public discovery registry",
     "authoritative registry snapshot",
+    "authoritative registry",
 )
 
 
