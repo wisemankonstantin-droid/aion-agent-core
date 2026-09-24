@@ -1,9 +1,10 @@
-"""Bounded Coinbase CDP x402 facilitator settlement seam.
+"""Bounded x402 facilitator settlement seam.
 
-No wallet private key is handled here. CDP API credentials are used only to mint
-short-lived request-bound JWTs. Settlement uses exactly one POST attempt; an
-ambiguous transport result is never automatically retried because the first
-request may already have committed payment.
+The active launch facilitator is XPay's public x402 v2 facilitator on Base. It
+requires no API credentials and never receives an AION wallet private key.
+Legacy CDP JWT helpers remain for compatibility/testing only. Settlement uses
+exactly one POST attempt; an ambiguous transport result is never automatically
+retried because the first request may already have committed payment.
 """
 from __future__ import annotations
 
@@ -26,6 +27,9 @@ CDP_API_KEY_SECRET_ENV = "CDP_API_KEY_SECRET"
 CDP_SETTLE_URL = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
 CDP_SETTLE_HOST = "api.cdp.coinbase.com"
 CDP_SETTLE_PATH = "/platform/v2/x402/settle"
+XPAY_FACILITATOR_URL = "https://facilitator.xpay.sh"
+XPAY_SETTLE_URL = XPAY_FACILITATOR_URL + "/settle"
+ACTIVE_FACILITATOR_PROVIDER = "xpay_public"
 
 _MAX_RESPONSE_BYTES = 32_768
 _MAX_ERROR_DETAIL = 240
@@ -62,7 +66,11 @@ def facilitator_credentials_configured() -> bool:
 
 
 def facilitator_credential_readiness() -> dict:
-    """Validate local credential shape without exposing it or contacting CDP."""
+    """Report active facilitator readiness without contacting a remote service.
+
+    XPay's public facilitator requires no API key. CDP credential shape is still
+    reported only as optional fallback metadata and never gates the active path.
+    """
     key_id_present = bool((os.getenv(CDP_API_KEY_ID_ENV) or "").strip())
     secret = (os.getenv(CDP_API_KEY_SECRET_ENV) or "").strip()
     secret_present = bool(secret)
@@ -73,22 +81,20 @@ def facilitator_credential_readiness() -> dict:
             secret_locally_valid = True
         except FacilitatorSettlementError:
             pass
-    reasons = []
-    if not key_id_present:
-        reasons.append("cdp_api_key_id_missing")
-    if not secret_present:
-        reasons.append("cdp_api_key_secret_missing")
-    elif not secret_locally_valid:
-        reasons.append("cdp_api_key_secret_invalid")
+    cdp_fallback_valid = bool(
+        key_id_present and secret_present and secret_locally_valid
+    )
     return {
+        "provider": ACTIVE_FACILITATOR_PROVIDER,
+        "facilitator_url": XPAY_FACILITATOR_URL,
+        "facilitator_ready": True,
+        "credentials_required": False,
         "key_id_present": key_id_present,
         "secret_present": secret_present,
         "secret_locally_valid": secret_locally_valid,
-        "credentials_locally_valid": bool(
-            key_id_present and secret_present and secret_locally_valid
-        ),
+        "credentials_locally_valid": cdp_fallback_valid,
         "remote_acceptance_verified": False,
-        "blocking_reasons": reasons,
+        "blocking_reasons": [],
     }
 
 
@@ -273,7 +279,6 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
     if not isinstance(payment_payload, dict) or not isinstance(payment_requirements, dict):
         raise FacilitatorSettlementError("malformed_payment", "Payment payload is malformed")
 
-    token = generate_cdp_request_jwt()
     body = {
         "x402Version": 2,
         "paymentPayload": payment_payload,
@@ -281,15 +286,15 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
     }
     result, data = fetch_json(
         "POST",
-        CDP_SETTLE_URL,
+        XPAY_SETTLE_URL,
         payload=body,
-        headers={"Authorization": "Bearer " + token},
+        headers={"Accept": "application/json"},
         policy=FetchPolicy(
             timeout_seconds=20.0,
             max_response_bytes=_MAX_RESPONSE_BYTES,
             max_attempts=1,
             max_resolved_addresses=4,
-            user_agent="AION-x402-Settlement/0.8.0",
+            user_agent="AION-x402-XPay-Settlement/0.8.0",
         ),
     )
 

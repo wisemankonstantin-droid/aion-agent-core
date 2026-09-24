@@ -466,6 +466,68 @@ def test_hallucinated_internal_control_dependencies_cannot_hard_hold_transport()
     assert "expiry_seconds" not in brain_text
     assert "hold" not in validated_brain["channel_priority"]
 
+    live_variant = _plan(WORKERS[0].id)
+    live_variant.update(
+        {
+            "decision_summary": (
+                "Fetch the authoritative registry, keep only entries whose "
+                "expiry_timestamp is current and outbound_contact_allowed is true."
+            ),
+            "channel_priority": ["hold", "federated_a2a"],
+            "search_queries": [
+                "public-discovery registry outbound_contact_allowed",
+                "authoritative registry snapshot expiry_timestamp",
+            ],
+            "contact_policy": "hold",
+            "sales_plan": [
+                "Registry Pull: copy expiry_timestamp verbatim.",
+                "Wait for the outbound-contact flag before buyer outreach.",
+            ],
+        }
+    )
+    guarded_live_variant = acquisition_agent_mind._validate_plan(
+        live_variant,
+        fallback_queries,
+    )
+    live_text = json.dumps(guarded_live_variant).lower()
+    for invented in (
+        "expiry_timestamp",
+        "outbound_contact_allowed",
+        "outbound-contact flag",
+        "public-discovery registry",
+        "authoritative registry",
+    ):
+        assert invented not in live_text
+    assert guarded_live_variant["contact_policy"] == "discover_only"
+    assert guarded_live_variant["search_queries"] == fallback_queries
+    assert "hold" not in guarded_live_variant["channel_priority"]
+
+    live_brain = _brain_plan()
+    live_brain["collective_summary"] = (
+        "Fetch the authoritative registry and filter by expiry_timestamp."
+    )
+    live_brain["peer_directives"] = [
+        "Registry Pull: store outbound_contact_allowed exactly as received.",
+        "Use the public discovery registry only after checking the expiry window.",
+    ]
+    live_brain["learning_agenda"] = [
+        "Obtain the authoritative registry snapshot before outbound contact."
+    ]
+    live_brain["channel_priority"] = ["hold", "federated_a2a"]
+    guarded_live_brain = acquisition_agent_mind._validate_temple_brain_plan(
+        live_brain
+    )
+    live_brain_text = json.dumps(guarded_live_brain).lower()
+    for invented in (
+        "expiry_timestamp",
+        "outbound_contact_allowed",
+        "public discovery registry",
+        "authoritative registry",
+        "expiry window",
+    ):
+        assert invented not in live_brain_text
+    assert "hold" not in guarded_live_brain["channel_priority"]
+
 
 def test_reasoning_prompts_forbid_invented_aion_control_plane_resources():
     worker_prompt = " ".join(acquisition_agent_mind._MIND_INSTRUCTIONS.split()).lower()

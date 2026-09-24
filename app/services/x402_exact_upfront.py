@@ -261,7 +261,7 @@ def exact_upfront_readiness() -> dict:
         reasons.append("payment_offer_not_configured")
     activation_ready_except_master_gate = bool(
         configured
-        and credentials["credentials_locally_valid"]
+        and credentials["facilitator_ready"]
         and LIVE_EXACT_SETTLEMENT_HANDLER_IMPLEMENTED
     )
     if not economic_kernel.REAL_MONEY_EXECUTION_ENABLED:
@@ -275,6 +275,9 @@ def exact_upfront_readiness() -> dict:
         "asset_transfer_method": "eip3009",
         "quote_configured": bool(product.get("quote_configured")),
         "payment_offer_configured": configured,
+        "facilitator_provider": credentials["provider"],
+        "facilitator_url": credentials["facilitator_url"],
+        "facilitator_credentials_required": credentials["credentials_required"],
         "facilitator_credentials_configured": bool(
             credentials["key_id_present"] and credentials["secret_present"]
         ),
@@ -303,6 +306,7 @@ def exact_upfront_readiness() -> dict:
             "permit2_not_in_launch_scope": True,
             "server_enforces_envelope_purchase_and_result_binding": True,
             "eip3009_signature_does_not_sign_aion_purchase_metadata": True,
+            "active_facilitator_requires_no_aion_api_credentials": True,
             "credential_validation_is_local_shape_validation_not_remote_acceptance": True,
         },
     }
