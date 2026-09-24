@@ -556,6 +556,107 @@ def _guard_memory_payload(memory: object) -> dict:
     return guarded
 
 
+def _compact_worker_observation(observation: dict) -> dict:
+    """Keep worker reasoning context inside the existing byte/cost bound.
+
+    Preserve current commercial truth, hard constraints and the newest useful
+    evidence while trimming repetitive durable history and peer text. This keeps
+    the existing inference-call budget intact instead of raising the input limit.
+    """
+
+    compact = dict(observation)
+
+    memory = _guard_memory_payload(compact.get("safe_memory"))
+    compact["safe_memory"] = {
+        "recent_outcomes": list(memory.get("recent_outcomes") or [])[-4:],
+        "channel_performance": dict(memory.get("channel_performance") or {}),
+        "lessons": list(memory.get("lessons") or [])[-4:],
+    }
+    compact["peer_experience"] = list(compact.get("peer_experience") or [])[-4:]
+
+    previous = compact.get("previous_plan")
+    if isinstance(previous, dict):
+        previous = _guard_plan_payload(previous)
+        compact["previous_plan"] = {
+            "decision_summary": previous.get("decision_summary"),
+            "hypothesis": previous.get("hypothesis"),
+            "channel_priority": list(previous.get("channel_priority") or [])[:3],
+            "search_queries": list(previous.get("search_queries") or [])[:2],
+            "contact_policy": previous.get("contact_policy"),
+            "target_preference": previous.get("target_preference"),
+            "sales_plan": list(previous.get("sales_plan") or [])[-2:],
+            "learning_goal": previous.get("learning_goal"),
+            "confidence": previous.get("confidence"),
+        }
+
+    brain = compact.get("temple_brain")
+    if isinstance(brain, dict):
+        brain = _guard_plan_payload(brain)
+        compact["temple_brain"] = {
+            "collective_summary": brain.get("collective_summary"),
+            "priority_hypotheses": list(brain.get("priority_hypotheses") or [])[:3],
+            "channel_priority": list(brain.get("channel_priority") or [])[:3],
+            "search_motifs": list(brain.get("search_motifs") or [])[:4],
+            "avoid_patterns": list(brain.get("avoid_patterns") or [])[:4],
+            "peer_directives": list(brain.get("peer_directives") or [])[:3],
+            "learning_agenda": list(brain.get("learning_agenda") or [])[:2],
+            "confidence": brain.get("confidence"),
+            "fresh_this_cycle": bool(brain.get("fresh_this_cycle")),
+        }
+
+    def encoded_size() -> int:
+        return len(
+            json.dumps(
+                compact,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+            ).encode("utf-8")
+        )
+
+    if encoded_size() <= MAX_OBSERVATION_BYTES:
+        return compact
+
+    compact["peer_experience"] = list(compact.get("peer_experience") or [])[-2:]
+    compact["safe_memory"]["recent_outcomes"] = list(
+        compact["safe_memory"].get("recent_outcomes") or []
+    )[-2:]
+    compact["safe_memory"]["lessons"] = list(
+        compact["safe_memory"].get("lessons") or []
+    )[-2:]
+
+    previous = compact.get("previous_plan")
+    if isinstance(previous, dict):
+        compact["previous_plan"] = {
+            "decision_summary": previous.get("decision_summary"),
+            "contact_policy": previous.get("contact_policy"),
+            "target_preference": previous.get("target_preference"),
+            "confidence": previous.get("confidence"),
+        }
+
+    brain = compact.get("temple_brain")
+    if isinstance(brain, dict):
+        compact["temple_brain"] = {
+            "collective_summary": brain.get("collective_summary"),
+            "channel_priority": list(brain.get("channel_priority") or [])[:2],
+            "avoid_patterns": list(brain.get("avoid_patterns") or [])[:2],
+            "fresh_this_cycle": bool(brain.get("fresh_this_cycle")),
+        }
+
+    if encoded_size() <= MAX_OBSERVATION_BYTES:
+        return compact
+
+    compact["peer_experience"] = []
+    compact["safe_memory"]["recent_outcomes"] = []
+    compact["safe_memory"]["lessons"] = []
+    compact["safe_memory"]["channel_performance"] = {}
+    compact["previous_plan"] = None
+
+    if encoded_size() > MAX_OBSERVATION_BYTES:
+        raise RuntimeError("mind_observation_too_large")
+    return compact
+
+
 def _worker_id_from_campaign(name: str | None) -> str | None:
     match = _CAMPAIGN.fullmatch(str(name or ""))
     return match.group("worker") if match else None
@@ -1341,11 +1442,10 @@ def _call_temple_brain(observation: dict) -> dict:
 
 def _call_model(worker_id: str, observation: dict) -> dict:
     status = runtime_status()
+    model_observation = _compact_worker_observation(observation)
     encoded = json.dumps(
-        observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        model_observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
-    if len(encoded.encode("utf-8")) > MAX_OBSERVATION_BYTES:
-        raise RuntimeError("mind_observation_too_large")
 
     plan = _call_structured_model(
         model=status["model"],
