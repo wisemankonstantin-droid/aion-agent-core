@@ -473,6 +473,89 @@ def _empty_memory() -> dict:
     }
 
 
+_SAFE_COMMERCIAL_STRATEGY_TEXT = (
+    "After preflight GO/HOLD/STOP, qualified external intent may proceed to one "
+    "bounded buyer-facing contact. Financial execution stays outside model authority."
+)
+
+
+def _commercial_directive_is_forbidden(value: object) -> bool:
+    text = " ".join(str(value or "").split()).lower()
+    if not text:
+        return False
+    payment_action = bool(
+        re.search(r"\b(purchase|purchased|purchasing|buy|bought|pay|paid|payment)\b", text)
+    )
+    product_reference = any(
+        marker in text
+        for marker in ("aion", "route-intelligence", "route intelligence", "sku", "usdc")
+    )
+    buyer_actor = bool(re.search(r"\b(buyer|customer|payer)\b", text))
+    contact_reference = any(
+        marker in text for marker in ("outreach", "contact", "buyer-facing")
+    )
+    gate_language = bool(
+        re.search(r"\b(before|prerequisite|unlock|until|required|require)\b", text)
+    )
+    return (
+        payment_action and product_reference and not buyer_actor
+    ) or (
+        payment_action and contact_reference and gate_language
+    )
+
+
+def _guard_commercial_text(value: object, maximum: int) -> str:
+    cleaned = _clean_short(value, maximum)
+    if _commercial_directive_is_forbidden(cleaned):
+        return _clean_short(_SAFE_COMMERCIAL_STRATEGY_TEXT, maximum)
+    return cleaned
+
+
+def _guard_plan_payload(plan: object) -> dict:
+    if not isinstance(plan, dict):
+        return {}
+    guarded = dict(plan)
+    scalar_limits = {
+        "decision_summary": 240,
+        "hypothesis": 320,
+        "expected_signal": 160,
+        "learning_goal": 240,
+        "collective_contribution": 240,
+        "coordination_request": 220,
+        "memory_note": 280,
+        "collective_summary": 360,
+    }
+    list_limits = {
+        "sales_plan": 180,
+        "priority_hypotheses": 240,
+        "search_motifs": 120,
+        "avoid_patterns": 180,
+        "peer_directives": 220,
+        "learning_agenda": 220,
+    }
+    for name, maximum in scalar_limits.items():
+        if name in guarded:
+            guarded[name] = _guard_commercial_text(guarded.get(name), maximum)
+    for name, maximum in list_limits.items():
+        if name in guarded:
+            guarded[name] = [
+                _guard_commercial_text(value, maximum)
+                for value in list(guarded.get(name) or [])
+                if _guard_commercial_text(value, maximum)
+            ]
+    return guarded
+
+
+def _guard_memory_payload(memory: object) -> dict:
+    guarded = dict(memory or {}) if isinstance(memory, dict) else _empty_memory()
+    guarded["lessons"] = [
+        _guard_commercial_text(value, 240)
+        for value in list(guarded.get("lessons") or [])
+        if _guard_commercial_text(value, 240)
+    ]
+    return guarded
+
+
 def _worker_id_from_campaign(name: str | None) -> str | None:
     match = _CAMPAIGN.fullmatch(str(name or ""))
     return match.group("worker") if match else None
@@ -512,6 +595,9 @@ def _ensure_rows(workers: Iterable, *, state: str) -> None:
                 row.mind_version = MIND_VERSION
                 row.model = model
                 row.cognitive_profile = cognitive_profile(worker)
+                row.safe_memory = _guard_memory_payload(row.safe_memory)
+                if row.last_plan:
+                    row.last_plan = _guard_plan_payload(dict(row.last_plan))
                 row.last_state = state
                 row.updated_at = now
         db.commit()
@@ -563,6 +649,9 @@ def _ensure_temple_brain_row(*, state: str) -> None:
             row.mind_version = MIND_VERSION
             row.model = model
             row.cognitive_profile = profile
+            row.safe_memory = _guard_memory_payload(row.safe_memory)
+            if row.last_plan:
+                row.last_plan = _guard_plan_payload(dict(row.last_plan))
             row.last_state = state
             row.updated_at = now
         db.commit()
@@ -591,7 +680,7 @@ def _build_collective_observation(
             )
         )
         for row in minds:
-            memory = dict(row.safe_memory or {})
+            memory = _guard_memory_payload(row.safe_memory)
             for channel, stats in dict(memory.get("channel_performance") or {}).items():
                 bucket = channel_performance.setdefault(
                     str(channel),
@@ -621,22 +710,22 @@ def _build_collective_observation(
                         }
                     )
             if row.last_plan:
-                hypothesis = _clean_short(
-                    dict(row.last_plan or {}).get("hypothesis"),
+                previous_plan = _guard_plan_payload(dict(row.last_plan or {}))
+                hypothesis = _guard_commercial_text(
+                    previous_plan.get("hypothesis"),
                     220,
                 )
                 if hypothesis:
-                    previous_plan = dict(row.last_plan or {})
                     plan_hypotheses.append(
                         {
                             "worker_id": row.worker_id,
                             "hypothesis": hypothesis,
                             "confidence": int(previous_plan.get("confidence") or 0),
-                            "collective_contribution": _clean_short(
+                            "collective_contribution": _guard_commercial_text(
                                 previous_plan.get("collective_contribution"),
                                 220,
                             ),
-                            "coordination_request": _clean_short(
+                            "coordination_request": _guard_commercial_text(
                                 previous_plan.get("coordination_request"),
                                 200,
                             ),
@@ -961,12 +1050,20 @@ def _build_observations(
                 "historical_performance": totals[worker.id],
                 "latest_outcome": latest[worker.id],
                 "safe_memory": (
-                    dict(row.safe_memory or {}) if row is not None else _empty_memory()
+                    _guard_memory_payload(row.safe_memory)
+                    if row is not None
+                    else _empty_memory()
                 ),
                 "previous_plan": (
-                    dict(row.last_plan or {}) if row is not None and row.last_plan else None
+                    _guard_plan_payload(dict(row.last_plan or {}))
+                    if row is not None and row.last_plan
+                    else None
                 ),
-                "temple_brain": temple_brain,
+                "temple_brain": (
+                    _guard_plan_payload(temple_brain)
+                    if temple_brain is not None
+                    else None
+                ),
                 "commercial_knowledge": commercial_knowledge,
                 "peer_experience": [
                     item
@@ -1147,7 +1244,7 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     except (TypeError, ValueError):
         confidence = 0
 
-    return {
+    validated = {
         "decision_summary": _clean_short(plan.get("decision_summary"), 240),
         "hypothesis": _clean_short(plan.get("hypothesis"), 320),
         "channel_priority": channels,
@@ -1170,6 +1267,7 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
         "memory_note": _clean_short(plan.get("memory_note"), 240),
         "confidence": max(0, min(confidence, 100)),
     }
+    return _guard_plan_payload(validated)
 
 
 def _validate_temple_brain_plan(plan: object) -> dict:
@@ -1196,7 +1294,7 @@ def _validate_temple_brain_plan(plan: object) -> dict:
     except (TypeError, ValueError):
         confidence = 0
 
-    return {
+    validated = {
         "collective_summary": _clean_short(plan.get("collective_summary"), 360),
         "priority_hypotheses": clean_list(
             "priority_hypotheses", MAX_SHARED_HYPOTHESES, 240
@@ -1209,6 +1307,7 @@ def _validate_temple_brain_plan(plan: object) -> dict:
         "memory_note": _clean_short(plan.get("memory_note"), 280),
         "confidence": max(0, min(confidence, 100)),
     }
+    return _guard_plan_payload(validated)
 
 
 def _call_temple_brain(observation: dict) -> dict:
