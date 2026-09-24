@@ -12,6 +12,12 @@ from app.db import SessionLocal
 from app.main import app
 from app.payment_models import RouteIntelligencePurchase
 from app.services import commercial_router, economic_kernel, route_intelligence_purchase
+from app.services.direct_base_usdc import (
+    BASE_USDC_ADDRESS,
+    DIRECT_ENABLE_ENV,
+    DIRECT_PAYMENT_METHOD,
+    direct_base_usdc_readiness,
+)
 from app.services.paid_route_intelligence import (
     CURRENCY_ENV,
     MAX_PAYMENT_FEE_ENV,
@@ -46,6 +52,7 @@ _ENV_NAMES = (
     CURRENCY_ENV,
     PRICE_ENV,
     MAX_PAYMENT_FEE_ENV,
+    DIRECT_ENABLE_ENV,
     EXACT_UPFRONT_ENABLE_ENV,
     NETWORK_ENV,
     ASSET_ENV,
@@ -102,6 +109,12 @@ def _configure(monkeypatch, *, real_money=True):
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", real_money)
 
 
+def _enable_direct(monkeypatch):
+    monkeypatch.setenv(DIRECT_ENABLE_ENV, "1")
+    monkeypatch.setenv(ASSET_ENV, BASE_USDC_ADDRESS)
+    assert direct_base_usdc_readiness()["launch_ready"] is True
+
+
 def _route_result(need="research"):
     return {
         "route_version": "commercial_router_v1",
@@ -152,7 +165,13 @@ def _latest_preparation() -> RouteIntelligencePurchase:
         return row
 
 
-def _payment_header(*, signature_byte="a", purchase_id=None, result_digest=None):
+def _payment_header(
+    *,
+    signature_byte="a",
+    purchase_id=None,
+    result_digest=None,
+    resource_url="https://aion.example/commercial/route-intelligence/purchase",
+):
     if purchase_id is None or result_digest is None:
         row = _latest_preparation()
         purchase_id = row.purchase_id
@@ -161,7 +180,7 @@ def _payment_header(*, signature_byte="a", purchase_id=None, result_digest=None)
     payload = {
         "x402Version": 2,
         "resource": {
-            "url": "https://aion.example/commercial/route-intelligence/purchase",
+            "url": resource_url,
             "description": "fixture",
             "mimeType": "application/json",
         },
@@ -198,6 +217,109 @@ def _settled(transaction="0x" + "4" * 64):
             "amount": "1250000",
         },
     }
+
+
+def test_x402_manifest_lists_only_launch_ready_explicit_resource(monkeypatch):
+    unavailable = client.get("/.well-known/x402")
+    assert unavailable.status_code == 200
+    assert unavailable.json()["x402Version"] == 2
+    assert unavailable.json()["resources"] == []
+
+    _configure(monkeypatch)
+    ready = client.get("/.well-known/x402")
+    assert ready.status_code == 200
+    manifest = ready.json()
+    assert manifest["name"] == "AION SUPREME"
+    assert manifest["x402Version"] == 2
+    assert len(manifest["resources"]) == 1
+    resource = manifest["resources"][0]
+    assert resource["resource"] == (
+        "https://aion.example/commercial/route-intelligence/x402/purchase"
+    )
+    assert resource["method"] == "POST"
+    assert resource["price"] == "1.25 USDC"
+    assert resource["inputSchema"]["required"] == ["need"]
+
+
+def test_explicit_x402_route_remains_standard_when_direct_path_is_ready(monkeypatch):
+    _configure(monkeypatch)
+    _enable_direct(monkeypatch)
+    calls = _mock_plan(monkeypatch)
+
+    direct = client.post(
+        "/commercial/route-intelligence/purchase",
+        json={"need": "research"},
+    )
+    assert direct.status_code == 402
+    assert direct.json()["payment_method"] == DIRECT_PAYMENT_METHOD
+    assert "PAYMENT-REQUIRED" not in direct.headers
+
+    x402 = client.post(
+        "/commercial/route-intelligence/x402/purchase",
+        json={"need": "research"},
+    )
+    assert x402.status_code == 402
+    assert x402.headers["cache-control"] == "private, no-store"
+    body = x402.json()
+    assert set(body) == {"x402Version", "error", "resource", "accepts"}
+    assert body["x402Version"] == 2
+    assert body["resource"]["url"] == (
+        "https://aion.example/commercial/route-intelligence/x402/purchase"
+    )
+    encoded = json.loads(base64.b64decode(x402.headers["PAYMENT-REQUIRED"]))
+    assert encoded == body
+    accepted = body["accepts"][0]
+    assert accepted["scheme"] == "exact"
+    assert accepted["network"] == "eip155:8453"
+    assert accepted["extra"]["aionPurchaseId"]
+    assert accepted["extra"]["aionPreparedResultDigest"].startswith("sha256:")
+
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(RouteIntelligencePurchase).order_by(RouteIntelligencePurchase.id)
+        ).all()
+        methods = {
+            (row.accounting_evidence or {}).get("payment_method")
+            for row in rows
+        }
+    assert methods == {DIRECT_PAYMENT_METHOD, "x402_exact_upfront"}
+    assert calls == [(0, "research"), (0, "research")]
+
+
+def test_explicit_x402_route_settles_x402_even_when_direct_path_is_ready(monkeypatch):
+    _configure(monkeypatch)
+    _enable_direct(monkeypatch)
+    _mock_plan(monkeypatch)
+    monkeypatch.setattr(
+        route_intelligence_purchase,
+        "settle_exact_upfront",
+        lambda payload, requirements: _settled(),
+    )
+
+    unsigned = client.post(
+        "/commercial/route-intelligence/x402/purchase",
+        json={"need": "research"},
+    )
+    assert unsigned.status_code == 402
+    row = _latest_preparation()
+    signature = _payment_header(
+        purchase_id=row.purchase_id,
+        result_digest=row.result_digest,
+        resource_url=(
+            "https://aion.example/commercial/route-intelligence/x402/purchase"
+        ),
+    )
+
+    paid = client.post(
+        "/commercial/route-intelligence/x402/purchase",
+        json={"need": "research"},
+        headers={"PAYMENT-SIGNATURE": signature},
+    )
+    assert paid.status_code == 200
+    data = paid.json()
+    assert data["state"] == "entitled"
+    assert data["payment"]["method"] == "x402_exact_upfront"
+    assert data["result"] == _route_result("research")
 
 
 def test_exact_upfront_readiness_and_wire_contract_are_fail_closed(monkeypatch):
