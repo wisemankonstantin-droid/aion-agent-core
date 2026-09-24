@@ -196,7 +196,7 @@ def prepare_route_intelligence(
 
     direct_offer = configured_direct_base_usdc_offer()
     x402_offer = configured_exact_upfront_offer()
-    if selected_payment_method == DIRECT_PAYMENT_METHOD:
+    if payment_method == DIRECT_PAYMENT_METHOD:
         offer = direct_offer
         selected_payment_method = DIRECT_PAYMENT_METHOD
     elif payment_method == X402_PAYMENT_METHOD:
@@ -290,7 +290,7 @@ def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
     payment_method = (row.accounting_evidence or {}).get(
         "payment_method", X402_PAYMENT_METHOD
     )
-    if selected_payment_method == DIRECT_PAYMENT_METHOD:
+    if payment_method == DIRECT_PAYMENT_METHOD:
         requirements = direct_payment_requirements(
             purchase_id=row.purchase_id,
             result_digest=row.result_digest,
