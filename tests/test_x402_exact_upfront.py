@@ -239,6 +239,10 @@ def test_x402_manifest_lists_only_launch_ready_explicit_resource(monkeypatch):
     assert resource["method"] == "POST"
     assert resource["price"] == "1.25 USDC"
     assert resource["inputSchema"]["required"] == ["need"]
+    assert resource["accepts"][0]["scheme"] == "exact"
+    assert resource["accepts"][0]["network"] == "eip155:8453"
+    assert resource["accepts"][0]["amount"] == "1250000"
+    assert resource["accepts"][0]["payTo"] == "0x" + "2" * 40
 
 
 def test_explicit_x402_route_remains_standard_when_direct_path_is_ready(monkeypatch):
