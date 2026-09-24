@@ -116,6 +116,8 @@ INTENT_WORKERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+MIN_MODEL_TRANSPORT_CONFIDENCE = 20
+
 MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
     "provider_selection": (
         "I need to choose an external API, agent, tool, or provider for a real task",
@@ -512,10 +514,19 @@ def _mind_transport_policy(
     """Translate an AI plan into bounded executor permissions.
 
     A model plan can narrow the existing executor but can never expand its
-    contact, dedupe, authentication, platform or payment authority.
+    contact, dedupe, authentication, platform or payment authority. Low
+    self-reported confidence is advisory only: deterministic buyer-intent
+    queries and the executor's existing safety controls remain authoritative.
     """
 
-    if not mind_plan:
+    confidence = 0
+    if mind_plan:
+        try:
+            confidence = int(mind_plan.get("confidence") or 0)
+        except (TypeError, ValueError):
+            confidence = 0
+
+    if not mind_plan or confidence < MIN_MODEL_TRANSPORT_CONFIDENCE:
         return {
             "model_controls_transport": False,
             "queries": tuple(fallback_queries)[:QUERIES_PER_WORKER_PER_CYCLE],
