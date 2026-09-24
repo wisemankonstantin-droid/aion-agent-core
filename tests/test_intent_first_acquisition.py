@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from app.db import SessionLocal
 from app.main import app
 from app.payment_models import RouteIntelligencePurchase
-from app.services import acquisition_swarm, ambassador, commercial_payment_routes, commercial_router, external_registry
+from app.services import acquisition_swarm, ambassador, commercial_payment_routes, commercial_router, external_registry, moltbook_acquisition
 from app.services.external_registry import DiscoveryResult
 
 
@@ -336,7 +336,7 @@ def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
             db,
             name="dedupe starvation regression",
             purpose="test",
-            maximum_targets=2,
+            maximum_targets=10,
             maximum_contacts=2,
         )
         campaign_id = campaign["campaign_id"]
@@ -358,18 +358,26 @@ def test_moltbook_duplicate_does_not_starve_next_new_candidate(monkeypatch):
         second["identifier"] = "moltbook:new-second"
         second["url"] = "https://www.moltbook.com/posts/new-second"
         second["interaction_url"] = "https://www.moltbook.com/posts/new-second/comments"
+        requested_limits = []
+
+        def search_with_surplus(_query, limit):
+            requested_limits.append(limit)
+            return {
+                "status": "success",
+                "candidates": [first, second],
+            }
+
         monkeypatch.setattr(
             ambassador,
             "search_moltbook_intent",
-            lambda *_args: {
-                "status": "success",
-                "candidates": [first, second],
-            },
+            search_with_surplus,
         )
         result = ambassador.scout_moltbook_campaign(
             db, campaign_id=campaign_id, query="second"
         )
 
+    assert moltbook_acquisition.MAX_SEARCH_RESULTS == 9
+    assert requested_limits == [9]
     assert result["created_target_ids"], result["outcomes"]
     assert result["outcomes"]["duplicate_target_fingerprint"] == 1
 
