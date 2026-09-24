@@ -461,6 +461,168 @@ def test_existing_bad_plan_and_memory_are_sanitized_before_reuse():
     assert acquisition_agent_mind._SAFE_COMMERCIAL_STRATEGY_TEXT.lower() in serialized
 
 
+def test_compact_worker_observation_preserves_authority_within_existing_byte_bound():
+    repeated = "verified buyer-intent evidence " * 40
+    observation = {
+        "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+        "worker_id": WORKERS[0].id,
+        "intent_profile": WORKERS[0].intent_profile,
+        "shard": 1,
+        "cognitive_profile": acquisition_agent_mind.cognitive_profile(WORKERS[0]),
+        "historical_performance": {
+            "targets": 10,
+            "qualified": 4,
+            "contacts": 2,
+            "delivered": 1,
+            "responses": 1,
+            "channels": {},
+            "response_signal_counts": {"pricing_commercial_interest": 2},
+            "routing_feedback_count": 1,
+        },
+        "latest_outcome": None,
+        "safe_memory": {
+            "recent_outcomes": [
+                {"result": repeated, "index": index} for index in range(8)
+            ],
+            "channel_performance": {"federated_a2a": {"actions": 4}},
+            "lessons": [repeated for _ in range(8)],
+        },
+        "previous_plan": {
+            **_plan(WORKERS[0].id),
+            "decision_summary": repeated,
+            "hypothesis": repeated,
+            "learning_goal": repeated,
+            "sales_plan": [repeated for _ in range(4)],
+        },
+        "temple_brain": {
+            **_brain_plan(),
+            "collective_summary": repeated,
+            "priority_hypotheses": [repeated for _ in range(6)],
+            "avoid_patterns": [repeated for _ in range(8)],
+            "peer_directives": [repeated for _ in range(8)],
+            "learning_agenda": [repeated for _ in range(8)],
+            "fresh_this_cycle": True,
+        },
+        "commercial_knowledge": {
+            "snapshot_version": "commercial_knowledge_v1",
+            "authority": {
+                "model_financial_authority": False,
+                "deterministic_economic_kernel_authoritative": True,
+            },
+        },
+        "peer_experience": [
+            {"worker_id": f"peer-{index}", "lesson": repeated}
+            for index in range(12)
+        ],
+        "channel_health": {"federated_a2a": {"public_discovery": True}},
+        "send_enabled": True,
+        "fallback_queries": ["provider selection"],
+        "hard_constraints": {
+            "one_contact_per_target": True,
+            "no_self_payment": True,
+            "no_model_payment_authority": True,
+            "pay_before_spend": True,
+        },
+    }
+
+    compact = acquisition_agent_mind._compact_worker_observation(observation)
+    encoded = json.dumps(
+        compact, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+
+    assert len(encoded) <= acquisition_agent_mind.MAX_OBSERVATION_BYTES
+    assert compact["north_star"] == "FIRST_REAL_SETTLED_AGENT_TRANSACTION"
+    assert compact["worker_id"] == WORKERS[0].id
+    assert compact["commercial_knowledge"] == observation["commercial_knowledge"]
+    assert compact["hard_constraints"]["no_self_payment"] is True
+    assert compact["hard_constraints"]["no_model_payment_authority"] is True
+    assert compact["temple_brain"]["fresh_this_cycle"] is True
+    assert len(compact["peer_experience"]) <= 4
+    assert len(compact["safe_memory"]["recent_outcomes"]) <= 4
+    assert len(compact["safe_memory"]["lessons"]) <= 4
+
+
+def test_call_model_compacts_oversized_worker_observation_before_provider(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "bounded-observation-test-key")
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(_plan(WORKERS[0].id)),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        seen["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    repeated = "current external buyer intent " * 60
+    observation = {
+        "worker_id": WORKERS[0].id,
+        "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
+        "safe_memory": {
+            "recent_outcomes": [
+                {"note": repeated, "index": index} for index in range(8)
+            ],
+            "channel_performance": {},
+            "lessons": [repeated for _ in range(8)],
+        },
+        "previous_plan": {
+            **_plan(WORKERS[0].id),
+            "hypothesis": repeated,
+            "sales_plan": [repeated for _ in range(4)],
+        },
+        "temple_brain": {
+            **_brain_plan(),
+            "collective_summary": repeated,
+            "priority_hypotheses": [repeated for _ in range(6)],
+            "avoid_patterns": [repeated for _ in range(8)],
+            "peer_directives": [repeated for _ in range(8)],
+            "learning_agenda": [repeated for _ in range(8)],
+            "fresh_this_cycle": True,
+        },
+        "commercial_knowledge": {
+            "authority": {"model_financial_authority": False}
+        },
+        "peer_experience": [
+            {"worker_id": f"peer-{index}", "lesson": repeated}
+            for index in range(12)
+        ],
+        "hard_constraints": {
+            "no_self_payment": True,
+            "no_model_payment_authority": True,
+        },
+        "fallback_queries": ["provider selection"],
+    }
+
+    raw_size = len(
+        json.dumps(
+            observation, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+    )
+    assert raw_size > acquisition_agent_mind.MAX_OBSERVATION_BYTES
+
+    plan = acquisition_agent_mind._call_model(WORKERS[0].id, observation)
+
+    sent_input = seen["json"]["input"]
+    assert len(sent_input.encode("utf-8")) <= acquisition_agent_mind.MAX_OBSERVATION_BYTES
+    assert plan["contact_policy"] == "contact_one_if_qualified"
+    assert "bounded-observation-test-key" not in json.dumps(seen["json"])
+
+
 def test_cloudru_worker_uses_chat_completions_and_structured_output(monkeypatch):
     monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
     monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")
