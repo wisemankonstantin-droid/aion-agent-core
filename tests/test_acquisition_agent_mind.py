@@ -368,6 +368,99 @@ def test_generated_commercial_reasoning_keeps_outreach_separate_from_aion_purcha
     )
 
 
+def test_worker_mission_routes_to_buyer_contact_not_aion_purchase():
+    missions = [worker.mission.lower() for worker in WORKERS]
+
+    assert all("preflight/purchase" not in mission for mission in missions)
+    assert all("buyer-facing route" in mission for mission in missions)
+
+
+def test_deterministic_guard_blocks_purchase_gated_outreach_from_model_output():
+    worker_plan = _plan(WORKERS[0].id)
+    worker_plan["sales_plan"] = [
+        "discover current external-spend intent",
+        "run AION preflight",
+        "if qualified, purchase SKU aion.verified.route_intelligence.v1",
+        "only then contact the buyer",
+    ]
+    validated_worker = acquisition_agent_mind._validate_plan(
+        worker_plan,
+        ["fallback"],
+    )
+
+    worker_text = json.dumps(validated_worker).lower()
+    assert "purchase sku aion.verified.route_intelligence.v1" not in worker_text
+    assert acquisition_agent_mind._SAFE_COMMERCIAL_STRATEGY_TEXT.lower() in worker_text
+    assert validated_worker["contact_policy"] == "contact_one_if_qualified"
+
+    brain_plan = _brain_plan()
+    brain_plan["collective_summary"] = (
+        "Run preflight before any paid route-intelligence purchase."
+    )
+    brain_plan["avoid_patterns"] = [
+        "Attempting outbound outreach before the paid route-intelligence is purchased."
+    ]
+    validated_brain = acquisition_agent_mind._validate_temple_brain_plan(brain_plan)
+
+    brain_text = json.dumps(validated_brain).lower()
+    assert "before any paid route-intelligence purchase" not in brain_text
+    assert "outreach before the paid route-intelligence is purchased" not in brain_text
+    assert acquisition_agent_mind._SAFE_COMMERCIAL_STRATEGY_TEXT.lower() in brain_text
+
+
+def test_existing_bad_plan_and_memory_are_sanitized_before_reuse():
+    _clean_minds()
+    worker = WORKERS[0]
+    now = acquisition_agent_mind._now()
+    bad_plan = _plan(worker.id)
+    bad_plan["sales_plan"] = [
+        "purchase SKU aion.verified.route_intelligence.v1 before contacting buyer"
+    ]
+    with SessionLocal() as db:
+        db.add(
+            models.AcquisitionAgentMind(
+                worker_id=worker.id,
+                mind_version="2",
+                model="gpt-5.6-luna",
+                cognitive_profile=acquisition_agent_mind.cognitive_profile(worker),
+                safe_memory={
+                    "recent_outcomes": [],
+                    "channel_performance": {},
+                    "lessons": [
+                        "AION should purchase its route-intelligence SKU before outreach"
+                    ],
+                },
+                last_plan=bad_plan,
+                last_observation_digest=None,
+                last_plan_digest=None,
+                last_state="planned",
+                total_reasoning_calls=1,
+                reasoning_failures=0,
+                last_reasoned_at=now,
+                last_error=None,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    acquisition_agent_mind._ensure_rows([worker], state="thinking")
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(models.AcquisitionAgentMind).where(
+                models.AcquisitionAgentMind.worker_id == worker.id
+            )
+        )
+        serialized = json.dumps(
+            {"plan": row.last_plan, "memory": row.safe_memory}
+        ).lower()
+
+    assert "purchase sku aion.verified.route_intelligence.v1" not in serialized
+    assert "purchase its route-intelligence sku before outreach" not in serialized
+    assert acquisition_agent_mind._SAFE_COMMERCIAL_STRATEGY_TEXT.lower() in serialized
+
+
 def test_cloudru_worker_uses_chat_completions_and_structured_output(monkeypatch):
     monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
     monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")

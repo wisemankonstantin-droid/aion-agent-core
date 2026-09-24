@@ -81,7 +81,8 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
                 mission=(
                     "Independently reason from safe durable memory, find a real external "
                     "machine need, qualify it, choose a bounded next action, learn from the "
-                    "verified outcome, and route a concrete need toward AION preflight/purchase."
+                    "verified outcome, and route qualified intent through AION preflight to "
+                    "GO/HOLD/STOP and one bounded buyer-facing route."
                 ),
                 source="parallel_colony_moltbook_and_federated_a2a",
                 action="reason_align_sales_plan_discover_qualify_contact_learn_route",
