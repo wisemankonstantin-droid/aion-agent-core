@@ -41,6 +41,7 @@ from .x402_exact_upfront import (
 
 PREPARATION_TTL_SECONDS = 15 * 60
 MAX_PAYMENT_SIGNATURE_HEADER_BYTES = 24 * 1024
+X402_PAYMENT_METHOD = "x402_exact_upfront"
 _ALLOWED_REQUEST_KEYS = {"need", "candidate_identifier"}
 _SIGNATURE = re.compile(r"^0x[0-9a-fA-F]{130}$")
 _ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -90,7 +91,7 @@ def _accounting_evidence(
     quote_amount: str,
     atomic_amount: str,
     currency: str,
-    payment_method: str = "x402_exact_upfront",
+    payment_method: str = X402_PAYMENT_METHOD,
 ) -> dict:
     plan = configured_route_intelligence_plan()
     if plan is None:  # Defensive: preparation already proved the plan exists.
@@ -176,31 +177,56 @@ def _by_purchase_id(db: Session, purchase_id: str) -> RouteIntelligencePurchase 
     )
 
 
-def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligencePurchase:
+def prepare_route_intelligence(
+    db: Session,
+    payload: object,
+    *,
+    payment_method: str | None = None,
+) -> RouteIntelligencePurchase:
     request, request_evidence = _validated_request(payload)
     request_digest = _digest(request_evidence)
     now = _now()
+
+    if payment_method not in {None, DIRECT_PAYMENT_METHOD, X402_PAYMENT_METHOD}:
+        raise RouteIntelligencePurchaseError(
+            400,
+            "payment_method_invalid",
+            "Unsupported Route Intelligence payment method",
+        )
+
+    direct_offer = configured_direct_base_usdc_offer()
+    x402_offer = configured_exact_upfront_offer()
+    if selected_payment_method == DIRECT_PAYMENT_METHOD:
+        offer = direct_offer
+        selected_payment_method = DIRECT_PAYMENT_METHOD
+    elif payment_method == X402_PAYMENT_METHOD:
+        offer = x402_offer
+        selected_payment_method = X402_PAYMENT_METHOD
+    elif direct_offer is not None:
+        offer = direct_offer
+        selected_payment_method = DIRECT_PAYMENT_METHOD
+    else:
+        offer = x402_offer
+        selected_payment_method = X402_PAYMENT_METHOD
+
+    if offer is None:
+        raise RouteIntelligencePurchaseError(
+            503,
+            "payment_offer_not_configured",
+            "Requested launch payment offer is not fully configured",
+        )
+
     current = _latest_for_request(db, request_digest)
     if (
         current is not None
         and current.state == "prepared"
         and _aware(current.expires_at) > now
+        and (current.accounting_evidence or {}).get(
+            "payment_method", X402_PAYMENT_METHOD
+        )
+        == selected_payment_method
     ):
         return current
-
-    direct_offer = configured_direct_base_usdc_offer()
-    if direct_offer is not None:
-        offer = direct_offer
-        payment_method = DIRECT_PAYMENT_METHOD
-    else:
-        offer = configured_exact_upfront_offer()
-        payment_method = "x402_exact_upfront"
-        if offer is None:
-            raise RouteIntelligencePurchaseError(
-                503,
-                "payment_offer_not_configured",
-                "No launch payment offer is fully configured",
-            )
 
     from .commercial_router import plan_commercial_route
 
@@ -215,7 +241,7 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
     result_digest = _digest(prepared_result)
     purchase_id = str(uuid.uuid4())
     expires_at = now + timedelta(seconds=PREPARATION_TTL_SECONDS)
-    if payment_method == DIRECT_PAYMENT_METHOD:
+    if selected_payment_method == DIRECT_PAYMENT_METHOD:
         requirements = direct_payment_requirements(
             purchase_id=purchase_id,
             result_digest=result_digest,
@@ -247,7 +273,7 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
             quote_amount=offer["quote_amount"],
             atomic_amount=offer["atomic_amount"],
             currency=offer["quote_currency"],
-            payment_method=payment_method,
+            payment_method=selected_payment_method,
         ),
         state="prepared",
         prepared_at=now,
@@ -262,9 +288,9 @@ def prepare_route_intelligence(db: Session, payload: object) -> RouteIntelligenc
 
 def payment_required_response_data(row: RouteIntelligencePurchase) -> dict:
     payment_method = (row.accounting_evidence or {}).get(
-        "payment_method", "x402_exact_upfront"
+        "payment_method", X402_PAYMENT_METHOD
     )
-    if payment_method == DIRECT_PAYMENT_METHOD:
+    if selected_payment_method == DIRECT_PAYMENT_METHOD:
         requirements = direct_payment_requirements(
             purchase_id=row.purchase_id,
             result_digest=row.result_digest,
@@ -436,7 +462,7 @@ def _entitlement(row: RouteIntelligencePurchase, *, idempotent_replay: bool) -> 
         "result": row.prepared_result,
         "payment": {
             "method": (row.accounting_evidence or {}).get(
-                "payment_method", "x402_exact_upfront"
+                "payment_method", X402_PAYMENT_METHOD
             ),
             "scheme": (
                 "eip3009_buyer_broadcast"
