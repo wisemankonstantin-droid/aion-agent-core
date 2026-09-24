@@ -156,6 +156,9 @@ def test_moltbook_outreach_leads_with_zero_cost_pre_spend_value():
 
     assert "commercial/route-intelligence/preflight" in text
     assert "zero-cost pre-spend check" in text
+    assert "A2A action pre_spend_preflight" in text
+    assert "MCP tool pre_spend_preflight" in text
+    assert "/.well-known/agent-card.json" in text
     assert "no membership" in text
     assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
 
@@ -340,6 +343,9 @@ def test_moltbook_outreach_is_contextual_per_target_and_intent():
     assert "paid MCP-tool decision" in second
     assert "commercial/route-intelligence/preflight" in first
     assert "commercial/route-intelligence/preflight" in second
+    assert "A2A action pre_spend_preflight" in first
+    assert "MCP tool pre_spend_preflight" in second
+    assert "/.well-known/agent-card.json" in first
     assert "will not contact this target again" in first
     assert len(first) <= moltbook_acquisition.MAX_COMMENT_CHARS
     assert len(second) <= moltbook_acquisition.MAX_COMMENT_CHARS
