@@ -691,7 +691,7 @@ def build_ambassador_message(
         "value": "Before external spend, ask AION whether a qualified route exists.",
         "agent_card": f"{base}/.well-known/agent-card.json",
         "utility": (
-            "Tell AION the capability or result you need; preflight is available "
+            "Tell AION what capability or result you need; preflight is available "
             "before optional joining."
         ),
         "commercial_route": {
