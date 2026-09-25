@@ -844,6 +844,14 @@ def _qualified_unsent_target(
             models.AmbassadorTarget.qualification_state == "qualified",
             models.AmbassadorTarget.contact_state == "not_ready",
             models.AmbassadorTarget.suppressed.is_(False),
+            ~(
+                select(models.DistributionToken.id)
+                .where(
+                    models.DistributionToken.target_id == models.AmbassadorTarget.id,
+                    models.DistributionToken.kind == "ambassador_invite",
+                )
+                .exists()
+            ),
         )
     )
     if allow_moltbook:
