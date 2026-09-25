@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app import models
 from app.db import SessionLocal
 from app.main import A2A_RUNTIME, MCP_VERSION, app
 from app.payment_models import RouteIntelligencePurchase
@@ -460,6 +461,102 @@ def test_federated_registry_discovery_is_not_buyer_outbound_authority():
         allow_federated=acquisition_swarm.FEDERATED_A2A_BUYER_CONTACT_ENABLED,
     )
     assert target is None
+
+
+def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
+    with SessionLocal() as db:
+        campaign = ambassador.create_campaign(
+            db,
+            name="stale prepared target regression",
+            purpose="test",
+            maximum_targets=10,
+            maximum_contacts=2,
+        )
+        campaign_id = campaign["campaign_id"]
+
+        stale = _candidate("stale-prepared")
+        stale.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:stale-prepared",
+                "url": "https://www.moltbook.com/post/stale-prepared",
+                "interaction_url": "https://www.moltbook.com/api/v1/posts/stale-prepared/comments",
+                "authentication_requirement": "moltbook_bearer",
+            }
+        )
+        fresh = _candidate("fresh-next")
+        fresh.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:fresh-next",
+                "url": "https://www.moltbook.com/post/fresh-next",
+                "interaction_url": "https://www.moltbook.com/api/v1/posts/fresh-next/comments",
+                "authentication_requirement": "moltbook_bearer",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [stale, fresh],
+            },
+        )
+        scouted = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=campaign_id,
+            query="current buyer need",
+        )
+        assert len(scouted["created_target_ids"]) == 2
+
+        stale_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][0]
+            )
+        )
+        fresh_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][1]
+            )
+        )
+        campaign_row = db.scalar(
+            select(models.AmbassadorCampaign).where(
+                models.AmbassadorCampaign.campaign_id == campaign_id
+            )
+        )
+        assert stale_row is not None
+        assert fresh_row is not None
+        assert campaign_row is not None
+
+        ambassador.prepare_target(
+            db,
+            target_id=stale_row.target_id,
+            public_base_url="https://aion.example",
+            preflight_result={"decision": "GO"},
+        )
+        db.refresh(stale_row)
+        assert db.scalar(
+            select(models.DistributionToken).where(
+                models.DistributionToken.target_id == stale_row.id,
+                models.DistributionToken.kind == "ambassador_invite",
+            )
+        ) is not None
+
+        # Reproduce the durable production inconsistency observed after deploy:
+        # a target appears unprepared but its one-time invite token already exists.
+        stale_row.contact_state = "not_ready"
+        db.commit()
+
+        selected = acquisition_swarm._qualified_unsent_target(
+            db,
+            campaign_row,
+            allow_moltbook=True,
+            allow_colony=False,
+            allow_federated=False,
+        )
+
+        assert selected is not None
+        assert selected.target_id == fresh_row.target_id
 
 
 def test_qualified_target_overrides_model_discover_only_once_actionable():
