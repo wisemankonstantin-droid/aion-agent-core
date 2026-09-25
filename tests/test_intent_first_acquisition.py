@@ -480,7 +480,8 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
                 "source": "moltbook",
                 "identifier": "moltbook:stale-prepared",
                 "url": "https://www.moltbook.com/post/stale-prepared",
-                "interaction_url": "https://www.moltbook.com/post/stale-prepared/comments",
+                "interaction_url": "https://www.moltbook.com/api/v1/posts/stale-prepared/comments",
+                "authentication_requirement": "moltbook_bearer",
             }
         )
         fresh = _candidate("fresh-next")
@@ -489,7 +490,8 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
                 "source": "moltbook",
                 "identifier": "moltbook:fresh-next",
                 "url": "https://www.moltbook.com/post/fresh-next",
-                "interaction_url": "https://www.moltbook.com/post/fresh-next/comments",
+                "interaction_url": "https://www.moltbook.com/api/v1/posts/fresh-next/comments",
+                "authentication_requirement": "moltbook_bearer",
             }
         )
         monkeypatch.setattr(
