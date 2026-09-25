@@ -164,9 +164,7 @@ def test_moltbook_intent_revalidation_matches_target_author_in_post_or_comments(
                 {
                     "comments": [
                         {
-                            "type": "comment",
                             "id": "comment-buyer",
-                            "post_id": "post-comment-buyer",
                             "author": {"name": "FundedBuyer"},
                             "content": (
                                 "I have a funded wallet and I am looking to buy "
