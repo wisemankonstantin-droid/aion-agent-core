@@ -804,6 +804,10 @@ def test_strict_moltbook_duplicate_reactivates_uncontacted_legacy_target(monkeyp
         )
         assert len(first["created_target_ids"]) == 1
         original_target_id = first["created_target_ids"][0]
+        target_count_before_refresh = (
+            db.scalar(select(func.count()).select_from(models.AmbassadorTarget))
+            or 0
+        )
 
         current_campaign = ambassador.create_campaign(
             db,
@@ -859,7 +863,7 @@ def test_strict_moltbook_duplicate_reactivates_uncontacted_legacy_target(monkeyp
         )
         assert (
             db.scalar(select(func.count()).select_from(models.AmbassadorTarget))
-            == 1
+            == target_count_before_refresh
         )
 
         selected = acquisition_swarm._qualified_unsent_target(
