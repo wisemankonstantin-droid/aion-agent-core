@@ -788,6 +788,15 @@ def build_ambassador_message(
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
         raise AmbassadorError(422, "public_url_required", "A public HTTPS AION URL is required")
+    configured_price = (os.getenv("AION_ROUTE_INTELLIGENCE_PRICE") or "").strip()
+    configured_currency = (
+        os.getenv("AION_ROUTE_INTELLIGENCE_CURRENCY") or "USDC"
+    ).strip()
+    live_price = (
+        f"{configured_price} {configured_currency}"
+        if configured_price and configured_currency
+        else "read_live_manifest"
+    )
     message = {
         "sender": "AION",
         "purpose": "bounded_machine_utility_invitation",
@@ -815,8 +824,12 @@ def build_ambassador_message(
             "payment_or_provider_execution": False,
         },
         "paid_route_intelligence": {
+            "manifest": f"{base}/.well-known/x402",
             "method": "POST",
-            "url": f"{base}/commercial/route-intelligence/purchase",
+            "url": f"{base}/commercial/route-intelligence/x402/purchase",
+            "price": live_price,
+            "same_request_body_as_preflight": True,
+            "flow": "request -> 402 -> pay -> retry -> result",
             "membership_required": False,
             "execute_only_for_real_need": True,
         },
@@ -847,7 +860,7 @@ def build_ambassador_message(
         "next_actions": [
             "reply_with_aion_feedback_if_current_need",
             "inspect_pre_spend_preflight",
-            "purchase_if_justified",
+            "if_preflight_go_purchase_over_x402",
         ],
         "truth": (
             "AION-operated outreach; not independent adoption; "
