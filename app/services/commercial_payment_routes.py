@@ -390,6 +390,55 @@ def _agent_readiness_manifest_resource(plan) -> dict:
             "required": ["url"],
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "state": {"type": "string", "const": "delivered"},
+                "product_sku": {"type": "string"},
+                "result": {
+                    "type": "object",
+                    "properties": {
+                        "origin": {"type": "string"},
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["ready", "mostly_ready", "partial", "weak"],
+                        },
+                        "checks": {"type": "object"},
+                        "prioritized_fixes": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": [
+                        "origin",
+                        "score",
+                        "verdict",
+                        "checks",
+                        "prioritized_fixes",
+                    ],
+                },
+                "payment": {"type": "object"},
+            },
+            "required": ["state", "product_sku", "result", "payment"],
+        },
+        "outputExample": {
+            "state": "delivered",
+            "product_sku": AGENT_READINESS_AUDIT_SKU,
+            "result": {
+                "origin": "https://example.com",
+                "score": 75,
+                "verdict": "mostly_ready",
+                "checks": {
+                    "x402": {"ok": True},
+                    "openapi": {"ok": True},
+                    "agent_card": {"ok": True},
+                    "llms_txt": {"ok": False},
+                },
+                "prioritized_fixes": ["publish /llms.txt for machine discovery"],
+            },
+            "payment": {"method": "x402_exact_upfront"},
+        },
         "accepts": [exact_payment_requirements()],
     }
 
@@ -567,6 +616,26 @@ def _install_agent_readiness_audit(app) -> None:
             "MCP declaration. No AION membership or database state is required."
         ),
         responses={
+            200: {
+                "description": "Paid readiness audit delivered",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "state": "delivered",
+                            "product_sku": AGENT_READINESS_AUDIT_SKU,
+                            "result": {
+                                "origin": "https://example.com",
+                                "score": 75,
+                                "verdict": "mostly_ready",
+                                "checks": {},
+                                "prioritized_fixes": [
+                                    "publish /llms.txt for machine discovery"
+                                ],
+                            },
+                        }
+                    }
+                },
+            },
             402: {"description": "x402 exact/upfront payment required"},
         },
     )
