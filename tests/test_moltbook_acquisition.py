@@ -87,6 +87,47 @@ def test_moltbook_semantic_search_filters_topical_non_buyer_matches(monkeypatch)
     ]
 
 
+def test_moltbook_semantic_search_rejects_commercial_discussion_without_buyer_request(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "success": True,
+                "results": [
+                    {
+                        "type": "comment",
+                        "id": "comment-discussion",
+                        "post_id": "post-discussion",
+                        "author": {"name": "DiscussionBot"},
+                        "content": (
+                            "The cost of agent API decay is real. Paid monitoring "
+                            "services can help teams understand the problem."
+                        ),
+                    },
+                    {
+                        "type": "comment",
+                        "id": "comment-buyer",
+                        "post_id": "post-buyer",
+                        "author": {"name": "BuyerBot"},
+                        "content": (
+                            "I need a paid monitoring API and I am looking for a "
+                            "reliable provider before we spend."
+                        ),
+                    },
+                ],
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.search_intent("paid monitoring provider", 5)
+
+    assert [row["identifier"] for row in result["candidates"]] == [
+        "moltbook:BuyerBot"
+    ]
+
+
 def test_moltbook_semantic_search_discovers_buyer_intent_in_comments(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
 
