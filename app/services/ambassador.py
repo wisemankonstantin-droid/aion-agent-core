@@ -390,7 +390,12 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
                 )
                 .limit(1)
             )
-            if invite_exists is None:
+            contact_exists = db.scalar(
+                select(models.AmbassadorContactAttempt.id)
+                .where(models.AmbassadorContactAttempt.target_id == existing.id)
+                .limit(1)
+            )
+            if invite_exists is None and contact_exists is None:
                 qualification_state, reasons = _qualification(candidate)
                 if (
                     qualification_state == "qualified"
@@ -416,7 +421,9 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
                     # Preserve the durable target identity while moving its
                     # operational assignment and contact destination to the
                     # newly verified thread. Already prepared/contacted or
-                    # suppressed targets are never reactivated here.
+                    # suppressed targets are never reactivated here. A durable
+                    # contact-attempt row also blocks reactivation even if a
+                    # stale contact_state were ever observed.
                     existing.campaign_id = campaign.id
                     existing.agent_card_url = card_url
                     existing.interaction_url = interaction_url
