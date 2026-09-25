@@ -335,6 +335,107 @@ def _qualification(candidate: dict) -> tuple[str, list[str]]:
     return ("qualified", ["qualified_public_a2a_v1_no_credentials_no_payment"]) if not reasons else ("rejected", sorted(set(reasons)))
 
 
+def _refresh_moltbook_duplicate_buyer_intent(
+    db: Session,
+    *,
+    existing: models.AmbassadorTarget,
+    campaign: models.AmbassadorCampaign,
+    candidate: dict,
+    source_identifier: str,
+    card_url: str,
+    interaction_url: str,
+) -> bool:
+    """Refresh only safe, never-contacted Moltbook inventory with strict evidence.
+
+    Moltbook fingerprints intentionally dedupe by agent identity. When the same
+    agent later appears with current strict buyer-intent evidence, the durable
+    legacy row may be refreshed only if no outbound authority has ever been
+    prepared or exercised. Contacted/prepared/suppressed history is immutable.
+    """
+
+    if (
+        existing.discovery_source != "moltbook"
+        or str(candidate.get("source") or "").strip().lower() != "moltbook"
+        or str(candidate.get("evidence_state") or "")
+        not in MOLTBOOK_BUYER_INTENT_EVIDENCE_STATES_V2
+        or existing.contact_state != "not_ready"
+        or existing.suppressed
+        or existing.prepared_message_digest is not None
+    ):
+        return False
+
+    if db.scalar(
+        select(models.AmbassadorContactAttempt.id)
+        .where(models.AmbassadorContactAttempt.target_id == existing.id)
+        .limit(1)
+    ) is not None:
+        return False
+    if db.scalar(
+        select(models.DistributionToken.id)
+        .where(
+            models.DistributionToken.target_id == existing.id,
+            models.DistributionToken.kind == "ambassador_invite",
+        )
+        .limit(1)
+    ) is not None:
+        return False
+
+    qualification_state, reasons = _qualification(candidate)
+    if (
+        qualification_state != "qualified"
+        or MOLTBOOK_BUYER_INTENT_V2_REASON not in reasons
+    ):
+        return False
+
+    if existing.campaign_id != campaign.id:
+        count = db.scalar(
+            select(func.count())
+            .select_from(models.AmbassadorTarget)
+            .where(models.AmbassadorTarget.campaign_id == campaign.id)
+        ) or 0
+        if count >= campaign.maximum_targets:
+            return False
+
+    existing.campaign_id = campaign.id
+    existing.source_identifier = source_identifier
+    existing.agent_card_url = card_url
+    existing.interaction_url = interaction_url
+    existing.metadata_digest = _digest_json(
+        {
+            "source": candidate.get("source"),
+            "identifier": source_identifier,
+            "agent_card_url": card_url,
+            "interaction_url": interaction_url,
+            "manifest_reachable": bool(candidate.get("manifest_reachable")),
+            "declared_a2a_v1_jsonrpc": bool(
+                candidate.get("declared_a2a_v1_jsonrpc")
+            ),
+            "authentication_requirement": candidate.get(
+                "authentication_requirement"
+            ),
+        }
+    )
+    existing.manifest_reachable = bool(candidate.get("manifest_reachable"))
+    existing.declared_a2a_v1_jsonrpc = bool(
+        candidate.get("declared_a2a_v1_jsonrpc")
+    )
+    existing.interaction_url_validated = bool(
+        candidate.get("interaction_url_validated")
+    )
+    existing.authentication_requirement = str(
+        candidate.get("authentication_requirement") or "unknown"
+    )[:32]
+    existing.payment_required = bool(
+        candidate.get("payment_required")
+        or candidate.get("manifest_http_status") == 402
+    )
+    existing.qualification_state = qualification_state
+    existing.qualification_reasons = reasons
+    existing.updated_at = _now()
+    db.flush()
+    return True
+
+
 def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidate: dict) -> tuple[models.AmbassadorTarget | None, str]:
     source_identifier = str(candidate.get("identifier") or candidate.get("package_name") or "").strip()
     card_url = str(candidate.get("url") or "").strip()
@@ -365,8 +466,22 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
             fingerprint = _target_fingerprint(interaction_url)
     except AmbassadorError as exc:
         return None, exc.code
-    existing = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_fingerprint == fingerprint))
+    existing = db.scalar(
+        select(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.target_fingerprint == fingerprint
+        )
+    )
     if existing is not None:
+        if _refresh_moltbook_duplicate_buyer_intent(
+            db,
+            existing=existing,
+            campaign=campaign,
+            candidate=candidate,
+            source_identifier=source_identifier,
+            card_url=card_url,
+            interaction_url=interaction_url,
+        ):
+            return existing, "refreshed_moltbook_buyer_intent"
         return existing, "duplicate_target_fingerprint"
     count = db.scalar(select(func.count()).select_from(models.AmbassadorTarget).where(models.AmbassadorTarget.campaign_id == campaign.id)) or 0
     if count >= campaign.maximum_targets:
