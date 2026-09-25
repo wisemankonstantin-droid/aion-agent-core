@@ -906,6 +906,55 @@ def test_cloudru_custom_openai_compatible_base_remains_supported(monkeypatch):
     assert mode == "custom_full_chat_endpoint"
 
 
+def test_cloudru_gateway_root_404_retries_same_gateway_v1_before_direct(monkeypatch):
+    monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
+    monkeypatch.setenv("AION_REASONING_API_KEY", "gateway-secret")
+    monkeypatch.setenv("AION_REASONING_BASE_URL", "https://gateway.example")
+    monkeypatch.setenv("AION_AGENT_MODEL", "openai/gpt-oss-120b")
+    seen_urls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, *, headers, json, timeout):
+        seen_urls.append(url)
+        if url == "https://gateway.example/chat/completions":
+            return FakeResponse(404)
+        if url == "https://gateway.example/v1/chat/completions":
+            return FakeResponse(
+                200,
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": __import__("json").dumps(
+                                    _plan(WORKERS[0].id)
+                                )
+                            }
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(f"unexpected fallback URL: {url}")
+
+    monkeypatch.setattr(acquisition_agent_mind.httpx, "post", fake_post)
+    plan = acquisition_agent_mind._call_model(
+        WORKERS[0].id,
+        {"worker_id": WORKERS[0].id, "fallback_queries": ["provider selection"]},
+    )
+
+    assert plan["contact_policy"] == "contact_one_if_qualified"
+    assert seen_urls == [
+        "https://gateway.example/chat/completions",
+        "https://gateway.example/v1/chat/completions",
+    ]
+
+
 def test_cloudru_custom_404_retries_documented_official_endpoint(monkeypatch):
     monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
     monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")
@@ -1054,6 +1103,7 @@ def test_cloudru_temple_brain_uses_its_model_and_runtime_reports_provider(monkey
     assert status["configured"] is True
     assert status["provider"] == "cloudru_chat_completions"
     assert status["reasoning_endpoint_mode"] == "cloudru_official_canonical"
+    assert status["cloudru_gateway_v1_404_fallback_enabled"] is True
     assert status["cloudru_official_404_fallback_enabled"] is True
     assert seen["json"]["model"] == "openai/gpt-oss-120b"
     assert seen["json"]["response_format"]["json_schema"]["name"] == (
