@@ -261,6 +261,7 @@ MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
 MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION = 5
+MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE = 10
 # Public A2A registries describe callable supply. A registry listing alone is not
 # evidence that the listed agent currently intends to buy an external service.
 FEDERATED_A2A_BUYER_CONTACT_ENABLED = False
@@ -838,6 +839,7 @@ def _qualified_unsent_target(
     allow_moltbook: bool,
     allow_colony: bool = False,
     allow_federated: bool = True,
+    moltbook_revalidation_usage: dict | None = None,
 ) -> models.AmbassadorTarget | None:
     base = (
         select(models.AmbassadorTarget)
@@ -857,14 +859,25 @@ def _qualified_unsent_target(
         )
     )
     if allow_moltbook:
+        cycle_remaining = MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION
+        if moltbook_revalidation_usage is not None:
+            used = int(moltbook_revalidation_usage.get("used") or 0)
+            cycle_remaining = min(
+                cycle_remaining,
+                max(0, MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE - used),
+            )
         moltbook_candidates = list(
             db.scalars(
                 base.where(models.AmbassadorTarget.discovery_source == "moltbook")
                 .order_by(models.AmbassadorTarget.id)
-                .limit(MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION)
+                .limit(cycle_remaining)
             )
         )
         for moltbook in moltbook_candidates:
+            if moltbook_revalidation_usage is not None:
+                moltbook_revalidation_usage["used"] = (
+                    int(moltbook_revalidation_usage.get("used") or 0) + 1
+                )
             validation = revalidate_moltbook_intent_thread(
                 moltbook.interaction_url or "",
                 moltbook.source_identifier,
@@ -1112,6 +1125,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
         moltbook_comments_remaining_today,
     )
+    moltbook_revalidation_usage = {"used": 0}
     moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
     moltbook_dm_remaining_today = max(
         0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
@@ -1164,6 +1178,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "max_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
                 "minimum_interval_seconds": MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS,
                 "attempted_this_cycle": 0,
+            },
+            "intent_revalidation": {
+                "attempted_this_cycle": 0,
+                "max_per_cycle": MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE,
+                "max_per_selection": MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION,
             },
             "dm": {
                 "initial_daily_request_limit": MOLTBOOK_DM_DAILY_REQUEST_LIMIT,
@@ -1413,6 +1432,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 # requester-intent surface. Do not turn provider listings into
                 # unsolicited buyer acquisition contacts.
                 allow_federated=FEDERATED_A2A_BUYER_CONTACT_ENABLED,
+                moltbook_revalidation_usage=moltbook_revalidation_usage,
+            )
+            report["moltbook"]["intent_revalidation"]["attempted_this_cycle"] = int(
+                moltbook_revalidation_usage.get("used") or 0
             )
             contact_attempted_this_cycle = False
             outbound_preflight = None
