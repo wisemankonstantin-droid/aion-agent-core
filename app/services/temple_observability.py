@@ -761,7 +761,7 @@ a{color:#9bdcff;word-break:break-all}.event{padding:8px 0;border-bottom:1px soli
   <div class="tools"><input id="search" placeholder="worker / intent / target / brain"><button id="rotate">pause</button></div>
   <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select AION CORE for the shared Temple Brain, or select any worker for its independent mind and transport truth. State refreshes every 5 seconds.</p></div>
 </div>
-<div class="legend">fill = transport · ring = AI mind · moving pulse = verified action · outer nodes = external targets · cyan inbound pulse = machine entry to Temple</div>
+<div class="legend">fill = transport · ring = AI mind · green/red/gold pulse = verified action · purple dashed pulse = AI next-channel plan · outer nodes = external targets · cyan inbound pulse = machine entry to Temple</div>
 <script>
 const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d');
 const cards=document.getElementById('cards'),detail=document.getElementById('detail'),search=document.getElementById('search');
@@ -786,6 +786,10 @@ function mindColor(w){const s=w.mind?.state||'not_initialized';if(s==='thinking'
 function brainColor(){const s=D?.fleet?.temple_brain?.state||'not_initialized';if(s==='thinking')return '#ffd166';if(s==='planned')return '#b388ff';if(s==='learning')return '#42f5a7';if(s==='degraded')return '#ff5f6d';if(s==='model_unconfigured'||s==='mind_disabled')return '#ff9f43';return '#445069'}
 function drawMindRing(pt,r,w){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(5,r*pt.s+3),0,Math.PI*2);ctx.strokeStyle=mindColor(w);ctx.lineWidth=Math.max(1,1.7*pt.s);ctx.stroke();ctx.lineWidth=1}
 function drawNode(pt,r,fill,label){ctx.beginPath();ctx.arc(pt.x,pt.y,Math.max(2,r*pt.s),0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(label&&pt.s>.55){ctx.fillStyle='#b8c7da';ctx.font='10px system-ui';ctx.fillText(label,pt.x+7,pt.y-5)}}
+function drawPlanRoutes(cp,wp){
+ const ws=D.fleet?.workers||[];
+ ws.forEach(w=>{const a=wp[w.id],p=w.mind?.plan,ch=p?.channel_priority?.find(x=>cp[x]);if(!a||!ch)return;if(!['planned','thinking','learning'].includes(w.mind?.state))return;const b=cp[ch].pt;routeStroke([a,b],'#b388ff',.22,[2,8]);const phase=((Date.now()/1000)*.18+(hashKey(w.id)%100)/100)%1;pathPulse([a,b],phase,'#b388ff',2.5)})
+}
 function drawOutboundRoutes(cp,wp){
  const ev=(D.recent_events||[]).filter(e=>e.event==='contact').slice(0,18);
  ev.forEach((e,i)=>{const a=wp[e.worker_id],b=cp[e.channel]?.pt;if(!a||!b)return;const q=orbitPos('target:'+String(e.target_identity||e.target_id||i)),t=p3(q.x,q.y,q.z),pts=[a,b,t],col=routeColor(e),seconds=Math.max(0,(Date.now()-Date.parse(e.created_at||0))/1000),alpha=Math.max(.12,.62-Math.min(seconds,86400)/86400*.45);routeStroke(pts,col,alpha);const phase=((Date.now()/1000)*.28+i*.137)%1;pathPulse(pts,phase,col,e.response_received?5:4);drawNode(t,4,col,(seconds<1800||selected===e.worker_id)?short(e.target_identity):null);hit.push({x:t.x,y:t.y,r:10,event:e})});
@@ -798,10 +802,10 @@ function drawInboundRoutes(core){
 }
 function draw(){ctx.clearRect(0,0,W,H);hit=[];if(!D){requestAnimationFrame(draw);return} if(auto)rot+=.0015;
  const core=p3(0,0,0);drawNode(core,13,'#9bdcff','AION CORE');ctx.beginPath();ctx.arc(core.x,core.y,18,0,Math.PI*2);ctx.strokeStyle=brainColor();ctx.lineWidth=2.4;ctx.stroke();ctx.lineWidth=1;hit.push({x:core.x,y:core.y,r:22,brain:true});
- const chans=D.channels||[],cp={};chans.forEach((ch,i)=>{const q=channelPos(i,Math.max(1,chans.length)),pt=p3(q.x,q.y,q.z);cp[ch.name]={q,pt};ctx.strokeStyle='rgba(120,160,210,.18)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,8,'#80a8ff',ch.name+' '+ch.machine_responses+'/'+ch.contact_attempts)});
+ const chans=D.channels||[],cp={};chans.forEach((ch,i)=>{const q=channelPos(i,Math.max(1,chans.length)),pt=p3(q.x,q.y,q.z);cp[ch.name]={q,pt};ctx.strokeStyle='rgba(120,160,210,.18)';ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();drawNode(pt,8,'#80a8ff',ch.name+' '+ch.machine_responses+' replies · '+ch.contact_attempts+' contacts')});
  const ws=D.fleet.workers||[],q=search.value.trim().toLowerCase(),wp={};
  ws.forEach((w,i)=>{const pos=sphere(i,ws.length,205),pt=p3(pos.x,pos.y,pos.z);wp[w.id]=pt;const match=!q||[w.id,w.intent_profile,w.current_channel,w.current_target?.identity,w.mind?.state,w.mind?.profile?.archetype,w.mind?.plan?.hypothesis].join(' ').toLowerCase().includes(q);ctx.globalAlpha=match?1:.12;ctx.strokeStyle=w.state==='working_currently'?'rgba(66,245,167,.22)':(w.state==='assigned_waiting_turn'?'rgba(106,168,255,.13)':'rgba(110,128,154,.07)');ctx.beginPath();ctx.moveTo(core.x,core.y);ctx.lineTo(pt.x,pt.y);ctx.stroke();const wr=w.state==='working_currently'?5.4:(w.state==='assigned_waiting_turn'?4.2:3);drawNode(pt,wr,color(w),selected===w.id?w.id:null);drawMindRing(pt,wr,w);hit.push({x:pt.x,y:pt.y,r:10,w});ctx.globalAlpha=1});
- drawOutboundRoutes(cp,wp);drawInboundRoutes(core);requestAnimationFrame(draw)}
+ drawPlanRoutes(cp,wp);drawOutboundRoutes(cp,wp);drawInboundRoutes(core);requestAnimationFrame(draw)}
 function workerDetail(w){const t=w.current_target||{},signals=(w.response_signals||[]).map(x=>'<span class="tag">'+esc(x)+'</span>').join(''),m=w.mind||{},p=m.plan||{},prof=m.profile||{};detail.innerHTML='<h3>'+esc(w.id)+'</h3>'+
  '<div class="row"><div>transport state</div><div>'+esc(w.state)+'</div></div><div class="row"><div>AI mind</div><div>'+esc(m.state||'not initialized')+' · '+esc(m.model||'no model')+'</div></div>'+
  '<div class="row"><div>AI profile</div><div>'+esc(prof.archetype||'none')+' · explore '+esc(prof.exploration_bias??'-')+' / verify '+esc(prof.verification_bias??'-')+' / convert '+esc(prof.conversion_bias??'-')+'<br><span class="muted">'+esc(prof.strategy_fingerprint||'')+'</span></div></div>'+
