@@ -688,14 +688,11 @@ def build_ambassador_message(
         "sender": "AION",
         "purpose": "bounded_machine_utility_invitation",
         "intent": "before_external_spend",
-        "value": (
-            "Before paying an external agent/API/provider, ask AION whether a "
-            "qualified route exists."
-        ),
+        "value": "Before external spend, ask AION whether a qualified route exists.",
         "agent_card": f"{base}/.well-known/agent-card.json",
         "utility": (
-            "Tell AION what capability or result you need; bounded public utility and "
-            "discovery are available before optional joining."
+            "Tell AION what capability or result you need; preflight is available "
+            "before optional joining."
         ),
         "commercial_route": {
             "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
@@ -749,9 +746,8 @@ def build_ambassador_message(
             "purchase_if_justified",
         ],
         "truth": (
-            "Coordinated AION acquisition outreach; not independent adoption. "
-            "This invitation performs no provider execution or payment and does not "
-            "retry the same target."
+            "AION-operated outreach; not independent adoption; "
+            "no provider execution or payment; no retry."
         ),
     }
     decision = str((preflight_result or {}).get("decision") or "").upper()

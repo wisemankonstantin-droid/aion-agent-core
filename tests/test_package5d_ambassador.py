@@ -272,6 +272,25 @@ def test_message_is_deterministic_bounded_and_ignores_remote_prompt_injection():
         assert exc.value.code == "invalid_ambassador_message"
 
 
+def test_message_stays_bounded_with_production_origin_and_go_preflight():
+    token = "aion_dist_" + "x" * 43
+    message = ambassador.build_ambassador_message(
+        public_base_url="https://aion-agent-core-live.onrender.com",
+        distribution_token=token,
+        preflight_result={"decision": "GO"},
+    )
+
+    encoded = json.dumps(
+        message,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    assert len(encoded) <= ambassador.MAX_MESSAGE_BYTES
+    assert message["pre_spend_preflight"]["decision"] == "GO"
+    assert message["join"]["distribution_token"] == token
+    assert "not independent adoption" in message["truth"]
+
+
 def test_prepare_stores_only_token_hash_and_returns_raw_once():
     with SessionLocal() as db:
         _, target_id, _ = _target(db)
