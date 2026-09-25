@@ -241,7 +241,10 @@ def test_moltbook_outreach_leads_with_buyer_invoked_zero_cost_preflight():
     assert "zero-cost preflight for this intent category: GO" not in text
     assert "A2A action pre_spend_preflight" in text
     assert "MCP tool pre_spend_preflight" in text
-    assert '{"need":"<exact need from this post>"}' in text
+    assert "JSON field named need" in text
+    assert "set it to the exact need from this thread" in text
+    assert "<exact need" not in text
+    assert '{"need":" "}' not in text
     assert "no membership" in text
     assert "If GO, follow next_action" in text
     assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
