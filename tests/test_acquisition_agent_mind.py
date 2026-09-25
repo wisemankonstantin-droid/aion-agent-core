@@ -35,6 +35,7 @@ def _plan(worker_id: str) -> dict:
         "channel_priority": ["federated_a2a", "colony"],
         "search_queries": ["need paid provider now", "looking to hire agent service"],
         "contact_policy": "contact_one_if_qualified",
+        "outreach_strategy": "risk_reduction",
         "target_preference": "explicit_buyer_demand",
         "expected_signal": "routing_need",
         "learning_goal": "Compare explicit buyer demand with generic discovery.",
@@ -70,6 +71,20 @@ def _brain_plan() -> dict:
         "memory_note": "Favor evidence closest to purchase and structured routing need.",
         "confidence": 81,
     }
+
+
+def test_outreach_strategy_is_bounded_and_defaults_fail_closed():
+    fallback = ["paid api provider", "provider selection buyer"]
+
+    plan = _plan(WORKERS[0].id)
+    plan["outreach_strategy"] = "machine_purchase"
+    validated = acquisition_agent_mind._validate_plan(plan, fallback)
+    assert validated["outreach_strategy"] == "machine_purchase"
+
+    invalid = _plan(WORKERS[0].id)
+    invalid["outreach_strategy"] = "invent_price_and_spam"
+    validated_invalid = acquisition_agent_mind._validate_plan(invalid, fallback)
+    assert validated_invalid["outreach_strategy"] == "preflight_first"
 
 
 def test_all_100_workers_have_distinct_cognitive_fingerprints():
