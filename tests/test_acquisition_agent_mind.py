@@ -197,6 +197,58 @@ def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkey
     )
 
 
+
+def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-never-sent")
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "true")
+    monkeypatch.setenv("AION_AGENT_MIND_MAX_CALLS_PER_CYCLE", "2")
+    selected_ids = []
+
+    def worker_plan(worker_id, observation):
+        selected_ids.append(worker_id)
+        return _plan(worker_id)
+
+    monkeypatch.setattr(acquisition_agent_mind, "_call_model", worker_plan)
+    monkeypatch.setattr(
+        acquisition_agent_mind,
+        "_call_temple_brain",
+        lambda observation: _brain_plan(),
+    )
+
+    workers = WORKERS[:8]
+    active_reasoning_workers = WORKERS[5:8]
+    plans = acquisition_agent_mind.refresh_all_minds(
+        workers,
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+        fallback_queries_by_worker={
+            worker.id: ["fallback one", "fallback two"] for worker in workers
+        },
+        reasoning_workers=active_reasoning_workers,
+    )
+
+    expected = {WORKERS[5].id, WORKERS[6].id}
+    assert set(plans) == expected
+    assert set(selected_ids) == expected
+
+    with SessionLocal() as db:
+        rows = {
+            row.worker_id: row
+            for row in db.scalars(
+                select(models.AcquisitionAgentMind).where(
+                    models.AcquisitionAgentMind.worker_id.in_(
+                        [worker.id for worker in workers]
+                    )
+                )
+            )
+        }
+    assert rows[WORKERS[5].id].last_state == "planned"
+    assert rows[WORKERS[6].id].last_state == "planned"
+    assert rows[WORKERS[0].id].last_state == "reasoning_budget_deferred"
+    assert rows[WORKERS[7].id].last_state == "reasoning_budget_deferred"
+
+
 def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-secret-header-only")
     monkeypatch.delenv("AION_AGENT_MODEL", raising=False)
