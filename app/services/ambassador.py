@@ -824,12 +824,9 @@ def build_ambassador_message(
             "payment_or_provider_execution": False,
         },
         "paid_route_intelligence": {
-            "manifest": f"{base}/.well-known/x402",
             "method": "POST",
             "url": f"{base}/commercial/route-intelligence/x402/purchase",
             "price": live_price,
-            "same_request_body_as_preflight": True,
-            "flow": "request -> 402 -> pay -> retry -> result",
             "membership_required": False,
             "execute_only_for_real_need": True,
         },
@@ -860,7 +857,7 @@ def build_ambassador_message(
         "next_actions": [
             "reply_with_aion_feedback_if_current_need",
             "inspect_pre_spend_preflight",
-            "if_preflight_go_purchase_over_x402",
+            "purchase_if_justified",
         ],
         "truth": (
             "AION-operated outreach; not independent adoption; "
