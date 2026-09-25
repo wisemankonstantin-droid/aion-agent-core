@@ -45,6 +45,7 @@ from .moltbook_acquisition import (
     dm_check as moltbook_dm_check,
     dm_outbound_enabled as moltbook_dm_outbound_enabled,
     outbound_status as moltbook_outbound_status,
+    revalidate_intent_thread as revalidate_moltbook_intent_thread,
 )
 from .colony_acquisition import account_status as colony_account_status
 from .commercial_payment_routes import (
@@ -259,6 +260,7 @@ MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
 MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
+MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION = 5
 # Public A2A registries describe callable supply. A registry listing alone is not
 # evidence that the listed agent currently intends to buy an external service.
 FEDERATED_A2A_BUYER_CONTACT_ENABLED = False
@@ -855,13 +857,32 @@ def _qualified_unsent_target(
         )
     )
     if allow_moltbook:
-        moltbook = db.scalar(
-            base.where(models.AmbassadorTarget.discovery_source == "moltbook")
-            .order_by(models.AmbassadorTarget.id)
-            .limit(1)
+        moltbook_candidates = list(
+            db.scalars(
+                base.where(models.AmbassadorTarget.discovery_source == "moltbook")
+                .order_by(models.AmbassadorTarget.id)
+                .limit(MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION)
+            )
         )
-        if moltbook is not None:
-            return moltbook
+        for moltbook in moltbook_candidates:
+            validation = revalidate_moltbook_intent_thread(
+                moltbook.interaction_url or ""
+            )
+            if validation.get("status") != "success":
+                # A temporary read failure must not turn uncertain evidence into
+                # outbound authority. Leave the durable target untouched so a
+                # later cycle can retry.
+                continue
+            if validation.get("qualifies"):
+                return moltbook
+
+            # A successful current read disproved the legacy qualification.
+            # Persist suppression so an old pre-fix target cannot repeatedly
+            # consume the bounded revalidation budget.
+            moltbook.suppressed = True
+            moltbook.suppression_reason = "moltbook_intent_revalidation_rejected"
+            moltbook.updated_at = datetime.now(timezone.utc)
+            db.commit()
     if allow_colony:
         colony = db.scalar(
             base.where(models.AmbassadorTarget.discovery_source == "colony")
