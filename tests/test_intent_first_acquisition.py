@@ -561,6 +561,206 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
         assert selected.target_id == fresh_row.target_id
 
 
+def test_strict_moltbook_duplicate_refreshes_safe_legacy_inventory(monkeypatch):
+    with SessionLocal() as db:
+        old_campaign = ambassador.create_campaign(
+            db,
+            name="legacy duplicate source",
+            purpose="test",
+            maximum_targets=5,
+            maximum_contacts=1,
+        )
+        legacy = _candidate("legacy-agent")
+        legacy.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:SameBuyer",
+                "url": "https://www.moltbook.com/post/old-thread",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/old-thread/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_intent_match",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [legacy],
+            },
+        )
+        old_scout = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=old_campaign["campaign_id"],
+            query="legacy",
+        )
+        assert len(old_scout["created_target_ids"]) == 1
+        target_id = old_scout["created_target_ids"][0]
+
+        new_campaign = ambassador.create_campaign(
+            db,
+            name="strict duplicate destination",
+            purpose="test",
+            maximum_targets=5,
+            maximum_contacts=1,
+        )
+        strict = _candidate("same-buyer-current")
+        strict.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:SameBuyer",
+                "url": "https://www.moltbook.com/post/current-thread",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/current-thread/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_buyer_intent_v2",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [strict],
+            },
+        )
+        refreshed = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=new_campaign["campaign_id"],
+            query="current buyer need",
+        )
+
+        assert refreshed["created_target_ids"] == []
+        assert refreshed["outcomes"] == {
+            "refreshed_moltbook_buyer_intent": 1
+        }
+
+        row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == target_id
+            )
+        )
+        new_campaign_row = db.scalar(
+            select(models.AmbassadorCampaign).where(
+                models.AmbassadorCampaign.campaign_id
+                == new_campaign["campaign_id"]
+            )
+        )
+        assert row is not None
+        assert new_campaign_row is not None
+        assert row.campaign_id == new_campaign_row.id
+        assert row.interaction_url == (
+            "https://www.moltbook.com/api/v1/posts/current-thread/comments"
+        )
+        assert ambassador.MOLTBOOK_BUYER_INTENT_V2_REASON in row.qualification_reasons
+
+        selected = acquisition_swarm._qualified_unsent_target(
+            db,
+            new_campaign_row,
+            allow_moltbook=True,
+            allow_colony=False,
+            allow_federated=False,
+        )
+        assert selected is not None
+        assert selected.target_id == target_id
+
+
+def test_strict_moltbook_duplicate_does_not_rewrite_prepared_history(monkeypatch):
+    with SessionLocal() as db:
+        old_campaign = ambassador.create_campaign(
+            db,
+            name="prepared duplicate source",
+            purpose="test",
+            maximum_targets=5,
+            maximum_contacts=1,
+        )
+        legacy = _candidate("prepared-agent")
+        legacy.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:PreparedBuyer",
+                "url": "https://www.moltbook.com/post/old-prepared",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/old-prepared/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_intent_match",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [legacy],
+            },
+        )
+        old_scout = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=old_campaign["campaign_id"],
+            query="legacy",
+        )
+        target_id = old_scout["created_target_ids"][0]
+        row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == target_id
+            )
+        )
+        assert row is not None
+        old_campaign_db_id = row.campaign_id
+        old_interaction_url = row.interaction_url
+        row.prepared_message_digest = "sha256:already-prepared"
+        db.commit()
+
+        new_campaign = ambassador.create_campaign(
+            db,
+            name="prepared duplicate destination",
+            purpose="test",
+            maximum_targets=5,
+            maximum_contacts=1,
+        )
+        strict = _candidate("prepared-current")
+        strict.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:PreparedBuyer",
+                "url": "https://www.moltbook.com/post/current-prepared",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/current-prepared/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_buyer_intent_v2",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [strict],
+            },
+        )
+        result = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=new_campaign["campaign_id"],
+            query="current buyer need",
+        )
+
+        assert result["created_target_ids"] == []
+        assert result["outcomes"] == {"duplicate_target_fingerprint": 1}
+        db.refresh(row)
+        assert row.campaign_id == old_campaign_db_id
+        assert row.interaction_url == old_interaction_url
+        assert (
+            ambassador.MOLTBOOK_BUYER_INTENT_V2_REASON
+            not in row.qualification_reasons
+        )
+
+
+
 def test_qualified_unsent_target_skips_legacy_moltbook_intent_without_rewriting_history(monkeypatch):
     with SessionLocal() as db:
         campaign = ambassador.create_campaign(
