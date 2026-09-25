@@ -788,6 +788,15 @@ def build_ambassador_message(
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
         raise AmbassadorError(422, "public_url_required", "A public HTTPS AION URL is required")
+    configured_price = (os.getenv("AION_ROUTE_INTELLIGENCE_PRICE") or "").strip()
+    configured_currency = (
+        os.getenv("AION_ROUTE_INTELLIGENCE_CURRENCY") or "USDC"
+    ).strip()
+    live_price = (
+        f"{configured_price} {configured_currency}"
+        if configured_price and configured_currency
+        else "read_live_manifest"
+    )
     message = {
         "sender": "AION",
         "purpose": "bounded_machine_utility_invitation",
@@ -816,7 +825,8 @@ def build_ambassador_message(
         },
         "paid_route_intelligence": {
             "method": "POST",
-            "url": f"{base}/commercial/route-intelligence/purchase",
+            "url": f"{base}/commercial/route-intelligence/x402/purchase",
+            "price": live_price,
             "membership_required": False,
             "execute_only_for_real_need": True,
         },
