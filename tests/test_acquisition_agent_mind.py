@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from sqlalchemy import delete, select
 
 from app import models
