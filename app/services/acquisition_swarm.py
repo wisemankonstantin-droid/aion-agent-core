@@ -30,6 +30,7 @@ from .acquisition_agent_mind import (
 from .ambassador import (
     AmbassadorError,
     MAX_CAMPAIGN_TARGETS,
+    MOLTBOOK_BUYER_INTENT_V2_REASON,
     create_campaign,
     prepare_and_send_operator_contact,
     prepare_and_send_operator_moltbook_dm,
@@ -45,7 +46,6 @@ from .moltbook_acquisition import (
     dm_check as moltbook_dm_check,
     dm_outbound_enabled as moltbook_dm_outbound_enabled,
     outbound_status as moltbook_outbound_status,
-    revalidate_intent_thread as revalidate_moltbook_intent_thread,
 )
 from .colony_acquisition import account_status as colony_account_status
 from .commercial_payment_routes import (
@@ -260,8 +260,6 @@ MOLTBOOK_MAX_COMMENTS_PER_CYCLE = 2
 MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS = 21
 MOLTBOOK_DM_DAILY_REQUEST_LIMIT = 20
 MOLTBOOK_DM_MAX_REQUESTS_PER_CYCLE = 2
-MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION = 5
-MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE = 10
 # Public A2A registries describe callable supply. A registry listing alone is not
 # evidence that the listed agent currently intends to buy an external service.
 FEDERATED_A2A_BUYER_CONTACT_ENABLED = False
@@ -733,11 +731,74 @@ def _campaign_prefix(worker_id: str, intent_profile: str) -> str:
     return f"Intent swarm {intent_profile}@{worker_id} #"
 
 
+def _moltbook_target_has_current_buyer_intent(
+    target: models.AmbassadorTarget,
+) -> bool:
+    reasons = target.qualification_reasons
+    return bool(
+        isinstance(reasons, list)
+        and MOLTBOOK_BUYER_INTENT_V2_REASON in reasons
+    )
+
+
+def _campaign_has_contactable_unsent_target(
+    db: Session,
+    campaign: models.AmbassadorCampaign,
+    *,
+    allow_moltbook: bool,
+    allow_colony: bool,
+) -> bool:
+    """Return whether a full campaign still has a genuinely contactable buyer.
+
+    Legacy Moltbook rows created before the strict buyer-intent predicate stay
+    durable for history, but no longer keep a full campaign alive or receive
+    outbound authority. Existing one-time invite tokens are also excluded so a
+    stale prepared row cannot pin campaign rotation.
+    """
+
+    rows = list(
+        db.scalars(
+            select(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.campaign_id == campaign.id,
+                models.AmbassadorTarget.qualification_state == "qualified",
+                models.AmbassadorTarget.contact_state == "not_ready",
+                models.AmbassadorTarget.suppressed.is_(False),
+                models.AmbassadorTarget.discovery_source.in_(("moltbook", "colony")),
+                ~(
+                    select(models.DistributionToken.id)
+                    .where(
+                        models.DistributionToken.target_id
+                        == models.AmbassadorTarget.id,
+                        models.DistributionToken.kind == "ambassador_invite",
+                    )
+                    .exists()
+                ),
+            )
+            .order_by(models.AmbassadorTarget.id)
+            .limit(MAX_CAMPAIGN_TARGETS)
+        )
+    )
+    for target in rows:
+        if (
+            allow_moltbook
+            and target.discovery_source == "moltbook"
+            and _moltbook_target_has_current_buyer_intent(target)
+        ):
+            return True
+        if allow_colony and target.discovery_source == "colony":
+            return True
+    return False
+
+
 def _legacy_campaign_for_intent(
     db: Session,
     intent_profile: str,
+    *,
+    allow_moltbook: bool = True,
+    allow_colony: bool = True,
 ) -> models.AmbassadorCampaign | None:
-    """Drain pre-100-worker campaigns before creating replacement inventory."""
+    """Reuse legacy inventory only while it can still produce current buyers."""
 
     prefix = f"Intent swarm {intent_profile} #"
     campaigns = list(
@@ -755,17 +816,15 @@ def _legacy_campaign_for_intent(
         ) or 0
         if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
             return campaign
-        unsent = db.scalar(
-            select(func.count())
-            .select_from(models.AmbassadorTarget)
-            .where(
-                models.AmbassadorTarget.campaign_id == campaign.id,
-                models.AmbassadorTarget.qualification_state == "qualified",
-                models.AmbassadorTarget.contact_state == "not_ready",
-                models.AmbassadorTarget.suppressed.is_(False),
+        if (
+            campaign.state in {"draft", "ready"}
+            and _campaign_has_contactable_unsent_target(
+                db,
+                campaign,
+                allow_moltbook=allow_moltbook,
+                allow_colony=allow_colony,
             )
-        ) or 0
-        if campaign.state in {"draft", "ready"} and unsent > 0:
+        ):
             return campaign
     return None
 
@@ -776,6 +835,8 @@ def _campaign_for_worker(
     worker_id: str,
     intent_profile: str,
     allow_legacy: bool,
+    allow_moltbook: bool = True,
+    allow_colony: bool = True,
 ) -> models.AmbassadorCampaign:
     prefix = _campaign_prefix(worker_id, intent_profile)
     campaigns = list(
@@ -793,21 +854,24 @@ def _campaign_for_worker(
         ) or 0
         if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
             return campaign
-        unsent = db.scalar(
-            select(func.count())
-            .select_from(models.AmbassadorTarget)
-            .where(
-                models.AmbassadorTarget.campaign_id == campaign.id,
-                models.AmbassadorTarget.qualification_state == "qualified",
-                models.AmbassadorTarget.contact_state == "not_ready",
-                models.AmbassadorTarget.suppressed.is_(False),
+        if (
+            campaign.state in {"draft", "ready"}
+            and _campaign_has_contactable_unsent_target(
+                db,
+                campaign,
+                allow_moltbook=allow_moltbook,
+                allow_colony=allow_colony,
             )
-        ) or 0
-        if campaign.state in {"draft", "ready"} and unsent > 0:
+        ):
             return campaign
 
     if allow_legacy:
-        legacy = _legacy_campaign_for_intent(db, intent_profile)
+        legacy = _legacy_campaign_for_intent(
+            db,
+            intent_profile,
+            allow_moltbook=allow_moltbook,
+            allow_colony=allow_colony,
+        )
         if legacy is not None:
             return legacy
 
@@ -832,6 +896,7 @@ def _campaign_for_worker(
         raise RuntimeError("Intent swarm campaign creation did not persist")
     return campaign
 
+
 def _qualified_unsent_target(
     db: Session,
     campaign: models.AmbassadorCampaign,
@@ -839,7 +904,6 @@ def _qualified_unsent_target(
     allow_moltbook: bool,
     allow_colony: bool = False,
     allow_federated: bool = True,
-    moltbook_revalidation_usage: dict | None = None,
 ) -> models.AmbassadorTarget | None:
     base = (
         select(models.AmbassadorTarget)
@@ -859,44 +923,16 @@ def _qualified_unsent_target(
         )
     )
     if allow_moltbook:
-        cycle_remaining = MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION
-        if moltbook_revalidation_usage is not None:
-            used = int(moltbook_revalidation_usage.get("used") or 0)
-            cycle_remaining = min(
-                cycle_remaining,
-                max(0, MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE - used),
-            )
         moltbook_candidates = list(
             db.scalars(
                 base.where(models.AmbassadorTarget.discovery_source == "moltbook")
                 .order_by(models.AmbassadorTarget.id)
-                .limit(cycle_remaining)
+                .limit(MAX_CAMPAIGN_TARGETS)
             )
         )
         for moltbook in moltbook_candidates:
-            if moltbook_revalidation_usage is not None:
-                moltbook_revalidation_usage["used"] = (
-                    int(moltbook_revalidation_usage.get("used") or 0) + 1
-                )
-            validation = revalidate_moltbook_intent_thread(
-                moltbook.interaction_url or "",
-                moltbook.source_identifier,
-            )
-            if validation.get("status") != "success":
-                # A temporary read failure must not turn uncertain evidence into
-                # outbound authority. Leave the durable target untouched so a
-                # later cycle can retry.
-                continue
-            if validation.get("qualifies"):
+            if _moltbook_target_has_current_buyer_intent(moltbook):
                 return moltbook
-
-            # A successful current read disproved the legacy qualification.
-            # Persist suppression so an old pre-fix target cannot repeatedly
-            # consume the bounded revalidation budget.
-            moltbook.suppressed = True
-            moltbook.suppression_reason = "moltbook_intent_revalidation_rejected"
-            moltbook.updated_at = datetime.now(timezone.utc)
-            db.commit()
     if allow_colony:
         colony = db.scalar(
             base.where(models.AmbassadorTarget.discovery_source == "colony")
@@ -1125,7 +1161,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
         moltbook_comments_remaining_today,
     )
-    moltbook_revalidation_usage = {"used": 0}
     moltbook_dm_requests_today = _moltbook_dm_requests_today(db)
     moltbook_dm_remaining_today = max(
         0, MOLTBOOK_DM_DAILY_REQUEST_LIMIT - moltbook_dm_requests_today
@@ -1178,11 +1213,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 "max_per_cycle": MOLTBOOK_MAX_COMMENTS_PER_CYCLE,
                 "minimum_interval_seconds": MOLTBOOK_MIN_COMMENT_INTERVAL_SECONDS,
                 "attempted_this_cycle": 0,
-            },
-            "intent_revalidation": {
-                "attempted_this_cycle": 0,
-                "max_per_cycle": MAX_MOLTBOOK_REVALIDATIONS_PER_CYCLE,
-                "max_per_selection": MAX_MOLTBOOK_REVALIDATIONS_PER_SELECTION,
             },
             "dm": {
                 "initial_daily_request_limit": MOLTBOOK_DM_DAILY_REQUEST_LIMIT,
@@ -1280,6 +1310,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 worker_id=worker_id,
                 intent_profile=lane,
                 allow_legacy=worker.shard == 1,
+                allow_moltbook=moltbook_ready,
+                allow_colony=colony_ready,
             )
             moltbook_created = 0
 
@@ -1432,10 +1464,6 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 # requester-intent surface. Do not turn provider listings into
                 # unsolicited buyer acquisition contacts.
                 allow_federated=FEDERATED_A2A_BUYER_CONTACT_ENABLED,
-                moltbook_revalidation_usage=moltbook_revalidation_usage,
-            )
-            report["moltbook"]["intent_revalidation"]["attempted_this_cycle"] = int(
-                moltbook_revalidation_usage.get("used") or 0
             )
             contact_attempted_this_cycle = False
             outbound_preflight = None
