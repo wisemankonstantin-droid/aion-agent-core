@@ -1111,6 +1111,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         channel_health=channel_health,
         send_enabled=send_enabled,
         fallback_queries_by_worker=fallback_queries_by_worker,
+        reasoning_workers=active_workers,
     )
 
     active_mind_policies = {}
@@ -1186,6 +1187,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "acquisition_channel_strategy": "ai_minds_over_bounded_multichannel_transport",
         "mind_runtime": acquisition_mind_runtime_status(),
         "minds_planned_this_cycle": len(mind_plans),
+        "ai_reasoning_worker_ids": sorted(mind_plans),
         "moltbook_recent_global_scan_worker": moltbook_recent_scan_worker_id,
         "colony_paid_task_scan_worker": colony_paid_scan_worker_id,
         "colony": {
@@ -1239,9 +1241,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         },
         "truth": (
             "The 100 workers are transparent AION-operated acquisition infrastructure. "
-            "When the model runtime is configured, all 100 independently plan from their "
-            "own safe durable memory each cycle; only the rotating active cohort can receive "
-            "bounded external transport slots. Shared transport health, dedupe and platform "
+            "The rotating active cohort receives bounded external transport slots. When the "
+            "model runtime is configured, the configured reasoning-call budget is spent only "
+            "on workers in that active cohort; remaining active workers use deterministic "
+            "fallback discovery for that cycle. Shared transport health, dedupe and platform "
             "limits remain authoritative. Federated A2A registry discovery is supply "
             "evidence and is not treated as verified buyer intent. Worker count is not "
             "independent adoption, customer proof, SAT or revenue."
