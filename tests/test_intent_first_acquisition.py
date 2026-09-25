@@ -649,16 +649,19 @@ def test_qualified_unsent_target_revalidates_and_suppresses_legacy_moltbook_inte
             "revalidate_moltbook_intent_thread",
             revalidate,
         )
+        usage = {"used": 0}
         selected = acquisition_swarm._qualified_unsent_target(
             db,
             campaign_row,
             allow_moltbook=True,
             allow_colony=False,
             allow_federated=False,
+            moltbook_revalidation_usage=usage,
         )
 
         assert selected is not None
         assert selected.target_id == current_row.target_id
+        assert usage["used"] == 2
         db.refresh(legacy_row)
         assert legacy_row.suppressed is True
         assert (
