@@ -746,8 +746,8 @@ def build_ambassador_message(
             "purchase_if_justified",
         ],
         "truth": (
-            "AION-operated outreach; not independent adoption. "
-            "No provider execution or payment; no retry."
+            "AION-operated outreach; not independent adoption; "
+            "no provider execution or payment; no retry."
         ),
     }
     decision = str((preflight_result or {}).get("decision") or "").upper()
