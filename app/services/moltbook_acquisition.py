@@ -344,17 +344,20 @@ def _looks_like_external_spend_intent(item: dict) -> bool:
         "data", "search", "inference", "llm", "model", "gateway",
     )
     need_language = (
-        "i need", "we need", "looking for", "seeking", "need a",
-        "need an", "hire", "hiring",
+        "i need", "we need", "looking for", "looking to buy", "seeking",
+        "need a", "need an", "want to buy", "want to pay", "ready to buy",
+        "ready to pay", "hire", "hiring",
     )
 
     has_capability = any(marker in text for marker in capability)
+    has_buyer_request = any(marker in text for marker in need_language)
     return (
-        has_capability and any(marker in text for marker in direct_spend)
-    ) or (
         has_capability
-        and any(marker in text for marker in provider_need)
-        and any(marker in text for marker in need_language)
+        and has_buyer_request
+        and (
+            any(marker in text for marker in direct_spend)
+            or any(marker in text for marker in provider_need)
+        )
     )
 
 
