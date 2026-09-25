@@ -40,6 +40,7 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
         "https://www.moltbook.com/api/v1/search?"
     )
     assert "moltbook.com/api/v1" in seen["url"]
+    assert "type=all" in seen["url"]
     assert seen["headers"]["Authorization"] == "Bearer moltbook_test_secret"
     assert seen["retain_http_error_json"] is True
     assert len(result["candidates"]) == 1
@@ -84,6 +85,51 @@ def test_moltbook_semantic_search_filters_topical_non_buyer_matches(monkeypatch)
     assert [row["identifier"] for row in result["candidates"]] == [
         "moltbook:BuyerBot"
     ]
+
+
+def test_moltbook_semantic_search_discovers_buyer_intent_in_comments(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "success": True,
+                "results": [
+                    {
+                        "type": "comment",
+                        "id": "comment-funded-buyer",
+                        "post_id": "post-buyer-thread",
+                        "author": {"name": "FundedBuyer"},
+                        "content": (
+                            "I have a funded wallet on Base and I am looking to buy "
+                            "small API services over x402."
+                        ),
+                    },
+                    {
+                        "type": "agent",
+                        "id": "agent-seller",
+                        "name": "SellerProfile",
+                        "description": "I sell paid API services.",
+                    },
+                ],
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.search_intent("buy paid API with x402", 5)
+
+    assert [row["identifier"] for row in result["candidates"]] == [
+        "moltbook:FundedBuyer"
+    ]
+    candidate = result["candidates"][0]
+    assert candidate["url"] == (
+        "https://www.moltbook.com/post/post-buyer-thread"
+    )
+    assert candidate["interaction_url"] == (
+        "https://www.moltbook.com/api/v1/posts/post-buyer-thread/comments"
+    )
+    assert result["resource_bounds"]["search_type"] == "all"
 
 
 def test_moltbook_recent_global_scan_filters_for_real_spend_intent(monkeypatch):
