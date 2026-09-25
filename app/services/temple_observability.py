@@ -619,16 +619,22 @@ def build_temple_live_state(db: Session) -> dict:
     )
 
     signal_counts = Counter()
-    intelligence_rows = list(
-        db.scalars(
-            select(ConversationIntelligence)
+    # This live aggregate is refreshed frequently and only needs the two signal
+    # columns. Selecting full ORM rows here can transfer large summaries and
+    # metadata from production PostgreSQL for no user-visible benefit.
+    intelligence_signal_rows = list(
+        db.execute(
+            select(
+                ConversationIntelligence.explicit_signals,
+                ConversationIntelligence.inferred_signals,
+            )
             .order_by(ConversationIntelligence.id.desc())
             .limit(1000)
         )
     )
-    for row in intelligence_rows:
-        signal_counts.update(set(row.explicit_signals or []))
-        signal_counts.update(set(row.inferred_signals or []))
+    for explicit_signals, inferred_signals in intelligence_signal_rows:
+        signal_counts.update(set(explicit_signals or []))
+        signal_counts.update(set(inferred_signals or []))
 
     moltbook_state = moltbook_outbound_status()
     return {
@@ -759,7 +765,7 @@ a{color:#9bdcff;word-break:break-all}.event{padding:8px 0;border-bottom:1px soli
 <div class="top" id="cards"></div>
 <div class="side">
   <div class="tools"><input id="search" placeholder="worker / intent / target / brain"><button id="rotate">pause</button></div>
-  <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select AION CORE for the shared Temple Brain, or select any worker for its independent mind and transport truth. State refreshes every 5 seconds.</p></div>
+  <div id="detail"><b>AION LIVE TEMPLE</b><p class="muted">Select AION CORE for the shared Temple Brain, or select any worker for its independent mind and transport truth. State refreshes every 60 seconds while this tab is visible.</p></div>
 </div>
 <div class="legend">fill = transport · ring = AI mind · green/red/gold pulse = verified action · purple dashed pulse = AI next-channel plan · outer nodes = external targets · cyan inbound pulse = machine entry to Temple</div>
 <script>
@@ -847,7 +853,10 @@ canvas.addEventListener('pointerup',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.c
 document.getElementById('rotate').onclick=e=>{auto=!auto;e.target.textContent=auto?'pause':'rotate'};
 search.addEventListener('input',()=>{if(D){const q=search.value.trim().toLowerCase();if(q==='brain'||q==='temple brain'||q==='aion-temple-brain'){brainDetail();return}const w=D.fleet.workers.find(x=>x.id.toLowerCase()===q);if(w){selected=w.id;workerDetail(w)}}});
 async function refresh(){try{const r=await fetch('/temple/live/state',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);D=await r.json();renderCards();if(selected){if(selected==='aion-temple-brain'){brainDetail()}else{const w=D.fleet.workers.find(x=>x.id===selected);if(w)workerDetail(w)}}}catch(e){cards.innerHTML='<div class="card brand"><b>AION LIVE TEMPLE</b><small>state unavailable: '+esc(e.message)+'</small></div>'}}
-refresh();setInterval(refresh,5000);requestAnimationFrame(draw);
+let refreshTimer=null;
+function scheduleRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null}if(!document.hidden){refreshTimer=setInterval(refresh,60000)}}
+document.addEventListener('visibilitychange',()=>{scheduleRefresh();if(!document.hidden)refresh()});
+refresh();scheduleRefresh();requestAnimationFrame(draw);
 </script>
 </body>
 </html>"""

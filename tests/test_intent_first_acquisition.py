@@ -1356,7 +1356,9 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "AION LIVE TEMPLE" in response.text
     assert "<canvas id=\"scene\"></canvas>" in response.text
     assert "/temple/live/state" in response.text
-    assert "setInterval(refresh,5000)" in response.text
+    assert "setInterval(refresh,60000)" in response.text
+    assert "visibilitychange" in response.text
+    assert "document.hidden" in response.text
     assert "fill = transport" in response.text
     assert "ring = AI mind" in response.text
     assert "pulse = verified action" in response.text
