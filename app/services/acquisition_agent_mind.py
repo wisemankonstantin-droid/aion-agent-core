@@ -465,6 +465,22 @@ def _cloudru_chat_completions_endpoint() -> tuple[str, str]:
     return f"{raw}/chat/completions", "custom_openai_compatible_base"
 
 
+def _custom_gateway_v1_chat_endpoint(url: str) -> str | None:
+    """Return the legacy Cloud.ru gateway v1 path candidate after a custom 404.
+
+    PR #48's Cloud.ru-local transport gateway exposes /v1/chat/completions.
+    Some production configuration may hold the gateway origin/root rather than
+    the documented /v1 base. Preserve the configured path first; only after a
+    404 try the same origin/base with one inserted /v1 segment.
+    """
+
+    value = str(url or "").strip().rstrip("/")
+    suffix = "/chat/completions"
+    if not value.endswith(suffix) or value.endswith("/v1/chat/completions"):
+        return None
+    return value[: -len(suffix)] + "/v1/chat/completions"
+
+
 def configured() -> bool:
     return bool(_reasoning_api_key())
 
@@ -485,6 +501,9 @@ def runtime_status() -> dict:
         "configured": configured(),
         "provider": provider,
         "reasoning_endpoint_mode": endpoint_mode,
+        "cloudru_gateway_v1_404_fallback_enabled": (
+            provider == "cloudru_chat_completions"
+        ),
         "cloudru_official_404_fallback_enabled": (
             provider == "cloudru_chat_completions"
         ),
@@ -1435,18 +1454,33 @@ def _call_structured_model(
         and endpoint_mode != "cloudru_official_canonical"
         and url != CLOUDRU_CHAT_COMPLETIONS_URL
     ):
-        # A stale/custom base URL may survive in production configuration even
-        # after the provider has moved to Cloud.ru Foundation Models. Preserve
-        # the configured endpoint when it works, but on a resource-not-found
-        # response retry exactly once against Cloud.ru's documented canonical
-        # endpoint. A 404 carries no model output, so this does not increase the
-        # configured AI reasoning-call/token budget.
-        response = httpx.post(
-            CLOUDRU_CHAT_COMPLETIONS_URL,
-            headers=request_headers,
-            json=payload,
-            timeout=timeout,
-        )
+        # PR #48 introduced a Cloud.ru-local gateway because Render Frankfurt
+        # cannot reliably connect directly to Foundation Models. Its public
+        # contract is /v1/chat/completions. If production carries only the
+        # gateway origin/root, the normal OpenAI-compatible base join produces
+        # /chat/completions and a truthful 404. Retry that same gateway first
+        # with the documented /v1 path before considering any direct Cloud.ru
+        # fallback.
+        gateway_v1_url = _custom_gateway_v1_chat_endpoint(url)
+        if gateway_v1_url:
+            response = httpx.post(
+                gateway_v1_url,
+                headers=request_headers,
+                json=payload,
+                timeout=timeout,
+            )
+
+        # Only a second 404 means the custom gateway path still was not found.
+        # Preserve the previous canonical fallback as the final bounded probe.
+        # 404 responses contain no model output, so neither retry increases the
+        # configured successful reasoning-call/token budget.
+        if response.status_code == 404:
+            response = httpx.post(
+                CLOUDRU_CHAT_COMPLETIONS_URL,
+                headers=request_headers,
+                json=payload,
+                timeout=timeout,
+            )
     if response.status_code == 429:
         raise RuntimeError("model_rate_limited")
     if response.status_code < 200 or response.status_code >= 300:
