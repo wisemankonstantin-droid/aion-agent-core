@@ -128,49 +128,100 @@ def test_moltbook_semantic_search_rejects_commercial_discussion_without_buyer_re
     ]
 
 
-def test_moltbook_intent_revalidation_reads_current_thread(monkeypatch):
+def test_moltbook_intent_revalidation_matches_target_author_in_post_or_comments(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
     seen = []
 
     def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
         seen.append((method, url))
-        post_id = url.rsplit("/", 1)[-1]
-        if post_id == "post-buyer":
-            post = {
-                "type": "post",
-                "id": "post-buyer",
-                "author": {"name": "BuyerBot"},
-                "content": "I need a paid monitoring API and I am looking for a provider.",
-            }
-        else:
-            post = {
-                "type": "post",
-                "id": "post-discussion",
-                "author": {"name": "DiscussionBot"},
-                "content": "The cost of API monitoring is real. Paid services can help.",
-            }
-        return (
-            safe_http.FetchResult(200, b"{}", None, 1),
-            {"success": True, "post": post},
-        )
+        if url.endswith("/posts/post-buyer"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "post": {
+                        "type": "post",
+                        "id": "post-buyer",
+                        "author": {"name": "BuyerBot"},
+                        "content": "I need a paid monitoring API and I am looking for a provider.",
+                    }
+                },
+            )
+        if url.endswith("/posts/post-comment-buyer"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "post": {
+                        "type": "post",
+                        "id": "post-comment-buyer",
+                        "author": {"name": "HostBot"},
+                        "content": "A general thread about agent infrastructure.",
+                    }
+                },
+            )
+        if url.endswith("/posts/post-comment-buyer/comments"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "comments": [
+                        {
+                            "type": "comment",
+                            "id": "comment-buyer",
+                            "post_id": "post-comment-buyer",
+                            "author": {"name": "FundedBuyer"},
+                            "content": (
+                                "I have a funded wallet and I am looking to buy "
+                                "small API services over x402."
+                            ),
+                        }
+                    ]
+                },
+            )
+        if url.endswith("/posts/post-discussion"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "post": {
+                        "type": "post",
+                        "id": "post-discussion",
+                        "author": {"name": "DiscussionBot"},
+                        "content": "The cost of API monitoring is real. Paid services can help.",
+                    }
+                },
+            )
+        if url.endswith("/posts/post-discussion/comments"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {"comments": []},
+            )
+        raise AssertionError(f"unexpected URL: {url}")
 
     monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
 
-    buyer = moltbook_acquisition.revalidate_intent_thread(
-        "https://www.moltbook.com/api/v1/posts/post-buyer/comments"
+    post_buyer = moltbook_acquisition.revalidate_intent_thread(
+        "https://www.moltbook.com/api/v1/posts/post-buyer/comments",
+        "moltbook:BuyerBot",
+    )
+    comment_buyer = moltbook_acquisition.revalidate_intent_thread(
+        "https://www.moltbook.com/api/v1/posts/post-comment-buyer/comments",
+        "moltbook:FundedBuyer",
     )
     discussion = moltbook_acquisition.revalidate_intent_thread(
-        "https://www.moltbook.com/api/v1/posts/post-discussion/comments"
+        "https://www.moltbook.com/api/v1/posts/post-discussion/comments",
+        "moltbook:DiscussionBot",
     )
 
-    assert buyer["status"] == "success"
-    assert buyer["qualifies"] is True
+    assert post_buyer["status"] == "success"
+    assert post_buyer["qualifies"] is True
+    assert post_buyer["evidence_location"] == "post"
+    assert comment_buyer["status"] == "success"
+    assert comment_buyer["qualifies"] is True
+    assert comment_buyer["evidence_location"] == "comment"
     assert discussion["status"] == "success"
     assert discussion["qualifies"] is False
-    assert seen == [
-        ("GET", "https://www.moltbook.com/api/v1/posts/post-buyer"),
-        ("GET", "https://www.moltbook.com/api/v1/posts/post-discussion"),
-    ]
+    assert (
+        "GET",
+        "https://www.moltbook.com/api/v1/posts/post-comment-buyer/comments",
+    ) in seen
 
 
 def test_moltbook_intent_revalidation_fails_closed_on_read_error(monkeypatch):
@@ -184,12 +235,12 @@ def test_moltbook_intent_revalidation_fails_closed_on_read_error(monkeypatch):
 
     monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
     result = moltbook_acquisition.revalidate_intent_thread(
-        "https://www.moltbook.com/api/v1/posts/post-buyer/comments"
+        "https://www.moltbook.com/api/v1/posts/post-buyer/comments",
+        "moltbook:BuyerBot",
     )
 
     assert result["status"] == "unavailable"
     assert result["qualifies"] is False
-
 
 
 def test_moltbook_semantic_search_discovers_buyer_intent_in_comments(monkeypatch):
