@@ -365,8 +365,99 @@ def _insert_candidate(db: Session, campaign: models.AmbassadorCampaign, candidat
             fingerprint = _target_fingerprint(interaction_url)
     except AmbassadorError as exc:
         return None, exc.code
-    existing = db.scalar(select(models.AmbassadorTarget).where(models.AmbassadorTarget.target_fingerprint == fingerprint))
+    existing = db.scalar(
+        select(models.AmbassadorTarget).where(
+            models.AmbassadorTarget.target_fingerprint == fingerprint
+        )
+    )
     if existing is not None:
+        strict_moltbook_evidence = (
+            source == "moltbook"
+            and str(candidate.get("evidence_state") or "")
+            in MOLTBOOK_BUYER_INTENT_EVIDENCE_STATES_V2
+        )
+        if (
+            strict_moltbook_evidence
+            and existing.discovery_source == "moltbook"
+            and existing.contact_state == "not_ready"
+            and not existing.suppressed
+        ):
+            invite_exists = db.scalar(
+                select(models.DistributionToken.id)
+                .where(
+                    models.DistributionToken.target_id == existing.id,
+                    models.DistributionToken.kind == "ambassador_invite",
+                )
+                .limit(1)
+            )
+            if invite_exists is None:
+                qualification_state, reasons = _qualification(candidate)
+                if (
+                    qualification_state == "qualified"
+                    and MOLTBOOK_BUYER_INTENT_V2_REASON in reasons
+                ):
+                    if existing.campaign_id != campaign.id:
+                        current = (
+                            db.scalar(
+                                select(func.count())
+                                .select_from(models.AmbassadorTarget)
+                                .where(
+                                    models.AmbassadorTarget.campaign_id
+                                    == campaign.id
+                                )
+                            )
+                            or 0
+                        )
+                        if current >= campaign.maximum_targets:
+                            return existing, "duplicate_target_fingerprint"
+
+                    # The same external agent has surfaced again with current,
+                    # strict buyer intent before any prior contact was sent.
+                    # Preserve the durable target identity while moving its
+                    # operational assignment and contact destination to the
+                    # newly verified thread. Already prepared/contacted or
+                    # suppressed targets are never reactivated here.
+                    existing.campaign_id = campaign.id
+                    existing.agent_card_url = card_url
+                    existing.interaction_url = interaction_url
+                    existing.metadata_digest = _digest_json(
+                        {
+                            "source": candidate.get("source"),
+                            "identifier": source_identifier,
+                            "agent_card_url": card_url,
+                            "interaction_url": interaction_url,
+                            "manifest_reachable": bool(
+                                candidate.get("manifest_reachable")
+                            ),
+                            "declared_a2a_v1_jsonrpc": bool(
+                                candidate.get("declared_a2a_v1_jsonrpc")
+                            ),
+                            "authentication_requirement": candidate.get(
+                                "authentication_requirement"
+                            ),
+                        }
+                    )
+                    existing.manifest_reachable = bool(
+                        candidate.get("manifest_reachable")
+                    )
+                    existing.declared_a2a_v1_jsonrpc = bool(
+                        candidate.get("declared_a2a_v1_jsonrpc")
+                    )
+                    existing.interaction_url_validated = bool(
+                        candidate.get("interaction_url_validated")
+                    )
+                    existing.authentication_requirement = str(
+                        candidate.get("authentication_requirement") or "unknown"
+                    )[:32]
+                    existing.payment_required = bool(
+                        candidate.get("payment_required")
+                        or candidate.get("manifest_http_status") == 402
+                    )
+                    existing.qualification_state = qualification_state
+                    existing.qualification_reasons = reasons
+                    existing.updated_at = _now()
+                    db.flush()
+                    return existing, "refreshed_current_moltbook_buyer_intent"
         return existing, "duplicate_target_fingerprint"
     count = db.scalar(select(func.count()).select_from(models.AmbassadorTarget).where(models.AmbassadorTarget.campaign_id == campaign.id)) or 0
     if count >= campaign.maximum_targets:
