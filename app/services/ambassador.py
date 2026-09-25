@@ -747,7 +747,7 @@ def build_ambassador_message(
         ],
         "truth": (
             "AION-operated outreach; not independent adoption. "
-            "No payment/provider execution; no retry."
+            "No provider execution or payment; no retry."
         ),
     }
     decision = str((preflight_result or {}).get("decision") or "").upper()
