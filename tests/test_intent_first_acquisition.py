@@ -553,8 +553,8 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
             allow_federated=False,
         )
 
-    assert selected is not None
-    assert selected.target_id == fresh_row.target_id
+        assert selected is not None
+        assert selected.target_id == fresh_row.target_id
 
 
 def test_qualified_target_overrides_model_discover_only_once_actionable():
