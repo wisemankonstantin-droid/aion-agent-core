@@ -1617,12 +1617,21 @@ def refresh_all_minds(
     channel_health: dict,
     send_enabled: bool,
     fallback_queries_by_worker: dict[str, list[str]],
+    reasoning_workers: Iterable | None = None,
 ) -> dict[str, dict]:
     """Run one shared Temple Brain synthesis plus independent reasoning for workers."""
 
     workers = tuple(workers)
     if not workers:
         return {}
+
+    worker_ids = {worker.id for worker in workers}
+    if reasoning_workers is None:
+        reasoning_workers = workers
+    else:
+        reasoning_workers = tuple(
+            worker for worker in reasoning_workers if worker.id in worker_ids
+        )
 
     if not enabled():
         state = "model_unconfigured" if not configured() else "mind_disabled"
@@ -1670,7 +1679,7 @@ def refresh_all_minds(
         temple_brain=shared_brain,
     )
     maximum = runtime_status()["max_reasoning_calls_per_cycle"]
-    selected = workers[:maximum]
+    selected = tuple(reasoning_workers)[:maximum]
     plans: dict[str, dict] = {}
 
     def run(worker):
@@ -1693,8 +1702,9 @@ def refresh_all_minds(
             if plan is not None:
                 plans[worker_id] = plan
 
-    if maximum < len(workers):
-        deferred = workers[maximum:]
+    selected_ids = {worker.id for worker in selected}
+    deferred = tuple(worker for worker in workers if worker.id not in selected_ids)
+    if deferred:
         _ensure_rows(deferred, state="reasoning_budget_deferred")
     return plans
 
