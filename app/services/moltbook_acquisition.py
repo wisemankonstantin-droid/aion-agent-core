@@ -476,6 +476,97 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
     }
 
 
+def revalidate_intent_thread(interaction_url: str) -> dict:
+    """Re-read one Moltbook thread and apply the current buyer-intent predicate.
+
+    This is intentionally read-only and fail-closed. It exists so durable
+    targets discovered under an older predicate cannot consume a future
+    outbound contact slot without current public intent evidence.
+    """
+
+    value = str(interaction_url or "").strip()
+    prefix = f"{MOLTBOOK_API_BASE}/posts/"
+    suffix = "/comments"
+    if (
+        not value.startswith(prefix)
+        or not value.endswith(suffix)
+        or "?" in value
+        or "#" in value
+    ):
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": "invalid_moltbook_interaction_url",
+            "http_status": None,
+        }
+
+    post_id = value[len(prefix):-len(suffix)].strip("/")
+    if not _SAFE_POST_ID.fullmatch(post_id):
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": "invalid_moltbook_post_id",
+            "http_status": None,
+        }
+
+    result, payload = _request_json("GET", f"/posts/{post_id}")
+    if result.error or result.status != 200 or not isinstance(payload, dict):
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": platform_error_summary(result, payload),
+            "http_status": result.status,
+        }
+
+    candidates = []
+    direct_post = payload.get("post")
+    if isinstance(direct_post, dict):
+        candidates.append(direct_post)
+    data = payload.get("data")
+    if isinstance(data, dict):
+        nested_post = data.get("post")
+        if isinstance(nested_post, dict):
+            candidates.append(nested_post)
+        candidates.append(data)
+    candidates.append(payload)
+
+    post = next(
+        (
+            item
+            for item in candidates
+            if any(
+                isinstance(item.get(key), str) and item.get(key).strip()
+                for key in ("title", "content", "text", "body", "description")
+            )
+        ),
+        None,
+    )
+    if post is None:
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": "moltbook_post_payload_missing",
+            "http_status": result.status,
+        }
+
+    returned_post_id = _post_id(post)
+    if returned_post_id is not None and returned_post_id != post_id:
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": "moltbook_post_id_mismatch",
+            "http_status": result.status,
+        }
+
+    return {
+        "status": "success",
+        "qualifies": _looks_like_external_spend_intent(post),
+        "error": None,
+        "http_status": result.status,
+        "post_id": post_id,
+    }
+
+
 def build_outreach_comment(
     *,
     public_base_url: str,
