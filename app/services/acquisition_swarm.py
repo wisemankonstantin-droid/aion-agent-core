@@ -866,7 +866,8 @@ def _qualified_unsent_target(
         )
         for moltbook in moltbook_candidates:
             validation = revalidate_moltbook_intent_thread(
-                moltbook.interaction_url or ""
+                moltbook.interaction_url or "",
+                moltbook.source_identifier,
             )
             if validation.get("status") != "success":
                 # A temporary read failure must not turn uncertain evidence into
