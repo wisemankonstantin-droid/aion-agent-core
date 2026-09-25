@@ -873,6 +873,37 @@ def test_call_model_compacts_oversized_worker_observation_before_provider(monkey
     assert "bounded-observation-test-key" not in json.dumps(seen["json"])
 
 
+def test_cloudru_official_base_url_variants_normalize_to_canonical_chat_endpoint(monkeypatch):
+    variants = (
+        "https://foundation-models.api.cloud.ru",
+        "https://foundation-models.api.cloud.ru/",
+        "https://foundation-models.api.cloud.ru/v1",
+        "https://foundation-models.api.cloud.ru/v1/",
+        "https://foundation-models.api.cloud.ru/v1/chat/completions",
+        "https://foundation-models.api.cloud.ru/legacy/path",
+    )
+    for value in variants:
+        monkeypatch.setenv("AION_REASONING_BASE_URL", value)
+        endpoint, mode = acquisition_agent_mind._cloudru_chat_completions_endpoint()
+        assert endpoint == acquisition_agent_mind.CLOUDRU_CHAT_COMPLETIONS_URL
+        assert mode == "cloudru_official_canonical"
+
+
+def test_cloudru_custom_openai_compatible_base_remains_supported(monkeypatch):
+    monkeypatch.setenv("AION_REASONING_BASE_URL", "https://models.example/v1")
+    endpoint, mode = acquisition_agent_mind._cloudru_chat_completions_endpoint()
+    assert endpoint == "https://models.example/v1/chat/completions"
+    assert mode == "custom_openai_compatible_base"
+
+    monkeypatch.setenv(
+        "AION_REASONING_BASE_URL",
+        "https://models.example/v1/chat/completions",
+    )
+    endpoint, mode = acquisition_agent_mind._cloudru_chat_completions_endpoint()
+    assert endpoint == "https://models.example/v1/chat/completions"
+    assert mode == "custom_full_chat_endpoint"
+
+
 def test_cloudru_worker_uses_chat_completions_and_structured_output(monkeypatch):
     monkeypatch.setenv("AION_REASONING_PROVIDER", "cloudru_chat_completions")
     monkeypatch.setenv("AION_REASONING_API_KEY", "cloudru-worker-secret")
@@ -951,6 +982,7 @@ def test_cloudru_temple_brain_uses_its_model_and_runtime_reports_provider(monkey
     assert status["enabled"] is True
     assert status["configured"] is True
     assert status["provider"] == "cloudru_chat_completions"
+    assert status["reasoning_endpoint_mode"] == "cloudru_official_canonical"
     assert seen["json"]["model"] == "openai/gpt-oss-120b"
     assert seen["json"]["response_format"]["json_schema"]["name"] == (
         "aion_temple_brain_plan"
