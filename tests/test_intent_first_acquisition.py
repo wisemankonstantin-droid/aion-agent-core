@@ -1359,9 +1359,10 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "setInterval(refresh,5000)" in response.text
     assert "fill = transport" in response.text
     assert "ring = AI mind" in response.text
-    assert "moving pulse = verified action" in response.text
+    assert "pulse = verified action" in response.text
     assert "outer nodes = external targets" in response.text
     assert "cyan inbound pulse = machine entry to Temple" in response.text
+    assert "drawPlanRoutes" in response.text
     assert "drawOutboundRoutes" in response.text
     assert "drawInboundRoutes" in response.text
     assert "eventDetail" in response.text
