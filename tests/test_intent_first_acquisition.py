@@ -547,6 +547,14 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
         stale_row.contact_state = "not_ready"
         db.commit()
 
+        monkeypatch.setattr(
+            acquisition_swarm,
+            "revalidate_moltbook_intent_thread",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "qualifies": True,
+            },
+        )
         selected = acquisition_swarm._qualified_unsent_target(
             db,
             campaign_row,
@@ -557,6 +565,106 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
 
         assert selected is not None
         assert selected.target_id == fresh_row.target_id
+
+
+def test_qualified_unsent_target_revalidates_and_suppresses_legacy_moltbook_intent(monkeypatch):
+    with SessionLocal() as db:
+        campaign = ambassador.create_campaign(
+            db,
+            name="legacy intent revalidation regression",
+            purpose="test",
+            maximum_targets=10,
+            maximum_contacts=2,
+        )
+        campaign_id = campaign["campaign_id"]
+
+        legacy = _candidate("legacy-discussion")
+        legacy.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:legacy-discussion",
+                "url": "https://www.moltbook.com/post/legacy-discussion",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/"
+                    "legacy-discussion/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+            }
+        )
+        current = _candidate("current-buyer")
+        current.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:current-buyer",
+                "url": "https://www.moltbook.com/post/current-buyer",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/"
+                    "current-buyer/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [legacy, current],
+            },
+        )
+        scouted = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=campaign_id,
+            query="current buyer need",
+        )
+        assert len(scouted["created_target_ids"]) == 2
+
+        campaign_row = db.scalar(
+            select(models.AmbassadorCampaign).where(
+                models.AmbassadorCampaign.campaign_id == campaign_id
+            )
+        )
+        legacy_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][0]
+            )
+        )
+        current_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][1]
+            )
+        )
+        assert campaign_row is not None
+        assert legacy_row is not None
+        assert current_row is not None
+
+        def revalidate(interaction_url):
+            if "legacy-discussion" in interaction_url:
+                return {"status": "success", "qualifies": False}
+            return {"status": "success", "qualifies": True}
+
+        monkeypatch.setattr(
+            acquisition_swarm,
+            "revalidate_moltbook_intent_thread",
+            revalidate,
+        )
+        selected = acquisition_swarm._qualified_unsent_target(
+            db,
+            campaign_row,
+            allow_moltbook=True,
+            allow_colony=False,
+            allow_federated=False,
+        )
+
+        assert selected is not None
+        assert selected.target_id == current_row.target_id
+        db.refresh(legacy_row)
+        assert legacy_row.suppressed is True
+        assert (
+            legacy_row.suppression_reason
+            == "moltbook_intent_revalidation_rejected"
+        )
+
 
 
 def test_qualified_target_overrides_model_discover_only_once_actionable():
