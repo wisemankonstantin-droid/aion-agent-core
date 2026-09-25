@@ -294,7 +294,7 @@ def _post_id(item: dict) -> str | None:
 def _candidate(
     item: dict,
     *,
-    evidence_state: str = "semantic_public_buyer_intent_v2",
+    evidence_state: str,
 ) -> dict | None:
     author = _author_name(item)
     post_id = _post_id(item)
@@ -462,7 +462,10 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
         # AION consumes a one-contact slot.
         if not _looks_like_external_spend_intent(item):
             continue
-        candidate = _candidate(item)
+        candidate = _candidate(
+            item,
+            evidence_state="semantic_public_buyer_intent_v2",
+        )
         if candidate is not None:
             candidates.append(candidate)
         if len(candidates) >= bounded_limit:
