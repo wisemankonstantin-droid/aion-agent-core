@@ -584,11 +584,11 @@ def revalidate_intent_thread(
         }
 
     post_author = _author_name(post)
-    if (
+    target_evidence_seen = bool(
         post_author is not None
         and post_author.casefold() == target_author.casefold()
-        and _looks_like_external_spend_intent(post)
-    ):
+    )
+    if target_evidence_seen and _looks_like_external_spend_intent(post):
         return {
             "status": "success",
             "qualifies": True,
@@ -637,6 +637,7 @@ def revalidate_intent_thread(
         comment_post_id = _post_id(comment)
         if comment_post_id is not None and comment_post_id != post_id:
             continue
+        target_evidence_seen = True
         if _looks_like_external_spend_intent(comment):
             return {
                 "status": "success",
@@ -646,6 +647,15 @@ def revalidate_intent_thread(
                 "post_id": post_id,
                 "evidence_location": "comment",
             }
+
+    if not target_evidence_seen:
+        return {
+            "status": "unavailable",
+            "qualifies": False,
+            "error": "moltbook_target_evidence_not_found",
+            "http_status": comments_result.status,
+            "post_id": post_id,
+        }
 
     return {
         "status": "success",
