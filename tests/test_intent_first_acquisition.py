@@ -1288,6 +1288,11 @@ def test_live_temple_is_read_only_truth_view_with_100_workers():
     assert data["north_star"] == "FIRST_REAL_SETTLED_AGENT_TRANSACTION"
     assert data["fleet"]["worker_count"] == 100
     assert len(data["fleet"]["workers"]) == 100
+    assert "recent_events" in data["inbound_visibility"]
+    assert all(
+        set(event).issubset({"source", "created_at"})
+        for event in data["inbound_visibility"]["recent_events"]
+    )
     assert data["privacy"]["raw_private_responses_exposed"] is False
     assert data["privacy"]["credentials_exposed"] is False
     assert data["privacy"]["payment_payloads_exposed"] is False
@@ -1354,6 +1359,13 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "setInterval(refresh,5000)" in response.text
     assert "fill = transport" in response.text
     assert "ring = AI mind" in response.text
+    assert "moving pulse = verified action" in response.text
+    assert "outer nodes = external targets" in response.text
+    assert "cyan inbound pulse = machine entry to Temple" in response.text
+    assert "drawOutboundRoutes" in response.text
+    assert "drawInboundRoutes" in response.text
+    assert "eventDetail" in response.text
+    assert "AI paid/cycle" in response.text
     assert "thinking" in response.text
     assert "planned" in response.text
     assert "learning" in response.text
