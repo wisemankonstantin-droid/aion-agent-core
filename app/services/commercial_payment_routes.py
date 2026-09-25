@@ -319,12 +319,14 @@ def install_commercial_payment_routes(app) -> None:
             if readiness["launch_ready"] and plan is not None:
                 resources.append(
                     {
-                        "name": "AION Verified Route Intelligence",
+                        "name": "Choose and verify a paid provider before external spend",
                         "resource": _x402_resource_url(),
                         "method": "POST",
                         "description": (
-                            "Bounded verified provider route selection with a frozen "
-                            "result released only after x402 exact/upfront settlement."
+                            "Use before an agent pays for an external API or agent service. "
+                            "Give AION a bounded need; AION selects and verifies a qualified "
+                            "provider route, freezes the result, and releases it only after "
+                            "x402 exact/upfront settlement."
                         ),
                         "price": f"{plan.customer_price} {plan.currency}",
                         "inputSchema": _x402_input_schema(),
@@ -339,7 +341,8 @@ def install_commercial_payment_routes(app) -> None:
                     "x402Version": 2,
                     "name": "AION SUPREME",
                     "description": (
-                        "Machine-first pre-spend routing and verified Route Intelligence."
+                        "Before external spend, ask AION to choose and verify a qualified paid "
+                        "provider route from a bounded need."
                     ),
                     "resources": resources,
                 },
@@ -492,10 +495,12 @@ def install_commercial_payment_routes(app) -> None:
             x402_purchase_endpoint,
             methods=["POST"],
             include_in_schema=True,
-            summary="Purchase AION Route Intelligence over x402 exact/upfront",
+            summary="Choose and verify a paid provider before external spend",
             description=(
-                "Explicit standards-compatible x402 v2 exact/upfront route. "
-                "The preferred direct Base-USDC buyer-broadcast path remains unchanged."
+                "Use when an agent needs to decide which paid external API or agent service "
+                "to call. Submit a bounded need; AION prepares a qualified provider route "
+                "and verification evidence, returns x402 payment terms, and releases the "
+                "frozen result only after exact/upfront settlement. No AION membership is required."
             ),
         )
 
