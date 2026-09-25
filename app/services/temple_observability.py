@@ -813,6 +813,7 @@ function workerDetail(w){const t=w.current_target||{},signals=(w.response_signal
  '<div class="row"><div>AI channels</div><div>'+esc((p.channel_priority||[]).join(' → ')||'fallback')+'</div></div>'+
  '<div class="row"><div>AI searches</div><div>'+esc((p.search_queries||[]).join(' | ')||'fallback')+'</div></div>'+
  '<div class="row"><div>AI policy</div><div>'+esc(p.contact_policy||'fallback')+' · confidence '+esc(p.confidence??'-')+'</div></div>'+
+ '<div class="row"><div>outreach strategy</div><div>'+esc(p.outreach_strategy||'preflight_first')+'</div></div>'+
  '<div class="row"><div>learning goal</div><div>'+esc(p.learning_goal||'none')+'</div></div>'+
  '<div class="row"><div>sales plan</div><div>'+esc((p.sales_plan||[]).join(' → ')||'no model sales plan yet')+'</div></div>'+
  '<div class="row"><div>to Temple Brain</div><div><b>contribution:</b> '+esc(p.collective_contribution||'none')+'<br><b>request:</b> '+esc(p.coordination_request||'none')+'</div></div>'+
