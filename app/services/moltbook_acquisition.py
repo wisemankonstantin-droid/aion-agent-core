@@ -57,6 +57,12 @@ _SELF_NAMES = {
 }
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,220}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
+BUYER_INTENT_EVIDENCE_STATES_V2 = frozenset(
+    {
+        "semantic_public_buyer_intent_v2",
+        "recent_global_public_buyer_intent_v2",
+    }
+)
 
 
 def _api_key() -> str | None:
@@ -288,7 +294,7 @@ def _post_id(item: dict) -> str | None:
 def _candidate(
     item: dict,
     *,
-    evidence_state: str = "semantic_public_intent_match",
+    evidence_state: str = "semantic_public_buyer_intent_v2",
 ) -> dict | None:
     author = _author_name(item)
     post_id = _post_id(item)
@@ -401,7 +407,7 @@ def browse_recent_intent(limit: int = 15) -> dict:
             continue
         candidate = _candidate(
             item,
-            evidence_state="recent_global_public_intent_match",
+            evidence_state="recent_global_public_buyer_intent_v2",
         )
         if candidate is not None:
             candidates.append(candidate)
@@ -475,209 +481,6 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
         },
     }
 
-
-def revalidate_intent_thread(
-    interaction_url: str,
-    source_identifier: str,
-) -> dict:
-    """Re-read one Moltbook thread and apply current buyer-intent semantics.
-
-    A target can originate from either the parent post or one of its comments.
-    Revalidation therefore binds current intent to the durable target author,
-    not merely to whatever text happens to exist elsewhere in the thread.
-    The operation is read-only, bounded to one post read plus at most one
-    comments read, and fails closed when current evidence cannot be verified.
-    """
-
-    value = str(interaction_url or "").strip()
-    identifier = str(source_identifier or "").strip()
-    prefix = f"{MOLTBOOK_API_BASE}/posts/"
-    suffix = "/comments"
-    if (
-        not value.startswith(prefix)
-        or not value.endswith(suffix)
-        or "?" in value
-        or "#" in value
-    ):
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "invalid_moltbook_interaction_url",
-            "http_status": None,
-        }
-
-    if not identifier.lower().startswith("moltbook:"):
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "invalid_moltbook_source_identifier",
-            "http_status": None,
-        }
-    target_author = identifier.split(":", 1)[1].strip()
-    if not _SAFE_AGENT_NAME.fullmatch(target_author):
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "invalid_moltbook_target_author",
-            "http_status": None,
-        }
-
-    post_id = value[len(prefix):-len(suffix)].strip("/")
-    if not _SAFE_POST_ID.fullmatch(post_id):
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "invalid_moltbook_post_id",
-            "http_status": None,
-        }
-
-    post_result, post_payload = _request_json("GET", f"/posts/{post_id}")
-    if (
-        post_result.error
-        or post_result.status != 200
-        or not isinstance(post_payload, dict)
-    ):
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": platform_error_summary(post_result, post_payload),
-            "http_status": post_result.status,
-        }
-
-    post_candidates = []
-    direct_post = post_payload.get("post")
-    if isinstance(direct_post, dict):
-        post_candidates.append(direct_post)
-    data = post_payload.get("data")
-    if isinstance(data, dict):
-        nested_post = data.get("post")
-        if isinstance(nested_post, dict):
-            post_candidates.append(nested_post)
-        post_candidates.append(data)
-    post_candidates.append(post_payload)
-    post = next(
-        (
-            item
-            for item in post_candidates
-            if any(
-                isinstance(item.get(key), str) and item.get(key).strip()
-                for key in ("title", "content", "text", "body", "description")
-            )
-        ),
-        None,
-    )
-    if post is None:
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "moltbook_post_payload_missing",
-            "http_status": post_result.status,
-        }
-
-    returned_post_id = _post_id(post)
-    if returned_post_id is not None and returned_post_id != post_id:
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "moltbook_post_id_mismatch",
-            "http_status": post_result.status,
-        }
-
-    post_author = _author_name(post)
-    target_evidence_seen = bool(
-        post_author is not None
-        and post_author.casefold() == target_author.casefold()
-    )
-    if target_evidence_seen and _looks_like_external_spend_intent(post):
-        return {
-            "status": "success",
-            "qualifies": True,
-            "error": None,
-            "http_status": post_result.status,
-            "post_id": post_id,
-            "evidence_location": "post",
-        }
-
-    comments_result, comments_payload = _request_json(
-        "GET",
-        f"/posts/{post_id}/comments",
-    )
-    if comments_result.error or comments_result.status != 200:
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": platform_error_summary(comments_result, comments_payload),
-            "http_status": comments_result.status,
-        }
-
-    raw_comments = []
-    if isinstance(comments_payload, list):
-        raw_comments = comments_payload
-    elif isinstance(comments_payload, dict):
-        for key in ("comments", "results"):
-            candidate = comments_payload.get(key)
-            if isinstance(candidate, list):
-                raw_comments = candidate
-                break
-        if not raw_comments:
-            comment_data = comments_payload.get("data")
-            if isinstance(comment_data, list):
-                raw_comments = comment_data
-            elif isinstance(comment_data, dict):
-                nested_comments = comment_data.get("comments")
-                if isinstance(nested_comments, list):
-                    raw_comments = nested_comments
-
-    for comment in raw_comments:
-        if not isinstance(comment, dict):
-            continue
-        author = _author_name(comment)
-        if author is None or author.casefold() != target_author.casefold():
-            continue
-
-        # The comments endpoint already binds the collection to this post.
-        # Do not reinterpret a bare comment "id" as a post id when the API
-        # omits an explicit type discriminator.
-        comment_post_id = None
-        for key in ("post_id", "parent_post_id"):
-            value = comment.get(key)
-            if isinstance(value, str) and value.strip():
-                comment_post_id = value.strip()
-                break
-        if comment_post_id is None and isinstance(comment.get("post"), dict):
-            value = comment["post"].get("id")
-            if isinstance(value, str) and value.strip():
-                comment_post_id = value.strip()
-        if comment_post_id is not None and comment_post_id != post_id:
-            continue
-        target_evidence_seen = True
-        if _looks_like_external_spend_intent(comment):
-            return {
-                "status": "success",
-                "qualifies": True,
-                "error": None,
-                "http_status": comments_result.status,
-                "post_id": post_id,
-                "evidence_location": "comment",
-            }
-
-    if not target_evidence_seen:
-        return {
-            "status": "unavailable",
-            "qualifies": False,
-            "error": "moltbook_target_evidence_not_found",
-            "http_status": comments_result.status,
-            "post_id": post_id,
-        }
-
-    return {
-        "status": "success",
-        "qualifies": False,
-        "error": None,
-        "http_status": comments_result.status,
-        "post_id": post_id,
-        "evidence_location": None,
-    }
 
 def build_outreach_comment(
     *,
