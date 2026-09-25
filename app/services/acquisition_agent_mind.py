@@ -485,6 +485,9 @@ def runtime_status() -> dict:
         "configured": configured(),
         "provider": provider,
         "reasoning_endpoint_mode": endpoint_mode,
+        "cloudru_official_404_fallback_enabled": (
+            provider == "cloudru_chat_completions"
+        ),
         "model": (os.getenv("AION_AGENT_MODEL") or DEFAULT_MODEL).strip()
         or DEFAULT_MODEL,
         "temple_brain_model": (
@@ -1374,8 +1377,10 @@ def _call_structured_model(
         )
         raise RuntimeError(error)
 
-    if _reasoning_provider() == "cloudru_chat_completions":
-        url, _ = _cloudru_chat_completions_endpoint()
+    provider = _reasoning_provider()
+    endpoint_mode = None
+    if provider == "cloudru_chat_completions":
+        url, endpoint_mode = _cloudru_chat_completions_endpoint()
         payload = {
             "model": model,
             "messages": [
@@ -1414,15 +1419,34 @@ def _call_structured_model(
         }
         extract_text = _extract_output_text
 
+    request_headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
     response = httpx.post(
         url,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
+        headers=request_headers,
         json=payload,
         timeout=timeout,
     )
+    if (
+        provider == "cloudru_chat_completions"
+        and response.status_code == 404
+        and endpoint_mode != "cloudru_official_canonical"
+        and url != CLOUDRU_CHAT_COMPLETIONS_URL
+    ):
+        # A stale/custom base URL may survive in production configuration even
+        # after the provider has moved to Cloud.ru Foundation Models. Preserve
+        # the configured endpoint when it works, but on a resource-not-found
+        # response retry exactly once against Cloud.ru's documented canonical
+        # endpoint. A 404 carries no model output, so this does not increase the
+        # configured AI reasoning-call/token budget.
+        response = httpx.post(
+            CLOUDRU_CHAT_COMPLETIONS_URL,
+            headers=request_headers,
+            json=payload,
+            timeout=timeout,
+        )
     if response.status_code == 429:
         raise RuntimeError("model_rate_limited")
     if response.status_code < 200 or response.status_code >= 300:
