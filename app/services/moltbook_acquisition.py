@@ -634,7 +634,20 @@ def revalidate_intent_thread(
         author = _author_name(comment)
         if author is None or author.casefold() != target_author.casefold():
             continue
-        comment_post_id = _post_id(comment)
+
+        # The comments endpoint already binds the collection to this post.
+        # Do not reinterpret a bare comment "id" as a post id when the API
+        # omits an explicit type discriminator.
+        comment_post_id = None
+        for key in ("post_id", "parent_post_id"):
+            value = comment.get(key)
+            if isinstance(value, str) and value.strip():
+                comment_post_id = value.strip()
+                break
+        if comment_post_id is None and isinstance(comment.get("post"), dict):
+            value = comment["post"].get("id")
+            if isinstance(value, str) and value.strip():
+                comment_post_id = value.strip()
         if comment_post_id is not None and comment_post_id != post_id:
             continue
         target_evidence_seen = True
