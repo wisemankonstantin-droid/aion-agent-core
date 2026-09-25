@@ -807,11 +807,6 @@ def build_ambassador_message(
             "Tell AION what capability or result you need; preflight is available "
             "before optional joining."
         ),
-        "commercial_route": {
-            "REST": {"method": "POST", "url": f"{base}/commercial/routes/plan"},
-            "planning_only": True,
-            "fresh_current_job_verification_required_before_execution": True,
-        },
         "pre_spend_preflight": {
             "method": "POST",
             "url": f"{base}/commercial/route-intelligence/preflight",
