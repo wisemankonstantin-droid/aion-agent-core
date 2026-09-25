@@ -553,6 +553,17 @@ def build_temple_live_state(db: Session) -> dict:
             .group_by(models.MachineEntry.source)
         )
     }
+    recent_inbound_events = [
+        {
+            "source": entry.source,
+            "created_at": _iso(entry.created_at),
+        }
+        for entry in db.scalars(
+            select(models.MachineEntry)
+            .order_by(models.MachineEntry.created_at.desc(), models.MachineEntry.id.desc())
+            .limit(_RECENT_EVENT_LIMIT)
+        )
+    ]
 
     purchase_states = {
         state: int(count)
@@ -662,6 +673,7 @@ def build_temple_live_state(db: Session) -> dict:
         },
         "inbound_visibility": {
             "machine_entry_counts": inbound_sources,
+            "recent_events": recent_inbound_events,
             "surfaces": [
                 "/.well-known/agent-card.json",
                 "/.well-known/acquisition-workers.json",
