@@ -1366,7 +1366,7 @@ def test_live_temple_html_renders_dependency_free_3d_control_plane():
     assert "drawOutboundRoutes" in response.text
     assert "drawInboundRoutes" in response.text
     assert "eventDetail" in response.text
-    assert "AI paid/cycle" in response.text
+    assert "AI sellers/cycle" in response.text
     assert "thinking" in response.text
     assert "planned" in response.text
     assert "learning" in response.text
