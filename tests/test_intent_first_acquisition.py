@@ -482,6 +482,7 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
                 "url": "https://www.moltbook.com/post/stale-prepared",
                 "interaction_url": "https://www.moltbook.com/api/v1/posts/stale-prepared/comments",
                 "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_buyer_intent_v2",
             }
         )
         fresh = _candidate("fresh-next")
@@ -492,6 +493,7 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
                 "url": "https://www.moltbook.com/post/fresh-next",
                 "interaction_url": "https://www.moltbook.com/api/v1/posts/fresh-next/comments",
                 "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_buyer_intent_v2",
             }
         )
         monkeypatch.setattr(
@@ -557,6 +559,157 @@ def test_qualified_unsent_target_skips_stale_prepared_invite(monkeypatch):
 
         assert selected is not None
         assert selected.target_id == fresh_row.target_id
+
+
+def test_qualified_unsent_target_skips_legacy_moltbook_intent_without_rewriting_history(monkeypatch):
+    with SessionLocal() as db:
+        campaign = ambassador.create_campaign(
+            db,
+            name="legacy intent version regression",
+            purpose="test",
+            maximum_targets=10,
+            maximum_contacts=2,
+        )
+        campaign_id = campaign["campaign_id"]
+
+        legacy = _candidate("legacy-discussion")
+        legacy.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:legacy-discussion",
+                "url": "https://www.moltbook.com/post/legacy-discussion",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/"
+                    "legacy-discussion/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_intent_match",
+            }
+        )
+        current = _candidate("current-buyer")
+        current.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:current-buyer",
+                "url": "https://www.moltbook.com/post/current-buyer",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/"
+                    "current-buyer/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_buyer_intent_v2",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [legacy, current],
+            },
+        )
+        scouted = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=campaign_id,
+            query="current buyer need",
+        )
+        assert len(scouted["created_target_ids"]) == 2
+
+        campaign_row = db.scalar(
+            select(models.AmbassadorCampaign).where(
+                models.AmbassadorCampaign.campaign_id == campaign_id
+            )
+        )
+        legacy_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][0]
+            )
+        )
+        current_row = db.scalar(
+            select(models.AmbassadorTarget).where(
+                models.AmbassadorTarget.target_id == scouted["created_target_ids"][1]
+            )
+        )
+        assert campaign_row is not None
+        assert legacy_row is not None
+        assert current_row is not None
+        assert (
+            ambassador.MOLTBOOK_BUYER_INTENT_V2_REASON
+            not in legacy_row.qualification_reasons
+        )
+        assert (
+            ambassador.MOLTBOOK_BUYER_INTENT_V2_REASON
+            in current_row.qualification_reasons
+        )
+
+        selected = acquisition_swarm._qualified_unsent_target(
+            db,
+            campaign_row,
+            allow_moltbook=True,
+            allow_colony=False,
+            allow_federated=False,
+        )
+
+        assert selected is not None
+        assert selected.target_id == current_row.target_id
+        db.refresh(legacy_row)
+        assert legacy_row.suppressed is False
+        assert legacy_row.suppression_reason is None
+
+
+def test_full_legacy_moltbook_campaign_does_not_pin_worker_rotation(monkeypatch):
+    with SessionLocal() as db:
+        worker_id = "aion-soldier-006"
+        intent_profile = "paid_api_buyers"
+        campaign = ambassador.create_campaign(
+            db,
+            name=f"Intent swarm {intent_profile}@{worker_id} #1",
+            purpose="test",
+            maximum_targets=1,
+            maximum_contacts=1,
+        )
+        campaign_id = campaign["campaign_id"]
+
+        legacy = _candidate("legacy-full")
+        legacy.update(
+            {
+                "source": "moltbook",
+                "identifier": "moltbook:legacy-full",
+                "url": "https://www.moltbook.com/post/legacy-full",
+                "interaction_url": (
+                    "https://www.moltbook.com/api/v1/posts/"
+                    "legacy-full/comments"
+                ),
+                "authentication_requirement": "moltbook_bearer",
+                "evidence_state": "semantic_public_intent_match",
+            }
+        )
+        monkeypatch.setattr(
+            ambassador,
+            "search_moltbook_intent",
+            lambda *_args, **_kwargs: {
+                "status": "success",
+                "candidates": [legacy],
+            },
+        )
+        scouted = ambassador.scout_moltbook_campaign(
+            db,
+            campaign_id=campaign_id,
+            query="legacy buyer discussion",
+        )
+        assert len(scouted["created_target_ids"]) == 1
+
+        rotated = acquisition_swarm._campaign_for_worker(
+            db,
+            worker_id=worker_id,
+            intent_profile=intent_profile,
+            allow_legacy=False,
+            allow_moltbook=True,
+            allow_colony=False,
+        )
+
+        assert rotated.campaign_id != campaign_id
+        assert rotated.name == f"Intent swarm {intent_profile}@{worker_id} #2"
 
 
 def test_qualified_target_overrides_model_discover_only_once_actionable():

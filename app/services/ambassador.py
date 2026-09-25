@@ -39,6 +39,7 @@ from .external_registry import (
 )
 from .identity_resolution import logical_groups
 from .moltbook_acquisition import (
+    BUYER_INTENT_EVIDENCE_STATES_V2 as MOLTBOOK_BUYER_INTENT_EVIDENCE_STATES_V2,
     MAX_SEARCH_RESULTS as MOLTBOOK_MAX_SEARCH_RESULTS,
     browse_recent_intent as browse_recent_moltbook_intent,
     build_outreach_comment as build_moltbook_outreach_comment,
@@ -60,6 +61,7 @@ from .package5_proof import qualifying_return_identity_ids
 
 MAX_CAMPAIGN_TARGETS = 30
 MAX_MESSAGE_BYTES = 2_048
+MOLTBOOK_BUYER_INTENT_V2_REASON = "qualified_moltbook_buyer_intent_v2"
 PEER_REFERRAL_MAX_USES = 5
 TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_ACTIVE_REFERRAL_TOKENS_PER_AGENT = 10
@@ -297,11 +299,15 @@ def _qualification(candidate: dict) -> tuple[str, list[str]]:
             canonical_aion_public_base_url()
         except AmbassadorError:
             reasons.append("trusted_public_origin_unavailable")
-        return (
-            ("qualified", ["qualified_moltbook_public_intent_thread"])
-            if not reasons
-            else ("rejected", sorted(set(reasons)))
-        )
+        if reasons:
+            return "rejected", sorted(set(reasons))
+        qualification_reasons = ["qualified_moltbook_public_intent_thread"]
+        if (
+            str(candidate.get("evidence_state") or "")
+            in MOLTBOOK_BUYER_INTENT_EVIDENCE_STATES_V2
+        ):
+            qualification_reasons.append(MOLTBOOK_BUYER_INTENT_V2_REASON)
+        return "qualified", qualification_reasons
 
     if not candidate.get("manifest_reachable"):
         reasons.append("agent_card_not_reachable")

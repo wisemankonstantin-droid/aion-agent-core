@@ -57,6 +57,12 @@ _SELF_NAMES = {
 }
 _SAFE_AGENT_NAME = re.compile(r"^[A-Za-z0-9._:@+~-]{1,220}$")
 _SAFE_POST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
+BUYER_INTENT_EVIDENCE_STATES_V2 = frozenset(
+    {
+        "semantic_public_buyer_intent_v2",
+        "recent_global_public_buyer_intent_v2",
+    }
+)
 
 
 def _api_key() -> str | None:
@@ -288,7 +294,7 @@ def _post_id(item: dict) -> str | None:
 def _candidate(
     item: dict,
     *,
-    evidence_state: str = "semantic_public_intent_match",
+    evidence_state: str,
 ) -> dict | None:
     author = _author_name(item)
     post_id = _post_id(item)
@@ -401,7 +407,7 @@ def browse_recent_intent(limit: int = 15) -> dict:
             continue
         candidate = _candidate(
             item,
-            evidence_state="recent_global_public_intent_match",
+            evidence_state="recent_global_public_buyer_intent_v2",
         )
         if candidate is not None:
             candidates.append(candidate)
@@ -456,7 +462,10 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
         # AION consumes a one-contact slot.
         if not _looks_like_external_spend_intent(item):
             continue
-        candidate = _candidate(item)
+        candidate = _candidate(
+            item,
+            evidence_state="semantic_public_buyer_intent_v2",
+        )
         if candidate is not None:
             candidates.append(candidate)
         if len(candidates) >= bounded_limit:

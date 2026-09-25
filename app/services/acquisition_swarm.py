@@ -30,6 +30,7 @@ from .acquisition_agent_mind import (
 from .ambassador import (
     AmbassadorError,
     MAX_CAMPAIGN_TARGETS,
+    MOLTBOOK_BUYER_INTENT_V2_REASON,
     create_campaign,
     prepare_and_send_operator_contact,
     prepare_and_send_operator_moltbook_dm,
@@ -730,11 +731,74 @@ def _campaign_prefix(worker_id: str, intent_profile: str) -> str:
     return f"Intent swarm {intent_profile}@{worker_id} #"
 
 
+def _moltbook_target_has_current_buyer_intent(
+    target: models.AmbassadorTarget,
+) -> bool:
+    reasons = target.qualification_reasons
+    return bool(
+        isinstance(reasons, list)
+        and MOLTBOOK_BUYER_INTENT_V2_REASON in reasons
+    )
+
+
+def _campaign_has_contactable_unsent_target(
+    db: Session,
+    campaign: models.AmbassadorCampaign,
+    *,
+    allow_moltbook: bool,
+    allow_colony: bool,
+) -> bool:
+    """Return whether a full campaign still has a genuinely contactable buyer.
+
+    Legacy Moltbook rows created before the strict buyer-intent predicate stay
+    durable for history, but no longer keep a full campaign alive or receive
+    outbound authority. Existing one-time invite tokens are also excluded so a
+    stale prepared row cannot pin campaign rotation.
+    """
+
+    rows = list(
+        db.scalars(
+            select(models.AmbassadorTarget)
+            .where(
+                models.AmbassadorTarget.campaign_id == campaign.id,
+                models.AmbassadorTarget.qualification_state == "qualified",
+                models.AmbassadorTarget.contact_state == "not_ready",
+                models.AmbassadorTarget.suppressed.is_(False),
+                models.AmbassadorTarget.discovery_source.in_(("moltbook", "colony")),
+                ~(
+                    select(models.DistributionToken.id)
+                    .where(
+                        models.DistributionToken.target_id
+                        == models.AmbassadorTarget.id,
+                        models.DistributionToken.kind == "ambassador_invite",
+                    )
+                    .exists()
+                ),
+            )
+            .order_by(models.AmbassadorTarget.id)
+            .limit(MAX_CAMPAIGN_TARGETS)
+        )
+    )
+    for target in rows:
+        if (
+            allow_moltbook
+            and target.discovery_source == "moltbook"
+            and _moltbook_target_has_current_buyer_intent(target)
+        ):
+            return True
+        if allow_colony and target.discovery_source == "colony":
+            return True
+    return False
+
+
 def _legacy_campaign_for_intent(
     db: Session,
     intent_profile: str,
+    *,
+    allow_moltbook: bool = True,
+    allow_colony: bool = True,
 ) -> models.AmbassadorCampaign | None:
-    """Drain pre-100-worker campaigns before creating replacement inventory."""
+    """Reuse legacy inventory only while it can still produce current buyers."""
 
     prefix = f"Intent swarm {intent_profile} #"
     campaigns = list(
@@ -752,17 +816,15 @@ def _legacy_campaign_for_intent(
         ) or 0
         if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
             return campaign
-        unsent = db.scalar(
-            select(func.count())
-            .select_from(models.AmbassadorTarget)
-            .where(
-                models.AmbassadorTarget.campaign_id == campaign.id,
-                models.AmbassadorTarget.qualification_state == "qualified",
-                models.AmbassadorTarget.contact_state == "not_ready",
-                models.AmbassadorTarget.suppressed.is_(False),
+        if (
+            campaign.state in {"draft", "ready"}
+            and _campaign_has_contactable_unsent_target(
+                db,
+                campaign,
+                allow_moltbook=allow_moltbook,
+                allow_colony=allow_colony,
             )
-        ) or 0
-        if campaign.state in {"draft", "ready"} and unsent > 0:
+        ):
             return campaign
     return None
 
@@ -773,6 +835,8 @@ def _campaign_for_worker(
     worker_id: str,
     intent_profile: str,
     allow_legacy: bool,
+    allow_moltbook: bool = True,
+    allow_colony: bool = True,
 ) -> models.AmbassadorCampaign:
     prefix = _campaign_prefix(worker_id, intent_profile)
     campaigns = list(
@@ -790,21 +854,24 @@ def _campaign_for_worker(
         ) or 0
         if campaign.state in {"draft", "ready"} and count < campaign.maximum_targets:
             return campaign
-        unsent = db.scalar(
-            select(func.count())
-            .select_from(models.AmbassadorTarget)
-            .where(
-                models.AmbassadorTarget.campaign_id == campaign.id,
-                models.AmbassadorTarget.qualification_state == "qualified",
-                models.AmbassadorTarget.contact_state == "not_ready",
-                models.AmbassadorTarget.suppressed.is_(False),
+        if (
+            campaign.state in {"draft", "ready"}
+            and _campaign_has_contactable_unsent_target(
+                db,
+                campaign,
+                allow_moltbook=allow_moltbook,
+                allow_colony=allow_colony,
             )
-        ) or 0
-        if campaign.state in {"draft", "ready"} and unsent > 0:
+        ):
             return campaign
 
     if allow_legacy:
-        legacy = _legacy_campaign_for_intent(db, intent_profile)
+        legacy = _legacy_campaign_for_intent(
+            db,
+            intent_profile,
+            allow_moltbook=allow_moltbook,
+            allow_colony=allow_colony,
+        )
         if legacy is not None:
             return legacy
 
@@ -828,6 +895,7 @@ def _campaign_for_worker(
     if campaign is None:
         raise RuntimeError("Intent swarm campaign creation did not persist")
     return campaign
+
 
 def _qualified_unsent_target(
     db: Session,
@@ -855,13 +923,16 @@ def _qualified_unsent_target(
         )
     )
     if allow_moltbook:
-        moltbook = db.scalar(
-            base.where(models.AmbassadorTarget.discovery_source == "moltbook")
-            .order_by(models.AmbassadorTarget.id)
-            .limit(1)
+        moltbook_candidates = list(
+            db.scalars(
+                base.where(models.AmbassadorTarget.discovery_source == "moltbook")
+                .order_by(models.AmbassadorTarget.id)
+                .limit(MAX_CAMPAIGN_TARGETS)
+            )
         )
-        if moltbook is not None:
-            return moltbook
+        for moltbook in moltbook_candidates:
+            if _moltbook_target_has_current_buyer_intent(moltbook):
+                return moltbook
     if allow_colony:
         colony = db.scalar(
             base.where(models.AmbassadorTarget.discovery_source == "colony")
@@ -1239,6 +1310,8 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 worker_id=worker_id,
                 intent_profile=lane,
                 allow_legacy=worker.shard == 1,
+                allow_moltbook=moltbook_ready,
+                allow_colony=colony_ready,
             )
             moltbook_created = 0
 

@@ -50,6 +50,10 @@ def test_moltbook_search_is_pinned_to_official_www_origin(monkeypatch):
     assert candidate["interaction_url"] == (
         "https://www.moltbook.com/api/v1/posts/post-123/comments"
     )
+    assert (
+        candidate["evidence_state"]
+        == "semantic_public_buyer_intent_v2"
+    )
 
 
 def test_moltbook_semantic_search_filters_topical_non_buyer_matches(monkeypatch):
@@ -223,7 +227,7 @@ def test_moltbook_recent_global_scan_filters_for_real_spend_intent(monkeypatch):
     ]
     assert (
         result["candidates"][0]["evidence_state"]
-        == "recent_global_public_intent_match"
+        == "recent_global_public_buyer_intent_v2"
     )
     assert result["resource_bounds"]["recent_posts_scanned"] == 3
 
@@ -314,6 +318,33 @@ def test_moltbook_target_has_separate_non_a2a_qualification(monkeypatch):
 
     assert state == "qualified"
     assert reasons == ["qualified_moltbook_public_intent_thread"]
+
+
+def test_moltbook_strict_intent_evidence_persists_qualification_marker(monkeypatch):
+    monkeypatch.setattr(
+        ambassador,
+        "canonical_aion_public_base_url",
+        lambda: "https://aion.example",
+    )
+    state, reasons = ambassador._qualification(
+        {
+            "source": "moltbook",
+            "identifier": "moltbook:BuyerBot",
+            "interaction_url": (
+                "https://www.moltbook.com/api/v1/posts/post-123/comments"
+            ),
+            "interaction_url_validated": True,
+            "authentication_requirement": "moltbook_bearer",
+            "payment_required": False,
+            "manifest_reachable": False,
+            "declared_a2a_v1_jsonrpc": False,
+            "evidence_state": "semantic_public_buyer_intent_v2",
+        }
+    )
+
+    assert state == "qualified"
+    assert "qualified_moltbook_public_intent_thread" in reasons
+    assert ambassador.MOLTBOOK_BUYER_INTENT_V2_REASON in reasons
 
 
 def test_moltbook_contact_budget_stays_bounded_inside_multichannel_swarm():
