@@ -638,7 +638,8 @@ def test_qualified_unsent_target_revalidates_and_suppresses_legacy_moltbook_inte
         assert legacy_row is not None
         assert current_row is not None
 
-        def revalidate(interaction_url):
+        def revalidate(interaction_url, source_identifier):
+            assert source_identifier.startswith("moltbook:")
             if "legacy-discussion" in interaction_url:
                 return {"status": "success", "qualifies": False}
             return {"status": "success", "qualifies": True}
