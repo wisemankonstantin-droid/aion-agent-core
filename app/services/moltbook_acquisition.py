@@ -431,7 +431,7 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
     result, payload = _request_json(
         "GET",
         "/search",
-        params={"q": query, "type": "posts", "limit": bounded_limit},
+        params={"q": query, "type": "all", "limit": bounded_limit},
     )
     if result.error or result.status != 200 or not isinstance(payload, dict):
         return {
@@ -467,6 +467,7 @@ def search_intent(query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
         "resource_bounds": {
             "candidate_limit": bounded_limit,
             "query_character_limit": MAX_QUERY_CHARS,
+            "search_type": "all",
             "api_attempts": result.attempts,
         },
     }
