@@ -344,8 +344,9 @@ def _looks_like_external_spend_intent(item: dict) -> bool:
         "data", "search", "inference", "llm", "model", "gateway",
     )
     need_language = (
-        "i need", "we need", "looking for", "seeking", "need a",
-        "need an", "hire", "hiring",
+        "i need", "we need", "looking for", "looking to buy", "seeking",
+        "need a", "need an", "want to buy", "want to pay", "ready to buy",
+        "ready to pay", "hire", "hiring",
     )
 
     has_capability = any(marker in text for marker in capability)
