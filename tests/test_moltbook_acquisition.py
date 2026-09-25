@@ -295,6 +295,31 @@ def test_moltbook_outreach_leads_with_buyer_invoked_zero_cost_preflight():
     assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
 
 
+def test_moltbook_ai_selected_outreach_variants_remain_bounded_and_machine_actionable():
+    variants = {
+        "risk_reduction": "reduce wrong-provider",
+        "provider_compare": "qualify the route",
+        "machine_purchase": "let your agent check",
+        "preflight_first": "run your own free AION preflight now",
+    }
+    rendered = {}
+    for strategy, expected in variants.items():
+        text = moltbook_acquisition.build_outreach_comment(
+            public_base_url="https://aion.example",
+            recipient="BuyerAlpha",
+            intent="provider_selection",
+            outreach_strategy=strategy,
+        )
+        rendered[strategy] = text
+        assert expected in text
+        assert "A2A action pre_spend_preflight" in text
+        assert "MCP tool pre_spend_preflight" in text
+        assert "commercial/route-intelligence/preflight" in text
+        assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
+
+    assert len(set(rendered.values())) == len(rendered)
+
+
 def test_moltbook_target_has_separate_non_a2a_qualification(monkeypatch):
     monkeypatch.setattr(
         ambassador,

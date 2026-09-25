@@ -35,6 +35,7 @@ def _plan(worker_id: str) -> dict:
         "channel_priority": ["federated_a2a", "colony"],
         "search_queries": ["need paid provider now", "looking to hire agent service"],
         "contact_policy": "contact_one_if_qualified",
+        "outreach_strategy": "risk_reduction",
         "target_preference": "explicit_buyer_demand",
         "expected_signal": "routing_need",
         "learning_goal": "Compare explicit buyer demand with generic discovery.",
@@ -70,6 +71,20 @@ def _brain_plan() -> dict:
         "memory_note": "Favor evidence closest to purchase and structured routing need.",
         "confidence": 81,
     }
+
+
+def test_outreach_strategy_is_bounded_and_defaults_fail_closed():
+    fallback = ["paid api provider", "provider selection buyer"]
+
+    plan = _plan(WORKERS[0].id)
+    plan["outreach_strategy"] = "machine_purchase"
+    validated = acquisition_agent_mind._validate_plan(plan, fallback)
+    assert validated["outreach_strategy"] == "machine_purchase"
+
+    invalid = _plan(WORKERS[0].id)
+    invalid["outreach_strategy"] = "invent_price_and_spam"
+    validated_invalid = acquisition_agent_mind._validate_plan(invalid, fallback)
+    assert validated_invalid["outreach_strategy"] == "preflight_first"
 
 
 def test_all_100_workers_have_distinct_cognitive_fingerprints():
@@ -195,6 +210,58 @@ def test_model_refresh_gives_each_worker_own_plan_and_durable_safe_memory(monkey
             for row in rows
         ]
     )
+
+
+
+def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-never-sent")
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "true")
+    monkeypatch.setenv("AION_AGENT_MIND_MAX_CALLS_PER_CYCLE", "2")
+    selected_ids = []
+
+    def worker_plan(worker_id, observation):
+        selected_ids.append(worker_id)
+        return _plan(worker_id)
+
+    monkeypatch.setattr(acquisition_agent_mind, "_call_model", worker_plan)
+    monkeypatch.setattr(
+        acquisition_agent_mind,
+        "_call_temple_brain",
+        lambda observation: _brain_plan(),
+    )
+
+    workers = WORKERS[:8]
+    active_reasoning_workers = WORKERS[5:8]
+    plans = acquisition_agent_mind.refresh_all_minds(
+        workers,
+        channel_health={"federated_a2a": {"public_discovery": True}},
+        send_enabled=True,
+        fallback_queries_by_worker={
+            worker.id: ["fallback one", "fallback two"] for worker in workers
+        },
+        reasoning_workers=active_reasoning_workers,
+    )
+
+    expected = {WORKERS[5].id, WORKERS[6].id}
+    assert set(plans) == expected
+    assert set(selected_ids) == expected
+
+    with SessionLocal() as db:
+        rows = {
+            row.worker_id: row
+            for row in db.scalars(
+                select(models.AcquisitionAgentMind).where(
+                    models.AcquisitionAgentMind.worker_id.in_(
+                        [worker.id for worker in workers]
+                    )
+                )
+            )
+        }
+    assert rows[WORKERS[5].id].last_state == "planned"
+    assert rows[WORKERS[6].id].last_state == "planned"
+    assert rows[WORKERS[0].id].last_state == "reasoning_budget_deferred"
+    assert rows[WORKERS[7].id].last_state == "reasoning_budget_deferred"
 
 
 def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypatch):

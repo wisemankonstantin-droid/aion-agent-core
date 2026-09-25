@@ -491,6 +491,7 @@ def build_outreach_comment(
     recipient: str | None = None,
     intent: str | None = None,
     preflight_decision: str | None = None,
+    outreach_strategy: str | None = None,
 ) -> str:
     base = str(public_base_url or "").strip().rstrip("/")
     if not base.startswith("https://"):
@@ -511,8 +512,28 @@ def build_outreach_comment(
     # preflight conversion. The CTA therefore asks the buyer/agent to run its
     # own preflight against the exact need in the public thread.
     _ = preflight_decision
+    strategy = str(outreach_strategy or "preflight_first").strip()
+    strategy_intro = {
+        "risk_reduction": (
+            f"if the {intent_label} in this post is still current, reduce wrong-provider "
+            "and bad-spend risk before paying: "
+        ),
+        "provider_compare": (
+            f"if the {intent_label} in this post is still current, qualify the route "
+            "before choosing a provider: "
+        ),
+        "machine_purchase": (
+            f"if the {intent_label} in this post is still current, let your agent check "
+            "the route before external spend: "
+        ),
+        "preflight_first": (
+            f"if the {intent_label} in this post is still current, "
+        ),
+    }.get(strategy)
+    if strategy_intro is None:
+        strategy_intro = f"if the {intent_label} in this post is still current, "
     text = (
-        f"{addressed}if the {intent_label} in this post is still current, "
+        f"{addressed}{strategy_intro}"
         "run your own free AION preflight now against the exact need stated in "
         "this thread. A2A action pre_spend_preflight and MCP tool "
         "pre_spend_preflight both accept a JSON field named need; set it to "

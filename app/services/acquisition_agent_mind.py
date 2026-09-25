@@ -53,6 +53,12 @@ _ALLOWED_CONTACT_POLICIES = (
     "discover_only",
     "hold",
 )
+_ALLOWED_OUTREACH_STRATEGIES = (
+    "preflight_first",
+    "risk_reduction",
+    "provider_compare",
+    "machine_purchase",
+)
 _ALLOWED_TARGET_PREFERENCES = (
     "explicit_buyer_demand",
     "current_external_spend_intent",
@@ -95,6 +101,10 @@ _PLAN_SCHEMA = {
             "type": "string",
             "enum": list(_ALLOWED_CONTACT_POLICIES),
         },
+        "outreach_strategy": {
+            "type": "string",
+            "enum": list(_ALLOWED_OUTREACH_STRATEGIES),
+        },
         "target_preference": {
             "type": "string",
             "enum": list(_ALLOWED_TARGET_PREFERENCES),
@@ -116,6 +126,7 @@ _PLAN_SCHEMA = {
         "channel_priority",
         "search_queries",
         "contact_policy",
+        "outreach_strategy",
         "target_preference",
         "expected_signal",
         "learning_goal",
@@ -212,7 +223,10 @@ justification; it does not require AION to self-pay
 before contacting a buyer.
 
 Generate at most two concise search queries aimed at current buyer intent and
-a short sales_plan of up to four externally bounded stages.
+a short sales_plan of up to four externally bounded stages. Choose exactly one
+outreach_strategy: preflight_first, risk_reduction, provider_compare, or
+machine_purchase. This selects a pre-approved deterministic outbound message
+variant; it does not give you direct network-write authority.
 collective_contribution is the safest useful lesson you want the fleet to learn;
 coordination_request is a concise question or need for the shared Temple Brain.
 Do not output URLs, credentials, private content,
@@ -653,6 +667,7 @@ def _compact_worker_observation(observation: dict) -> dict:
             "channel_priority": list(previous.get("channel_priority") or [])[:3],
             "search_queries": list(previous.get("search_queries") or [])[:2],
             "contact_policy": previous.get("contact_policy"),
+            "outreach_strategy": previous.get("outreach_strategy"),
             "target_preference": previous.get("target_preference"),
             "sales_plan": list(previous.get("sales_plan") or [])[-2:],
             "learning_goal": previous.get("learning_goal"),
@@ -1410,6 +1425,9 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
     contact_policy = str(plan.get("contact_policy") or "")
     if contact_policy not in _ALLOWED_CONTACT_POLICIES:
         contact_policy = "discover_only"
+    outreach_strategy = str(plan.get("outreach_strategy") or "")
+    if outreach_strategy not in _ALLOWED_OUTREACH_STRATEGIES:
+        outreach_strategy = "preflight_first"
     if unsupported_control_dependency:
         channels = [value for value in channels if value != "hold"]
         if not channels:
@@ -1432,6 +1450,7 @@ def _validate_plan(plan: object, fallback_queries: list[str]) -> dict:
         "channel_priority": channels,
         "search_queries": queries,
         "contact_policy": contact_policy,
+        "outreach_strategy": outreach_strategy,
         "target_preference": target_preference,
         "expected_signal": _clean_short(plan.get("expected_signal"), 160),
         "learning_goal": _clean_short(plan.get("learning_goal"), 240),
@@ -1617,12 +1636,21 @@ def refresh_all_minds(
     channel_health: dict,
     send_enabled: bool,
     fallback_queries_by_worker: dict[str, list[str]],
+    reasoning_workers: Iterable | None = None,
 ) -> dict[str, dict]:
     """Run one shared Temple Brain synthesis plus independent reasoning for workers."""
 
     workers = tuple(workers)
     if not workers:
         return {}
+
+    worker_ids = {worker.id for worker in workers}
+    if reasoning_workers is None:
+        reasoning_workers = workers
+    else:
+        reasoning_workers = tuple(
+            worker for worker in reasoning_workers if worker.id in worker_ids
+        )
 
     if not enabled():
         state = "model_unconfigured" if not configured() else "mind_disabled"
@@ -1670,7 +1698,7 @@ def refresh_all_minds(
         temple_brain=shared_brain,
     )
     maximum = runtime_status()["max_reasoning_calls_per_cycle"]
-    selected = workers[:maximum]
+    selected = tuple(reasoning_workers)[:maximum]
     plans: dict[str, dict] = {}
 
     def run(worker):
@@ -1693,8 +1721,9 @@ def refresh_all_minds(
             if plan is not None:
                 plans[worker_id] = plan
 
-    if maximum < len(workers):
-        deferred = workers[maximum:]
+    selected_ids = {worker.id for worker in selected}
+    deferred = tuple(worker for worker in workers if worker.id not in selected_ids)
+    if deferred:
         _ensure_rows(deferred, state="reasoning_budget_deferred")
     return plans
 

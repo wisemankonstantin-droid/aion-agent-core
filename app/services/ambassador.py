@@ -1131,7 +1131,7 @@ def _contact_replay(target: models.AmbassadorTarget, contact: models.AmbassadorC
     }
 
 
-def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key: str, send: bool = False) -> dict:
+def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key: str, send: bool = False, outreach_strategy: str | None = None) -> dict:
     if not isinstance(message, dict):
         raise AmbassadorError(422, "invalid_ambassador_message", "Ambassador message must be an object")
     try:
@@ -1188,6 +1188,7 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
                 preflight_decision=(
                     (message.get("pre_spend_preflight") or {}).get("decision")
                 ),
+                outreach_strategy=outreach_strategy,
             )
             if is_moltbook
             else build_colony_outreach_comment(
@@ -1371,6 +1372,7 @@ def prepare_and_send_operator_contact(
     target_id: str,
     idempotency_key: str,
     preflight_result: dict | None = None,
+    outreach_strategy: str | None = None,
 ) -> dict:
     """Prepare and send one target-bound invitation without exposing its token.
 
@@ -1479,6 +1481,7 @@ def prepare_and_send_operator_contact(
             message=prepared["message"],
             idempotency_key=key,
             send=True,
+            outreach_strategy=outreach_strategy,
         )
         return {
             **result,

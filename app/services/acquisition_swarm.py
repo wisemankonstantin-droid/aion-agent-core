@@ -1106,11 +1106,15 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         )
         for worker in ACQUISITION_WORKERS
     }
+    mind_runtime = acquisition_mind_runtime_status()
+    reasoning_limit = int(mind_runtime.get("max_reasoning_calls_per_cycle") or 0)
+    ai_reasoning_workers = tuple(active_workers[:reasoning_limit])
     mind_plans = refresh_all_minds(
         tuple(ACQUISITION_WORKERS),
         channel_health=channel_health,
         send_enabled=send_enabled,
         fallback_queries_by_worker=fallback_queries_by_worker,
+        reasoning_workers=ai_reasoning_workers,
     )
 
     active_mind_policies = {}
@@ -1184,7 +1188,9 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         "north_star": "FIRST_REAL_SETTLED_AGENT_TRANSACTION",
         "primary_acquisition_channel": "ai_selected_per_worker",
         "acquisition_channel_strategy": "ai_minds_over_bounded_multichannel_transport",
-        "mind_runtime": acquisition_mind_runtime_status(),
+        "mind_runtime": mind_runtime,
+        "ai_reasoning_worker_ids": [worker.id for worker in ai_reasoning_workers],
+        "ai_planned_worker_ids": sorted(mind_plans),
         "minds_planned_this_cycle": len(mind_plans),
         "moltbook_recent_global_scan_worker": moltbook_recent_scan_worker_id,
         "colony_paid_task_scan_worker": colony_paid_scan_worker_id,
@@ -1239,9 +1245,10 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
         },
         "truth": (
             "The 100 workers are transparent AION-operated acquisition infrastructure. "
-            "When the model runtime is configured, all 100 independently plan from their "
-            "own safe durable memory each cycle; only the rotating active cohort can receive "
-            "bounded external transport slots. Shared transport health, dedupe and platform "
+            "The rotating active cohort receives bounded external transport slots. When the "
+            "model runtime is configured, the configured reasoning-call budget is spent only "
+            "on workers in that active cohort; remaining active workers use deterministic "
+            "fallback discovery for that cycle. Shared transport health, dedupe and platform "
             "limits remain authoritative. Federated A2A registry discovery is supply "
             "evidence and is not treated as verified buyer intent. Worker count is not "
             "independent adoption, customer proof, SAT or revenue."
@@ -1500,6 +1507,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         target_id=target.target_id,
                         idempotency_key=f"intent-{worker_id}-{target.target_id}",
                         preflight_result=outbound_preflight,
+                        outreach_strategy=(
+                            str(mind_plan.get("outreach_strategy") or "preflight_first")
+                            if isinstance(mind_plan, dict)
+                            else "preflight_first"
+                        ),
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
