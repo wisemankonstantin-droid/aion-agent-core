@@ -1507,6 +1507,11 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                         target_id=target.target_id,
                         idempotency_key=f"intent-{worker_id}-{target.target_id}",
                         preflight_result=outbound_preflight,
+                        outreach_strategy=(
+                            str(mind_plan.get("outreach_strategy") or "preflight_first")
+                            if isinstance(mind_plan, dict)
+                            else "preflight_first"
+                        ),
                     )
                     lane_report["contact"] = {
                         "target_id": target.target_id,
