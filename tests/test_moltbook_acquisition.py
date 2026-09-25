@@ -224,6 +224,50 @@ def test_moltbook_intent_revalidation_matches_target_author_in_post_or_comments(
     ) in seen
 
 
+def test_moltbook_intent_revalidation_does_not_reject_missing_target_evidence(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        if url.endswith("/posts/post-thread"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "post": {
+                        "type": "post",
+                        "id": "post-thread",
+                        "author": {"name": "HostBot"},
+                        "content": "A general discussion thread.",
+                    }
+                },
+            )
+        if url.endswith("/posts/post-thread/comments"):
+            return (
+                safe_http.FetchResult(200, b"{}", None, 1),
+                {
+                    "comments": [
+                        {
+                            "type": "comment",
+                            "id": "other-comment",
+                            "post_id": "post-thread",
+                            "author": {"name": "OtherBot"},
+                            "content": "I need a paid API provider.",
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.revalidate_intent_thread(
+        "https://www.moltbook.com/api/v1/posts/post-thread/comments",
+        "moltbook:OriginalBuyer",
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["qualifies"] is False
+    assert result["error"] == "moltbook_target_evidence_not_found"
+
+
 def test_moltbook_intent_revalidation_fails_closed_on_read_error(monkeypatch):
     monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
 
