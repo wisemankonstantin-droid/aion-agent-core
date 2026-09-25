@@ -16,6 +16,7 @@ import json
 import os
 import re
 from typing import Iterable
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import case, func, select
@@ -37,6 +38,10 @@ DEFAULT_REASONING_EFFORT = "low"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_REASONING_PROVIDER = "openai_responses"
 DEFAULT_CHAT_COMPLETIONS_BASE_URL = "https://foundation-models.api.cloud.ru/v1"
+CLOUDRU_FOUNDATION_MODELS_HOST = "foundation-models.api.cloud.ru"
+CLOUDRU_CHAT_COMPLETIONS_URL = (
+    "https://foundation-models.api.cloud.ru/v1/chat/completions"
+)
 DEFAULT_MAX_CALLS_PER_CYCLE = 100
 DEFAULT_MAX_CONCURRENCY = 8
 DEFAULT_MAX_OUTPUT_TOKENS = 600
@@ -426,6 +431,40 @@ def _reasoning_api_key() -> str:
     return (os.getenv("OPENAI_API_KEY") or "").strip()
 
 
+def _cloudru_chat_completions_endpoint() -> tuple[str, str]:
+    """Return a safe OpenAI-compatible chat endpoint and non-secret diagnostic mode.
+
+    Cloud.ru documents one canonical Foundation Models host. Production may carry
+    an older host-only base URL or a full chat-completions URL; normalize all
+    official-host variants to the canonical /v1/chat/completions endpoint so a
+    harmless path-shape mismatch cannot silently turn every paid reasoning call
+    into HTTP 404. Custom OpenAI-compatible hosts remain supported as configured.
+    """
+
+    raw = (
+        os.getenv("AION_REASONING_BASE_URL")
+        or DEFAULT_CHAT_COMPLETIONS_BASE_URL
+    ).strip().rstrip("/")
+    if not raw:
+        raw = DEFAULT_CHAT_COMPLETIONS_BASE_URL
+
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        parsed = None
+
+    if (
+        parsed is not None
+        and parsed.scheme == "https"
+        and (parsed.hostname or "").lower() == CLOUDRU_FOUNDATION_MODELS_HOST
+    ):
+        return CLOUDRU_CHAT_COMPLETIONS_URL, "cloudru_official_canonical"
+
+    if raw.endswith("/chat/completions"):
+        return raw, "custom_full_chat_endpoint"
+    return f"{raw}/chat/completions", "custom_openai_compatible_base"
+
+
 def configured() -> bool:
     return bool(_reasoning_api_key())
 
@@ -435,10 +474,17 @@ def enabled() -> bool:
 
 
 def runtime_status() -> dict:
+    provider = _reasoning_provider()
+    endpoint_mode = (
+        _cloudru_chat_completions_endpoint()[1]
+        if provider == "cloudru_chat_completions"
+        else "openai_responses"
+    )
     return {
         "enabled": enabled(),
         "configured": configured(),
-        "provider": _reasoning_provider(),
+        "provider": provider,
+        "reasoning_endpoint_mode": endpoint_mode,
         "model": (os.getenv("AION_AGENT_MODEL") or DEFAULT_MODEL).strip()
         or DEFAULT_MODEL,
         "temple_brain_model": (
@@ -1329,11 +1375,7 @@ def _call_structured_model(
         raise RuntimeError(error)
 
     if _reasoning_provider() == "cloudru_chat_completions":
-        base_url = (
-            os.getenv("AION_REASONING_BASE_URL")
-            or DEFAULT_CHAT_COMPLETIONS_BASE_URL
-        ).strip().rstrip("/")
-        url = f"{base_url}/chat/completions"
+        url, _ = _cloudru_chat_completions_endpoint()
         payload = {
             "model": model,
             "messages": [
