@@ -1,8 +1,11 @@
+from types import SimpleNamespace
+
 """Payment access friction tests perform no real payment."""
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services import commercial_payment_routes
 
 
 client = TestClient(app)
@@ -32,3 +35,41 @@ def test_unsigned_or_signed_payment_attempt_never_turns_missing_aion_auth_into_4
     assert body["code"] == "x402_exact_upfront_not_activated"
     assert body["aion_membership_required"] is False
     assert body["result_released"] is False
+
+
+def test_openapi_exposes_agentcash_x402_discovery_contract(monkeypatch):
+    monkeypatch.setattr(
+        commercial_payment_routes,
+        "configured_route_intelligence_plan",
+        lambda: SimpleNamespace(customer_price="0.01", currency="USDC"),
+    )
+    monkeypatch.setattr(
+        commercial_payment_routes,
+        "exact_upfront_readiness",
+        lambda: {"launch_ready": True},
+    )
+    app.openapi_schema = None
+    try:
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+        schema = response.json()
+        assert "Before external spend" in schema["info"]["x-guidance"]
+
+        operation = schema["paths"][
+            "/commercial/route-intelligence/x402/purchase"
+        ]["post"]
+        body_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+        assert body_schema["required"] == ["need"]
+        assert body_schema["properties"]["need"]["minLength"] == 1
+        assert body_schema["properties"]["need"]["maxLength"] == 128
+        assert operation["responses"]["402"]["description"] == "Payment Required"
+        assert operation["x-payment-info"] == {
+            "price": {
+                "mode": "fixed",
+                "currency": "USDC",
+                "amount": "0.01",
+            },
+            "protocols": [{"x402": {}}],
+        }
+    finally:
+        app.openapi_schema = None
