@@ -164,6 +164,66 @@ def _x402_input_schema() -> dict:
     }
 
 
+def _install_agentcash_openapi_metadata(app) -> None:
+    """Expose the paid Route Intelligence contract in AgentCash-compatible OpenAPI.
+
+    Discovery metadata must stay truthful to the live payment surface. This
+    function does not activate payment, change price, create a purchase, or
+    silently treat USDC as fiat USD.
+    """
+
+    if getattr(app.state, "aion_agentcash_openapi_metadata_installed", False):
+        return
+
+    original_openapi = app.openapi
+
+    def aion_openapi():
+        schema = original_openapi()
+        info = schema.setdefault("info", {})
+        info["x-guidance"] = (
+            "Before external spend, use POST /commercial/route-intelligence/preflight "
+            "for a zero-price GO/HOLD/STOP decision. When a qualified route exists, "
+            "POST the same bounded need to /commercial/route-intelligence/x402/purchase "
+            "and follow the returned x402 exact/upfront payment challenge."
+        )
+
+        operation = (
+            schema.setdefault("paths", {})
+            .setdefault("/commercial/route-intelligence/x402/purchase", {})
+            .setdefault("post", {})
+        )
+        operation["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": _x402_input_schema(),
+                }
+            },
+        }
+        operation.setdefault("responses", {}).setdefault(
+            "402", {"description": "Payment Required"}
+        )
+
+        plan = configured_route_intelligence_plan()
+        readiness = exact_upfront_readiness()
+        if plan is not None and readiness["launch_ready"]:
+            operation["x-payment-info"] = {
+                "price": {
+                    "mode": "fixed",
+                    "currency": plan.currency,
+                    "amount": plan.customer_price,
+                },
+                "protocols": [{"x402": {}}],
+            }
+        else:
+            operation.pop("x-payment-info", None)
+        return schema
+
+    app.openapi = aion_openapi
+    app.openapi_schema = None
+    app.state.aion_agentcash_openapi_metadata_installed = True
+
+
 def _payment_response_header(data: dict) -> str:
     payment = data["payment"]
     response = {
@@ -667,3 +727,5 @@ def install_commercial_payment_routes(app) -> None:
             ),
         )
         app.add_middleware(_CommercialPurchaseBodyLimit)
+
+    _install_agentcash_openapi_metadata(app)
