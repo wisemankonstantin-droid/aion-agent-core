@@ -46,6 +46,7 @@ from .moltbook_acquisition import (
     dm_check as moltbook_dm_check,
     dm_outbound_enabled as moltbook_dm_outbound_enabled,
     outbound_status as moltbook_outbound_status,
+    public_post_need as moltbook_public_post_need,
 )
 from .colony_acquisition import account_status as colony_account_status
 from .commercial_payment_routes import (
@@ -592,10 +593,31 @@ def _contact_allowed_for_actionable_target(
     )
 
 
-def _outbound_preflight(db: Session, intent_profile: str) -> dict:
-    """Run existing zero-price preflight before consuming an outbound slot."""
+def _outbound_preflight(
+    db: Session,
+    intent_profile: str,
+    *,
+    target: models.AmbassadorTarget | None = None,
+) -> dict:
+    """Run zero-price preflight using the buyer's public need when safely available."""
 
-    need = MOLTBOOK_INTENT_QUERIES[intent_profile][0]
+    need = None
+    need_source = "deterministic_intent_lane_not_buyer_quote"
+    if target is not None and target.discovery_source == "moltbook":
+        public_need = moltbook_public_post_need(str(target.interaction_url or ""))
+        if public_need.get("status") != "success":
+            return {
+                "decision": "HOLD",
+                "reason_code": str(public_need.get("error") or "public_need_unavailable")[:80],
+                "qualified_route_available": False,
+                "need_source": "moltbook_public_post_unavailable",
+            }
+        need = str(public_need.get("need") or "").strip()
+        need_source = "moltbook_public_post_excerpt"
+
+    if not need:
+        need = MOLTBOOK_INTENT_QUERIES[intent_profile][0]
+
     try:
         result = pre_spend_preflight_data(db, {"need": need})
     except PreSpendPreflightError:
@@ -603,15 +625,17 @@ def _outbound_preflight(db: Session, intent_profile: str) -> dict:
             "decision": "HOLD",
             "reason_code": "bounded_preflight_validation_error",
             "qualified_route_available": False,
-            "need_source": "deterministic_intent_lane_not_buyer_quote",
+            "need_source": need_source,
         }
-    return {
+    response = {
         "decision": str(result.get("decision") or "HOLD"),
         "reason_code": str(result.get("reason_code") or "unknown")[:80],
         "qualified_route_available": bool(result.get("qualified_route_available")),
-        "need_source": "deterministic_intent_lane_not_buyer_quote",
+        "need_source": need_source,
     }
-
+    if need_source == "moltbook_public_post_excerpt":
+        response["need"] = need
+    return response
 
 def _worker_daily_plan() -> dict:
     return {
@@ -1480,7 +1504,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
                 and _contact_allowed_for_actionable_target(mind_policy, target)
                 and contacts_remaining > 0
             ):
-                outbound_preflight = _outbound_preflight(db, lane)
+                outbound_preflight = _outbound_preflight(db, lane, target=target)
                 lane_report["preflight"] = outbound_preflight
             if (
                 target is not None

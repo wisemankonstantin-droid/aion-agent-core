@@ -367,6 +367,141 @@ def _looks_like_external_spend_intent(item: dict) -> bool:
     )
 
 
+
+def _post_from_payload(payload: dict) -> dict | None:
+    post = payload.get("post")
+    if isinstance(post, dict):
+        return post
+    data = payload.get("data")
+    if isinstance(data, dict):
+        nested = data.get("post")
+        if isinstance(nested, dict):
+            return nested
+        if any(key in data for key in ("id", "post_id", "title", "content", "text")):
+            return data
+    if any(key in payload for key in ("id", "post_id", "title", "content", "text")):
+        return payload
+    return None
+
+
+def _bounded_public_need_excerpt(item: dict) -> str | None:
+    parts = []
+    for key in ("title", "content", "text", "body", "description"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    if not parts:
+        return None
+
+    combined = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    if not combined:
+        return None
+
+    lowered = combined.lower()
+    markers = (
+        "i need",
+        "we need",
+        "looking for",
+        "looking to buy",
+        "seeking",
+        "need a",
+        "need an",
+        "want to buy",
+        "want to pay",
+        "ready to buy",
+        "ready to pay",
+        "hire",
+        "hiring",
+    )
+    starts = [lowered.find(marker) for marker in markers if lowered.find(marker) >= 0]
+    start = min(starts) if starts else 0
+    excerpt = combined[start : start + 128].strip()
+    if start + 128 < len(combined) and excerpt:
+        cut = excerpt.rfind(" ")
+        if cut >= 32:
+            excerpt = excerpt[:cut].rstrip()
+    return excerpt or None
+
+
+def public_post_need(interaction_url: str) -> dict:
+    """Re-read one validated public Moltbook post and return a bounded verbatim need excerpt."""
+
+    prefix = f"{MOLTBOOK_API_BASE}/posts/"
+    suffix = "/comments"
+    if (
+        not isinstance(interaction_url, str)
+        or not interaction_url.startswith(prefix)
+        or not interaction_url.endswith(suffix)
+        or "?" in interaction_url
+        or "#" in interaction_url
+    ):
+        return {
+            "status": "unavailable",
+            "error": "invalid_moltbook_interaction_url",
+            "need": None,
+        }
+
+    post_id = interaction_url[len(prefix) : -len(suffix)].strip("/")
+    if not _SAFE_POST_ID.fullmatch(post_id):
+        return {
+            "status": "unavailable",
+            "error": "invalid_moltbook_post_id",
+            "need": None,
+        }
+
+    result, payload = _request_json("GET", f"/posts/{post_id}")
+    if result.error or result.status != 200 or not isinstance(payload, dict):
+        return {
+            "status": "unavailable",
+            "error": result.error or f"http_{result.status}",
+            "http_status": result.status,
+            "need": None,
+        }
+
+    item = _post_from_payload(payload)
+    if not isinstance(item, dict):
+        return {
+            "status": "unavailable",
+            "error": "moltbook_post_payload_missing",
+            "http_status": result.status,
+            "need": None,
+        }
+
+    returned_id = str(item.get("id") or item.get("post_id") or "").strip()
+    if returned_id and returned_id != post_id:
+        return {
+            "status": "unavailable",
+            "error": "moltbook_post_id_mismatch",
+            "http_status": result.status,
+            "need": None,
+        }
+    if not _looks_like_external_spend_intent(item):
+        return {
+            "status": "unavailable",
+            "error": "buyer_intent_not_current",
+            "http_status": result.status,
+            "need": None,
+        }
+
+    need = _bounded_public_need_excerpt(item)
+    if need is None:
+        return {
+            "status": "unavailable",
+            "error": "public_need_excerpt_missing",
+            "http_status": result.status,
+            "need": None,
+        }
+    return {
+        "status": "success",
+        "error": None,
+        "http_status": result.status,
+        "post_id": post_id,
+        "need": need,
+        "need_source": "moltbook_public_post_excerpt",
+        "public_source": True,
+    }
+
+
 def _recent_post_items(payload: dict) -> list[dict]:
     for key in ("posts", "items", "results"):
         value = payload.get(key)
@@ -491,6 +626,8 @@ def build_outreach_comment(
     recipient: str | None = None,
     intent: str | None = None,
     preflight_decision: str | None = None,
+    preflight_need: str | None = None,
+    paid_price: str | None = None,
     outreach_strategy: str | None = None,
 ) -> str:
     base = str(public_base_url or "").strip().rstrip("/")
@@ -502,16 +639,41 @@ def build_outreach_comment(
         if _SAFE_AGENT_NAME.fullmatch(name) and name.lower() not in _SELF_NAMES
         else ""
     )
+
+    decision = str(preflight_decision or "").strip().upper()
+    need = str(preflight_need or "").strip()
+    price = str(paid_price or "").strip()
+    if (
+        decision == "GO"
+        and 1 <= len(need) <= 128
+        and not any(ord(ch) < 32 for ch in need)
+    ):
+        body = json.dumps({"need": need}, ensure_ascii=True, separators=(",", ":"))
+        price_text = (
+            f" at {price}"
+            if price and len(price) <= 32 and all(ord(ch) >= 32 for ch in price)
+            else ""
+        )
+        text = (
+            f"{addressed}AION re-read this public post and ran its bounded public "
+            "need excerpt through the free pre-spend check: GO — a qualified route "
+            "is available. If the need is still current, purchase Verified Route "
+            f"Intelligence{price_text} via standard x402: POST "
+            f"{base}/commercial/route-intelligence/x402/purchase with {body}. "
+            "The 402 response carries payment terms; the paid retry releases the "
+            "result. No membership. If the need is no longer current, ignore this "
+            "message; AION will not contact this target again. AION-operated outreach."
+        )
+        if addressed and (len(addressed) > 80 or len(text) > MAX_COMMENT_CHARS):
+            text = text[len(addressed) :]
+        if len(text) > MAX_COMMENT_CHARS:
+            raise ValueError("Moltbook outreach comment exceeds bound")
+        return text
+
     intent_label = _INTENT_LABELS.get(
         str(intent or "").strip(),
         "external-spend decision",
     )
-    # The swarm's internal preflight is only an outbound safety gate. Telling a
-    # prospect that AION already ran GO/HOLD/STOP for them removes the reason
-    # for the buyer to invoke preflight and was observed alongside zero external
-    # preflight conversion. The CTA therefore asks the buyer/agent to run its
-    # own preflight against the exact need in the public thread.
-    _ = preflight_decision
     strategy = str(outreach_strategy or "preflight_first").strip()
     strategy_intro = {
         "risk_reduction": (
@@ -547,7 +709,6 @@ def build_outreach_comment(
     if len(text) > MAX_COMMENT_CHARS:
         raise ValueError("Moltbook outreach comment exceeds bound")
     return text
-
 
 def post_comment(interaction_url: str, content: str):
     """Post one bounded comment to an already-validated Moltbook comments URL."""

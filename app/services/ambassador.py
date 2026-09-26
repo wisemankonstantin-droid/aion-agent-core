@@ -867,9 +867,21 @@ def build_ambassador_message(
     decision = str((preflight_result or {}).get("decision") or "").upper()
     if decision in {"GO", "HOLD", "STOP"}:
         message["pre_spend_preflight"]["decision"] = decision
-        message["pre_spend_preflight"]["decision_scope"] = (
-            "deterministic_intent_lane_not_exact_buyer_quote"
-        )
+        need_source = str((preflight_result or {}).get("need_source") or "")
+        exact_need = str((preflight_result or {}).get("need") or "").strip()
+        if (
+            need_source == "moltbook_public_post_excerpt"
+            and 1 <= len(exact_need) <= 128
+            and not any(ord(ch) < 32 for ch in exact_need)
+        ):
+            message["pre_spend_preflight"]["decision_scope"] = (
+                "bounded_public_buyer_need_excerpt"
+            )
+            message["pre_spend_preflight"]["body"] = {"need": exact_need}
+        else:
+            message["pre_spend_preflight"]["decision_scope"] = (
+                "deterministic_intent_lane_not_exact_buyer_quote"
+            )
     encoded = json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     if len(encoded) > MAX_MESSAGE_BYTES:
         raise AmbassadorError(500, "message_bound_exceeded", "Ambassador message exceeded its hard byte bound")
@@ -1197,6 +1209,15 @@ def send_contact(db: Session, *, target_id: str, message: dict, idempotency_key:
                 intent=lane,
                 preflight_decision=(
                     (message.get("pre_spend_preflight") or {}).get("decision")
+                ),
+                preflight_need=(
+                    ((message.get("pre_spend_preflight") or {}).get("body") or {}).get("need")
+                    if (message.get("pre_spend_preflight") or {}).get("decision_scope")
+                    == "bounded_public_buyer_need_excerpt"
+                    else None
+                ),
+                paid_price=(
+                    (message.get("paid_route_intelligence") or {}).get("price")
                 ),
                 outreach_strategy=outreach_strategy,
             )
