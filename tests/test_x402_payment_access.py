@@ -1,6 +1,6 @@
-from types import SimpleNamespace
-
 """Payment access friction tests perform no real payment."""
+
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
