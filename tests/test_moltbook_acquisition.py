@@ -800,3 +800,19 @@ def test_ambassador_message_marks_exact_public_need_scope():
         == "bounded_public_buyer_need_excerpt"
     )
     assert message["pre_spend_preflight"]["body"] == {"need": need}
+
+
+
+def test_moltbook_exact_need_outreach_drops_long_address_before_exceeding_bound():
+    text = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion-agent-core-live.onrender.com",
+        recipient="a" * 220,
+        intent="data_buyers",
+        preflight_decision="GO",
+        preflight_need="I need a paid search API for a current research workflow",
+        paid_price="0.01 USDC",
+    )
+
+    assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
+    assert not text.startswith("@")
+    assert "commercial/route-intelligence/x402/purchase" in text
