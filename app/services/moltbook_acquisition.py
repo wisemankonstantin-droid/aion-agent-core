@@ -664,7 +664,7 @@ def build_outreach_comment(
             "result. No membership. If the need is no longer current, ignore this "
             "message; AION will not contact this target again. AION-operated outreach."
         )
-        if len(text) > MAX_COMMENT_CHARS and addressed:
+        if addressed and (len(addressed) > 80 or len(text) > MAX_COMMENT_CHARS):
             text = text[len(addressed) :]
         if len(text) > MAX_COMMENT_CHARS:
             raise ValueError("Moltbook outreach comment exceeds bound")
