@@ -629,3 +629,174 @@ def test_moltbook_dm_is_fail_closed_until_verified_endpoint(monkeypatch):
     assert result["http_status"] is None
     assert called is False
 
+
+
+
+def test_moltbook_public_post_need_rechecks_exact_post(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+    seen = {}
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        seen["method"] = method
+        seen["url"] = url
+        seen["headers"] = dict(headers or {})
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "success": True,
+                "post": {
+                    "id": "buyer-post-1",
+                    "title": "Need a paid search API for a current research workflow",
+                    "content": "Looking for a reliable provider before I spend on access.",
+                },
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.public_post_need(
+        "https://www.moltbook.com/api/v1/posts/buyer-post-1/comments"
+    )
+
+    assert result["status"] == "success"
+    assert result["need_source"] == "moltbook_public_post_excerpt"
+    assert result["need"].startswith("Need a paid search API")
+    assert len(result["need"]) <= 128
+    assert seen["method"] == "GET"
+    assert seen["url"] == "https://www.moltbook.com/api/v1/posts/buyer-post-1"
+    assert seen["headers"]["Authorization"] == "Bearer moltbook_test_secret"
+
+
+def test_moltbook_public_post_need_fails_closed_when_intent_is_no_longer_current(monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_API_KEY", "moltbook_test_secret")
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        return (
+            safe_http.FetchResult(200, b"{}", None, 1),
+            {
+                "success": True,
+                "post": {
+                    "id": "buyer-post-2",
+                    "title": "Provider selection resolved",
+                    "content": "I already chose the provider and no longer need to buy anything.",
+                },
+            },
+        )
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = moltbook_acquisition.public_post_need(
+        "https://www.moltbook.com/api/v1/posts/buyer-post-2/comments"
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"] == "buyer_intent_not_current"
+    assert result["need"] is None
+
+
+def test_swarm_preflights_moltbook_target_from_exact_public_need(monkeypatch):
+    class Target:
+        discovery_source = "moltbook"
+        interaction_url = "https://www.moltbook.com/api/v1/posts/buyer-post-3/comments"
+
+    exact_need = "I need a paid browser API before spending on an automation provider"
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_public_post_need",
+        lambda _url: {
+            "status": "success",
+            "need": exact_need,
+            "need_source": "moltbook_public_post_excerpt",
+        },
+    )
+    captured = {}
+
+    def fake_preflight(_db, payload):
+        captured["payload"] = payload
+        return {
+            "decision": "GO",
+            "reason_code": "qualified_route_selected",
+            "qualified_route_available": True,
+        }
+
+    monkeypatch.setattr(acquisition_swarm, "pre_spend_preflight_data", fake_preflight)
+    result = acquisition_swarm._outbound_preflight(
+        object(),
+        "automation_buyers",
+        target=Target(),
+    )
+
+    assert captured["payload"] == {"need": exact_need}
+    assert result == {
+        "decision": "GO",
+        "reason_code": "qualified_route_selected",
+        "qualified_route_available": True,
+        "need_source": "moltbook_public_post_excerpt",
+        "need": exact_need,
+    }
+
+
+def test_swarm_holds_moltbook_contact_when_exact_public_need_cannot_be_rechecked(monkeypatch):
+    class Target:
+        discovery_source = "moltbook"
+        interaction_url = "https://www.moltbook.com/api/v1/posts/buyer-post-4/comments"
+
+    monkeypatch.setattr(
+        acquisition_swarm,
+        "moltbook_public_post_need",
+        lambda _url: {
+            "status": "unavailable",
+            "error": "buyer_intent_not_current",
+            "need": None,
+        },
+    )
+
+    result = acquisition_swarm._outbound_preflight(
+        object(),
+        "provider_selection",
+        target=Target(),
+    )
+
+    assert result["decision"] == "HOLD"
+    assert result["reason_code"] == "buyer_intent_not_current"
+    assert result["need_source"] == "moltbook_public_post_unavailable"
+
+
+def test_moltbook_exact_need_go_outreach_delivers_ready_x402_cta():
+    need = "I need a paid search API for a current research workflow"
+    text = moltbook_acquisition.build_outreach_comment(
+        public_base_url="https://aion.example",
+        recipient="BuyerAlpha",
+        intent="data_buyers",
+        preflight_decision="GO",
+        preflight_need=need,
+        paid_price="0.01 USDC",
+    )
+
+    assert "ran its bounded public need excerpt through the free pre-spend check: GO" in text
+    assert "qualified route is available" in text
+    assert "commercial/route-intelligence/x402/purchase" in text
+    assert '"need":"' in text
+    assert need in text
+    assert "0.01 USDC" in text
+    assert "run your own free AION preflight now" not in text
+    assert "No membership" in text
+    assert len(text) <= moltbook_acquisition.MAX_COMMENT_CHARS
+
+
+def test_ambassador_message_marks_exact_public_need_scope():
+    need = "I need a paid data provider before external spend"
+    message = ambassador.build_ambassador_message(
+        public_base_url="https://aion.example",
+        distribution_token="aion_dist_" + ("x" * 48),
+        preflight_result={
+            "decision": "GO",
+            "need_source": "moltbook_public_post_excerpt",
+            "need": need,
+        },
+    )
+
+    assert message["pre_spend_preflight"]["decision"] == "GO"
+    assert (
+        message["pre_spend_preflight"]["decision_scope"]
+        == "bounded_public_buyer_need_excerpt"
+    )
+    assert message["pre_spend_preflight"]["body"] == {"need": need}
