@@ -1,0 +1,92 @@
+name: submit-aion-402directory-once
+
+on:
+  push:
+    branches:
+      - ops/submit-aion-402directory-once
+    paths:
+      - .github/workflows/submit-aion-402directory-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit AION listing and verify directory state
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+
+          endpoint = "https://aion-agent-core-live.onrender.com/commercial/route-intelligence/x402/purchase"
+          payload = {
+              "name": "AION — Verified Route Intelligence",
+              "description": (
+                  "Before external spend, give AION a bounded provider-selection need. "
+                  "AION selects and verifies a qualified provider route; the frozen "
+                  "Route Intelligence result is released after x402 settlement."
+              ),
+              "endpoint": endpoint,
+              "method": "POST",
+              "price_usdc": 0.01,
+              "chain": "base",
+              "protocol": "x402",
+              "category": "agent-routing",
+              "tags": "provider-selection,pre-spend,routing,x402,agent-commerce",
+              "example": "",
+              "submitter_email": "",
+          }
+
+          body = json.dumps(payload).encode("utf-8")
+          req = urllib.request.Request(
+              "https://402directory.com/api/submissions",
+              data=body,
+              method="POST",
+              headers={
+                  "accept": "application/json",
+                  "content-type": "application/json",
+                  "user-agent": "AION-402Directory-Submit/1.0",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  submit_status = response.status
+                  submit_body = response.read(500000).decode("utf-8", "replace")
+          except urllib.error.HTTPError as exc:
+              submit_status = exc.code
+              submit_body = exc.read(500000).decode("utf-8", "replace")
+
+          print("SUBMIT_STATUS", submit_status)
+          print("SUBMIT_BODY", submit_body[:5000])
+
+          with urllib.request.urlopen(
+              urllib.request.Request(
+                  "https://402directory.com/api/directory",
+                  headers={
+                      "accept": "application/json",
+                      "user-agent": "AION-402Directory-Submit/1.0",
+                  },
+              ),
+              timeout=20,
+          ) as response:
+              directory_status = response.status
+              directory = json.loads(response.read(2000000))
+
+          entries = directory.get("entries", []) if isinstance(directory, dict) else []
+          exact = [
+              row for row in entries
+              if isinstance(row, dict) and row.get("endpoint") == endpoint
+          ]
+          print("DIRECTORY_STATUS", directory_status)
+          print("EXACT_VISIBLE", bool(exact))
+          if exact:
+              print("EXACT_ENTRY", json.dumps(exact[0], sort_keys=True))
+
+          if not (200 <= submit_status < 300):
+              raise SystemExit(f"submission failed with HTTP {submit_status}")
+          PY
