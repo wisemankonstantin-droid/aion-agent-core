@@ -10,7 +10,7 @@ import base64
 import json
 import sys
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -562,6 +562,37 @@ def install_commercial_payment_routes(app) -> None:
                 "and verification evidence, returns x402 payment terms, and releases the "
                 "frozen result only after exact/upfront settlement. No AION membership is required."
             ),
+        )
+
+        def x402_purchase_get_compat_endpoint(
+            need: str = Query(min_length=1, max_length=128),
+            candidate_identifier: str | None = Query(
+                default=None,
+                min_length=1,
+                max_length=240,
+            ),
+            payment_signature: str | None = Header(
+                default=None,
+                alias="PAYMENT-SIGNATURE",
+            ),
+            db: Session = Depends(get_db),
+        ):
+            """Compatibility transport for x402 buyers that cannot send POST JSON bodies."""
+
+            payload = {"need": need}
+            if candidate_identifier is not None:
+                payload["candidate_identifier"] = candidate_identifier
+            return x402_purchase_endpoint(
+                payload,
+                payment_signature=payment_signature,
+                db=db,
+            )
+
+        app.add_api_route(
+            "/commercial/route-intelligence/x402/purchase",
+            x402_purchase_get_compat_endpoint,
+            methods=["GET"],
+            include_in_schema=False,
         )
 
     if "/commercial/route-intelligence/purchase" not in existing:
