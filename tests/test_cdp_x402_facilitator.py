@@ -11,6 +11,9 @@ from app.services import cdp_x402_facilitator, economic_kernel
 from app.services.cdp_x402_facilitator import (
     CDP_API_KEY_ID_ENV,
     CDP_API_KEY_SECRET_ENV,
+    FACILITATOR_PROVIDER_ENV,
+    CDP_PROVIDER,
+    XPAY_PROVIDER,
     CDP_SETTLE_URL,
     XPAY_SETTLE_URL,
     FacilitatorSettlementError,
@@ -42,6 +45,7 @@ def _ed25519_secret():
 def reset_facilitator(monkeypatch):
     monkeypatch.delenv(CDP_API_KEY_ID_ENV, raising=False)
     monkeypatch.delenv(CDP_API_KEY_SECRET_ENV, raising=False)
+    monkeypatch.delenv(FACILITATOR_PROVIDER_ENV, raising=False)
     monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", False)
 
 
@@ -318,3 +322,108 @@ def test_legacy_settlement_pending_requires_transaction_and_matching_network(mon
     result = settle_exact_upfront(_payload(), _requirements())
     assert result["outcome"] == "pending"
     assert result["transaction"] == "0x" + "5" * 64
+
+
+
+def test_default_provider_remains_public_xpay(monkeypatch):
+    readiness = cdp_x402_facilitator.facilitator_credential_readiness()
+    assert readiness["provider"] == XPAY_PROVIDER
+    assert readiness["facilitator_url"] == cdp_x402_facilitator.XPAY_FACILITATOR_URL
+    assert readiness["facilitator_ready"] is True
+    assert readiness["credentials_required"] is False
+    assert readiness["blocking_reasons"] == []
+
+
+def test_cdp_provider_without_credentials_blocks_before_network(monkeypatch):
+    monkeypatch.setenv(FACILITATOR_PROVIDER_ENV, CDP_PROVIDER)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    calls = []
+    monkeypatch.setattr(
+        cdp_x402_facilitator,
+        "fetch_json",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    readiness = cdp_x402_facilitator.facilitator_credential_readiness()
+    assert readiness["provider"] == CDP_PROVIDER
+    assert readiness["facilitator_url"] == CDP_SETTLE_URL
+    assert readiness["facilitator_ready"] is False
+    assert readiness["credentials_required"] is True
+    assert readiness["blocking_reasons"] == [
+        "cdp_api_key_id_missing",
+        "cdp_api_key_secret_missing",
+    ]
+
+    with pytest.raises(FacilitatorSettlementError) as error:
+        settle_exact_upfront(_payload(), _requirements())
+    assert error.value.code == "cdp_credentials_missing_or_invalid"
+    assert calls == []
+
+
+def test_selected_cdp_provider_uses_bearer_jwt_one_attempt(monkeypatch):
+    public, secret = _ed25519_secret()
+    del public
+    monkeypatch.setenv(FACILITATOR_PROVIDER_ENV, CDP_PROVIDER)
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "organizations/test/apiKeys/key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    calls = []
+
+    def fake_fetch(method, url, *, payload, headers, policy):
+        calls.append((method, url, payload, headers, policy))
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": True,
+                "transaction": "0x" + "4" * 64,
+                "network": "base",
+                "payer": "0x" + "3" * 40,
+                "amount": "1250000",
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", fake_fetch)
+    result = settle_exact_upfront(_payload(), _requirements())
+
+    assert result["outcome"] == "settled"
+    assert len(calls) == 1
+    method, url, body, headers, policy = calls[0]
+    assert method == "POST"
+    assert url == CDP_SETTLE_URL
+    assert body["x402Version"] == 2
+    assert body["paymentPayload"] == _payload()
+    assert body["paymentRequirements"] == _requirements()
+    assert headers["Accept"] == "application/json"
+    assert headers["Content-Type"] == "application/json"
+    assert headers["Authorization"].startswith("Bearer ")
+    token = headers["Authorization"].removeprefix("Bearer ")
+    assert token.count(".") == 2
+    assert policy.max_attempts == 1
+    assert policy.max_response_bytes == 32_768
+
+    readiness = cdp_x402_facilitator.facilitator_credential_readiness()
+    assert readiness["provider"] == CDP_PROVIDER
+    assert readiness["facilitator_ready"] is True
+    assert readiness["credentials_required"] is True
+    assert readiness["credentials_locally_valid"] is True
+
+
+def test_unknown_provider_is_fail_closed(monkeypatch):
+    monkeypatch.setenv(FACILITATOR_PROVIDER_ENV, "surprise-provider")
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    calls = []
+    monkeypatch.setattr(
+        cdp_x402_facilitator,
+        "fetch_json",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    readiness = cdp_x402_facilitator.facilitator_credential_readiness()
+    assert readiness["provider"] == "invalid"
+    assert readiness["facilitator_ready"] is False
+    assert readiness["blocking_reasons"] == ["x402_facilitator_provider_invalid"]
+
+    with pytest.raises(FacilitatorSettlementError) as error:
+        settle_exact_upfront(_payload(), _requirements())
+    assert error.value.code == "x402_facilitator_provider_invalid"
+    assert calls == []
