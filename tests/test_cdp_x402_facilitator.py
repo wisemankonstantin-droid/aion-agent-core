@@ -427,3 +427,60 @@ def test_unknown_provider_is_fail_closed(monkeypatch):
         settle_exact_upfront(_payload(), _requirements())
     assert error.value.code == "x402_facilitator_provider_invalid"
     assert calls == []
+
+
+
+def test_selected_cdp_provider_forwards_bazaar_extension_unchanged(monkeypatch):
+    _, secret = _ed25519_secret()
+    monkeypatch.setenv(FACILITATOR_PROVIDER_ENV, CDP_PROVIDER)
+    monkeypatch.setenv(CDP_API_KEY_ID_ENV, "organizations/test/apiKeys/key")
+    monkeypatch.setenv(CDP_API_KEY_SECRET_ENV, secret)
+    monkeypatch.setattr(economic_kernel, "REAL_MONEY_EXECUTION_ENABLED", True)
+    payment_payload = _payload()
+    bazaar = {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "bodyType": "json",
+                    "body": {"need": "compare paid API providers"},
+                },
+                "output": {"type": "json", "example": {"state": "entitled"}},
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+            },
+        }
+    }
+    payment_payload["extensions"] = bazaar
+    seen = {}
+
+    def fake_fetch(method, url, *, payload, headers, policy):
+        seen["method"] = method
+        seen["url"] = url
+        seen["payload"] = payload
+        seen["headers"] = headers
+        seen["attempts"] = policy.max_attempts
+        return (
+            FetchResult(status=200, body=b"{}", error=None, attempts=1),
+            {
+                "success": True,
+                "transaction": "0x" + "4" * 64,
+                "network": "base",
+                "payer": "0x" + "3" * 40,
+                "amount": "1250000",
+            },
+        )
+
+    monkeypatch.setattr(cdp_x402_facilitator, "fetch_json", fake_fetch)
+    result = settle_exact_upfront(payment_payload, _requirements())
+
+    assert result["outcome"] == "settled"
+    assert seen["method"] == "POST"
+    assert seen["url"] == CDP_SETTLE_URL
+    assert seen["payload"]["paymentPayload"]["extensions"] == bazaar
+    assert seen["payload"]["paymentPayload"] is payment_payload
+    assert seen["attempts"] == 1
+    assert seen["headers"]["Authorization"].startswith("Bearer ")
