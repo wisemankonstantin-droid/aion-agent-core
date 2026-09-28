@@ -24,12 +24,15 @@ from .safe_http import FetchPolicy, fetch_json
 
 CDP_API_KEY_ID_ENV = "CDP_API_KEY_ID"
 CDP_API_KEY_SECRET_ENV = "CDP_API_KEY_SECRET"
+FACILITATOR_PROVIDER_ENV = "AION_X402_FACILITATOR_PROVIDER"
+XPAY_PROVIDER = "xpay_public"
+CDP_PROVIDER = "cdp_authenticated"
 CDP_SETTLE_URL = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
 CDP_SETTLE_HOST = "api.cdp.coinbase.com"
 CDP_SETTLE_PATH = "/platform/v2/x402/settle"
 XPAY_FACILITATOR_URL = "https://facilitator.xpay.sh"
 XPAY_SETTLE_URL = XPAY_FACILITATOR_URL + "/settle"
-ACTIVE_FACILITATOR_PROVIDER = "xpay_public"
+ACTIVE_FACILITATOR_PROVIDER = XPAY_PROVIDER
 
 _MAX_RESPONSE_BYTES = 32_768
 _MAX_ERROR_DETAIL = 240
@@ -58,6 +61,19 @@ class FacilitatorSettlementError(Exception):
         self.message = message
 
 
+def configured_facilitator_provider() -> str | None:
+    """Return the explicitly selected settlement provider, defaulting to XPay.
+
+    The selector is intentionally fail-closed: an unknown configured value
+    never falls back to a different money-moving provider.
+    """
+
+    value = (os.getenv(FACILITATOR_PROVIDER_ENV) or XPAY_PROVIDER).strip()
+    if value in {XPAY_PROVIDER, CDP_PROVIDER}:
+        return value
+    return None
+
+
 def facilitator_credentials_configured() -> bool:
     return bool(
         (os.getenv(CDP_API_KEY_ID_ENV) or "").strip()
@@ -66,11 +82,9 @@ def facilitator_credentials_configured() -> bool:
 
 
 def facilitator_credential_readiness() -> dict:
-    """Report active facilitator readiness without contacting a remote service.
+    """Report readiness for the selected settlement provider without network I/O."""
 
-    XPay's public facilitator requires no API key. CDP credential shape is still
-    reported only as optional fallback metadata and never gates the active path.
-    """
+    provider = configured_facilitator_provider()
     key_id_present = bool((os.getenv(CDP_API_KEY_ID_ENV) or "").strip())
     secret = (os.getenv(CDP_API_KEY_SECRET_ENV) or "").strip()
     secret_present = bool(secret)
@@ -81,22 +95,57 @@ def facilitator_credential_readiness() -> dict:
             secret_locally_valid = True
         except FacilitatorSettlementError:
             pass
-    cdp_fallback_valid = bool(
+    cdp_credentials_valid = bool(
         key_id_present and secret_present and secret_locally_valid
     )
+
+    if provider == XPAY_PROVIDER:
+        return {
+            "provider": XPAY_PROVIDER,
+            "facilitator_url": XPAY_FACILITATOR_URL,
+            "facilitator_ready": True,
+            "credentials_required": False,
+            "key_id_present": key_id_present,
+            "secret_present": secret_present,
+            "secret_locally_valid": secret_locally_valid,
+            "credentials_locally_valid": cdp_credentials_valid,
+            "remote_acceptance_verified": False,
+            "blocking_reasons": [],
+        }
+
+    if provider == CDP_PROVIDER:
+        reasons = []
+        if not key_id_present:
+            reasons.append("cdp_api_key_id_missing")
+        if not secret_present:
+            reasons.append("cdp_api_key_secret_missing")
+        elif not secret_locally_valid:
+            reasons.append("cdp_api_key_secret_invalid")
+        return {
+            "provider": CDP_PROVIDER,
+            "facilitator_url": CDP_SETTLE_URL,
+            "facilitator_ready": cdp_credentials_valid,
+            "credentials_required": True,
+            "key_id_present": key_id_present,
+            "secret_present": secret_present,
+            "secret_locally_valid": secret_locally_valid,
+            "credentials_locally_valid": cdp_credentials_valid,
+            "remote_acceptance_verified": False,
+            "blocking_reasons": reasons,
+        }
+
     return {
-        "provider": ACTIVE_FACILITATOR_PROVIDER,
-        "facilitator_url": XPAY_FACILITATOR_URL,
-        "facilitator_ready": True,
+        "provider": "invalid",
+        "facilitator_url": None,
+        "facilitator_ready": False,
         "credentials_required": False,
         "key_id_present": key_id_present,
         "secret_present": secret_present,
         "secret_locally_valid": secret_locally_valid,
-        "credentials_locally_valid": cdp_fallback_valid,
+        "credentials_locally_valid": False,
         "remote_acceptance_verified": False,
-        "blocking_reasons": [],
+        "blocking_reasons": ["x402_facilitator_provider_invalid"],
     }
-
 
 def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
@@ -284,11 +333,34 @@ def settle_exact_upfront(payment_payload: dict, payment_requirements: dict) -> d
         "paymentPayload": payment_payload,
         "paymentRequirements": payment_requirements,
     }
+    provider = configured_facilitator_provider()
+    if provider == XPAY_PROVIDER:
+        settlement_url = XPAY_SETTLE_URL
+        headers = {"Accept": "application/json"}
+    elif provider == CDP_PROVIDER:
+        readiness = facilitator_credential_readiness()
+        if not readiness["facilitator_ready"]:
+            raise FacilitatorSettlementError(
+                "cdp_credentials_missing_or_invalid",
+                "Selected CDP facilitator is not locally credential-ready",
+            )
+        settlement_url = CDP_SETTLE_URL
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + generate_cdp_request_jwt(),
+        }
+    else:
+        raise FacilitatorSettlementError(
+            "x402_facilitator_provider_invalid",
+            "Configured x402 facilitator provider is invalid",
+        )
+
     result, data = fetch_json(
         "POST",
-        XPAY_SETTLE_URL,
+        settlement_url,
         payload=body,
-        headers={"Accept": "application/json"},
+        headers=headers,
         policy=FetchPolicy(
             timeout_seconds=20.0,
             max_response_bytes=_MAX_RESPONSE_BYTES,
