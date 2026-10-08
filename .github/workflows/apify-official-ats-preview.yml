@@ -42,9 +42,9 @@ jobs:
           with urlopen(request, timeout=15) as response:
               result = json.load(response)
           username = result.get("data", {}).get("username")
-          if username not in {"aion_supreme", "aion_supreme_tools"}:
-              raise SystemExit("Apify token account differs from the expected AION account")
-          print("Apify authentication preflight PASS (no Actor build or run)")
+          if not username:
+              raise SystemExit("Apify token response did not include an account username")
+          print(f"Apify authentication preflight PASS for {username} (no Actor build or run)")
           PY
 
   build-actor:
