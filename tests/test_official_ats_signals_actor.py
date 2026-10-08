@@ -1,6 +1,10 @@
 """Offline regression tests for the proposed market-listed Apify product."""
+import asyncio
+import importlib.util
 import json
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 import pytest
 from products.official_ats_signals.collector import collect, normalize, source_url
@@ -119,3 +123,63 @@ def test_failed_source_is_reported_without_fake_jobs():
     result = collect([{"provider": "greenhouse", "slug": "corp"}], fetch=fake_fetch)
     assert result["results"] == 0
     assert result["errors"][0]["reason"] == "official_ats_source_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("charged_count", "limit_reached_after_charge", "expected_status", "should_deliver"),
+    [
+        (1, True, "fulfilled", True),
+        (0, False, "payment_not_charged", False),
+    ],
+)
+def test_paid_actor_delivers_iff_one_charge_succeeded(
+    monkeypatch, charged_count, limit_reached_after_charge, expected_status, should_deliver
+):
+    """A one-order buyer can exhaust their budget AFTER paying: deliver anyway."""
+    actor_dir = Path(__file__).parents[1] / "products" / "official_ats_signals"
+
+    class FakeActor:
+        def __init__(self):
+            self.pushed = []
+            self.values = {}
+            self.log = SimpleNamespace(error=lambda *args: None)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get_input(self):
+            return {"boards": [{"provider": "greenhouse", "slug": "greenhouse"}]}
+
+        async def charge(self, *, event_name):
+            assert event_name == "verified-batch"
+            return SimpleNamespace(
+                charged_count=charged_count,
+                event_charge_limit_reached=limit_reached_after_charge,
+            )
+
+        async def push_data(self, rows):
+            self.pushed.extend(rows)
+
+        async def set_value(self, key, value):
+            self.values[key] = value
+
+    fake_actor = FakeActor()
+    monkeypatch.setitem(sys.modules, "apify", SimpleNamespace(Actor=fake_actor))
+    monkeypatch.syspath_prepend(str(actor_dir))
+    monkeypatch.setenv("AION_HIRING_PPE_ENABLED", "1")
+    spec = importlib.util.spec_from_file_location("ats_actor_payment_test", actor_dir / "main.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "collect", lambda *args, **kwargs: {
+        "jobs": [{"title": "Published Engineer", "evidence": "public_official_ats_listing"}],
+        "results": 1,
+        "boards_checked": 1,
+        "retrieved_at": "2026-10-09T00:00:00Z",
+        "errors": [],
+    })
+    asyncio.run(module.main())
+    assert fake_actor.values["OUTPUT"]["status"] == expected_status
+    assert bool(fake_actor.pushed) is should_deliver
