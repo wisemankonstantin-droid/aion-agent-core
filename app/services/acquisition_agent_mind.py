@@ -600,6 +600,13 @@ _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "one target per target",
     "go threshold",
     "go rate",
+    "go metric",
+    "high rate preflight",
+    "high rate pre flight",
+    "preflight flood",
+    "pre flight flood",
+    "outbound contact token",
+    "granted contact token",
     "motif 1",
     "motif 2",
 )
