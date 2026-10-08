@@ -40,6 +40,22 @@ def test_ashby_respects_hidden_jobs_and_explicit_compensation():
     assert rows[0]["compensation_as_published"] == "$120k-$180k"
 
 
+def test_hidden_ashby_compensation_is_never_exposed():
+    public_url = "https://jobs.ashbyhq.com/corp/role"
+    rows = normalize("ashby", "corp", {"jobs": [
+        {"id": "hidden", "title": "Staff Engineer", "jobUrl": public_url,
+         "shouldDisplayCompensationOnJobPostings": False,
+         "compensation": {"compensationTierSummary": "$1000k secret"}},
+        {"id": "public", "title": "Staff Engineer", "jobUrl": public_url + "/public",
+         "shouldDisplayCompensationOnJobPostings": True,
+         "compensation": {"compensationTierSummary": "$150k public",
+                          "compensationTiers": [{"confidential": "do-not-publish"}]}},
+    ]})
+    assert rows[0]["compensation_as_published"] is None
+    assert rows[1]["compensation_as_published"] == "$150k public"
+    assert "do-not-publish" not in str(rows)
+
+
 def test_lever_uses_published_postings_without_claiming_accepted_application():
     rows = normalize("lever", "corp", [{
         "id": "123", "text": "Senior Data Engineer",
