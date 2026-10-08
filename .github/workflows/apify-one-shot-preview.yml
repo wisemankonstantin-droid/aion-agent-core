@@ -1,0 +1,178 @@
+name: AION Apify one-shot bounded preview
+
+# One-time push-only workflow: triggered by addition of this file to main.
+# No schedule or manual replay button. An account-wide <=$1 monthly hard cap
+# is verified BEFORE the potentially billable build or test.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apify-one-shot-preview.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aion-apify-bounded-first-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enforce prepaid-only, account-wide USD 1 hard ceiling
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from decimal import Decimal, InvalidOperation
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          token = os.environ.get("APIFY_TOKEN")
+          if not token:
+              raise SystemExit("STOP: missing APIFY_TOKEN")
+          root = "https://api.apify.com/v2/"
+          def api(path, method="GET", payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = Request(root + path, data=data, method=method,
+                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+              with urlopen(req, timeout=25) as response:
+                  body = response.read()
+              return json.loads(body)["data"] if body else {}
+
+          def amount(value):
+              try:
+                  number = Decimal(str(value))
+              except (InvalidOperation, TypeError):
+                  raise SystemExit("STOP: missing numeric Apify credit/limit data")
+              if not number.is_finite() or number < 0:
+                  raise SystemExit("STOP: invalid numeric Apify credit/limit data")
+              return number
+
+          user = api("users/me")
+          if user.get("username") != "aion_supreme":
+              raise SystemExit("STOP: unexpected Apify account")
+          limits = api("users/me/limits")
+          current = limits.get("current", {})
+          used = amount(current.get("monthlyUsageUsd"))
+          cap = amount(limits.get("limits", {}).get("maxMonthlyUsageUsd"))
+          prepaid = amount(user.get("plan", {}).get("monthlyUsageCreditsUsd"))
+          print(f"Preflight: used={used} USD, prepaid={prepaid} USD, old cap={cap} USD")
+          if used >= Decimal("1") or prepaid < Decimal("1"):
+              raise SystemExit("STOP: cannot safely bound this experiment within prepaid USD 1")
+          if int(current.get("activeActorJobCount", -1)) != 0:
+              raise SystemExit("STOP: account has active jobs; do not change shared cap")
+
+          # Avoid overwriting an existing Actor, which could have paid env vars.
+          try:
+              actor = api("acts/aion_supreme~official-ats-hiring-signals")
+          except HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              actor = None
+          if actor:
+              raise SystemExit("STOP: Actor already exists; avoid overwriting its configuration")
+
+          # Enforce an ABSOLUTE monthly ceiling of USD 1, including old usage.
+          # This is less than the owner's additional-spend allowance of USD 1.
+          if cap > Decimal("1"):
+              api("users/me/limits", method="PUT", payload={"maxMonthlyUsageUsd": 1})
+          checked = api("users/me/limits")
+          enforced = amount(checked.get("limits", {}).get("maxMonthlyUsageUsd"))
+          refreshed = amount(checked.get("current", {}).get("monthlyUsageUsd"))
+          if enforced > Decimal("1") or refreshed >= Decimal("1"):
+              raise SystemExit("STOP: requested hard ceiling is not enforced")
+          if int(checked.get("current", {}).get("activeActorJobCount", -1)) != 0:
+              raise SystemExit("STOP: active job appeared during preflight")
+          print(f"PASS: Apify monthly hard ceiling={enforced} USD; used={refreshed} USD; prepaid-only")
+          PY
+
+      - name: Push and build first private preview Actor
+        id: apify
+        uses: apify/push-actor-action@5cc259c1492e59394a1e3db984b966e16a3d026c # v1
+        with:
+          token: ${{ secrets.APIFY_TOKEN }}
+          working-directory: products/official_ats_signals
+
+      - name: Report build evidence
+        env:
+          BUILD_ID: ${{ steps.apify.outputs.build-id }}
+          BUILD_STATUS: ${{ steps.apify.outputs.build-status }}
+        run: |
+          echo "Apify build ID: $BUILD_ID"
+          echo "Apify build status: $BUILD_STATUS"
+          test "$BUILD_STATUS" = "SUCCEEDED"
+
+      - name: Run one unpaid preview using existing prepaid credits
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          from decimal import Decimal
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          token = os.environ["APIFY_TOKEN"]
+          root = "https://api.apify.com/v2/"
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          def api(path, method="GET", payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = Request(root + path, data=data, method=method, headers=headers)
+              with urlopen(req, timeout=85) as response:
+                  raw = response.read()
+              return json.loads(raw) if raw else {}
+
+          actor = api("acts/aion_supreme~official-ats-hiring-signals").get("data", {})
+          if not actor or actor.get("isPublic"):
+              raise SystemExit("STOP: preview Actor absent or already public")
+          limits = api("users/me/limits")["data"]
+          usage = Decimal(str(limits["current"]["monthlyUsageUsd"]))
+          ceiling = Decimal(str(limits["limits"]["maxMonthlyUsageUsd"]))
+          if ceiling > Decimal("1") or usage >= Decimal("0.85"):
+              raise SystemExit("STOP: less than USD 0.15 in the hard cap; no test run")
+
+          params = urlencode({"waitForFinish": 60, "memory": 256,
+                              "timeout": 75, "maxTotalChargeUsd": "0.10"})
+          payload = {"boards": [{"provider": "greenhouse", "slug": "greenhouse"}],
+                     "titleKeywords": [], "maxResults": 2}
+          response = api("acts/aion_supreme~official-ats-hiring-signals/runs?" + params,
+                         method="POST", payload=payload)
+          run = response.get("data", {})
+          run_id = run.get("id")
+          if not run_id:
+              raise SystemExit("STOP: no Apify run ID")
+          print(f"Preview run ID: {run_id}")
+          deadline = time.monotonic() + 90
+          while run.get("status") in {"READY", "RUNNING"} and time.monotonic() < deadline:
+              time.sleep(5)
+              run = api("actor-runs/" + run_id).get("data", {})
+          print(f"Preview run status: {run.get('status')}")
+          if run.get("status") != "SUCCEEDED":
+              raise SystemExit("STOP: preview did not complete successfully")
+          dataset = run.get("defaultDatasetId")
+          if not dataset:
+              raise SystemExit("STOP: no dataset in Actor result")
+          rows = api("datasets/" + dataset + "/items?format=json&limit=3")
+          if not isinstance(rows, list) or not (1 <= len(rows) <= 2):
+              raise SystemExit("STOP: expected 1-2 preview rows, not a paid dataset")
+          if any(not str(row.get("source_url", "")).startswith("https://") for row in rows):
+              # Dataset row schema may use 'url' rather than 'source_url':
+              if any(not str(row.get("url", "")).startswith("https://") for row in rows):
+                  raise SystemExit("STOP: source URL is missing or not HTTPS")
+          print(f"Preview dataset ID: {dataset}; rows: {len(rows)}")
+          final = api("users/me/limits")["data"]
+          print("Apify monthly usage after test (USD):", final["current"]["monthlyUsageUsd"])
+          print("Preview validation complete: no Store publication and no PPE charge was requested")
+          PY
