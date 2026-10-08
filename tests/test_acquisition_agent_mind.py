@@ -266,6 +266,60 @@ def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
     assert rows[WORKERS[4].id].last_state == "reasoning_budget_deferred"
 
 
+
+def test_shared_gateway_timeout_defers_worker_llm_calls_but_allows_next_cycle_retry(
+    monkeypatch,
+):
+    _clean_minds()
+    monkeypatch.setenv("OPENAI_API_KEY", "dummy-only")
+    monkeypatch.setenv("AION_AGENT_MINDS_ENABLED", "true")
+    monkeypatch.setenv("AION_AGENT_MIND_MAX_CALLS_PER_CYCLE", "5")
+    seen = []
+
+    def unavailable_brain(observation):
+        raise acquisition_agent_mind.httpx.ConnectTimeout("timed out")
+
+    def worker_call(worker_id, observation):
+        seen.append(worker_id)
+        return _plan(worker_id)
+
+    monkeypatch.setattr(acquisition_agent_mind, "_call_temple_brain", unavailable_brain)
+    monkeypatch.setattr(acquisition_agent_mind, "_call_model", worker_call)
+    workers = WORKERS[:5]
+    kwargs = {
+        "channel_health": {"federated_a2a": {"public_discovery": True}},
+        "send_enabled": True,
+        "fallback_queries_by_worker": {
+            worker.id: ["provider selection"] for worker in workers
+        },
+    }
+    assert acquisition_agent_mind.refresh_all_minds(workers, **kwargs) == {}
+    assert seen == []
+    with SessionLocal() as db:
+        rows = list(db.scalars(select(models.AcquisitionAgentMind)))
+        brain = next(
+            r for r in rows if r.worker_id == acquisition_agent_mind.TEMPLE_BRAIN_ID
+        )
+        assert brain.last_state == "degraded"
+        assert "ConnectTimeout" in brain.last_error
+        assert all(
+            r.last_state == "model_transport_deferred"
+            for r in rows
+            if r.worker_id in {worker.id for worker in workers}
+        )
+
+    # The breaker is cycle-local: once the gateway recovers, worker plans run.
+    monkeypatch.setattr(
+        acquisition_agent_mind,
+        "_call_temple_brain",
+        lambda observation: _brain_plan(),
+    )
+    results = acquisition_agent_mind.refresh_all_minds(workers, **kwargs)
+    assert len(results) == len(workers)
+    assert len(seen) == len(workers)
+
+
+
 def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-secret-header-only")
     monkeypatch.delenv("AION_AGENT_MODEL", raising=False)
@@ -1368,6 +1422,8 @@ def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatc
         assert row.safe_memory["channel_performance"]["federated_a2a"][
             "responses"
         ] == 12
+        assert row.last_state == "model_unconfigured"
+        assert row.total_reasoning_calls == 0
 
 
 def test_commercial_knowledge_uses_configured_deterministic_price(monkeypatch):

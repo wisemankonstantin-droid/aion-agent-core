@@ -1778,6 +1778,21 @@ def refresh_all_minds(
         plan=temple_brain,
         error=temple_brain_error,
     )
+    # A shared transport outage must not consume the rest of this acquisition
+    # cycle in five more identically failing model calls. The deterministic
+    # executor still discovers and contacts independently under its existing
+    # target qualification, dedupe and platform policy. Retry AI next cycle.
+    if temple_brain_error and any(
+        marker in temple_brain_error
+        for marker in (
+            "ConnectTimeout", "ReadTimeout", "ConnectError", "TimeoutError",
+            "model_rate_limited", "model_http_404", "model_http_502",
+            "model_http_503", "model_http_504",
+        )
+    ):
+        _ensure_rows(workers, state="model_transport_deferred")
+        return {}
+
     brain_fresh_this_cycle = temple_brain is not None
     if temple_brain is None:
         temple_brain = _last_temple_brain_plan()
@@ -1874,6 +1889,9 @@ def record_worker_outcome(worker_id: str, outcome: dict) -> None:
             memory["channel_performance"] = perf
 
         row.safe_memory = memory
-        row.last_state = "learning"
+        # Transport-only outcomes are not proof that AI reasoning succeeded.
+        # Preserve degraded/unconfigured/deferred truth from this exact cycle.
+        if row.last_state == "planned" and row.last_plan:
+            row.last_state = "learning"
         row.updated_at = _now()
         db.commit()
