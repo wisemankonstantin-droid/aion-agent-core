@@ -167,10 +167,9 @@ jobs:
           rows = api("datasets/" + dataset + "/items?format=json&limit=3")
           if not isinstance(rows, list) or not (1 <= len(rows) <= 2):
               raise SystemExit("STOP: expected 1-2 preview rows, not a paid dataset")
-          if any(not str(row.get("source_url", "")).startswith("https://") for row in rows):
-              # Dataset row schema may use 'url' rather than 'source_url':
-              if any(not str(row.get("url", "")).startswith("https://") for row in rows):
-                  raise SystemExit("STOP: source URL is missing or not HTTPS")
+          if any(not str(row.get("job_url", "")).startswith("https://") or
+                 row.get("evidence") != "public_official_ats_listing" for row in rows):
+              raise SystemExit("STOP: invalid public job URL or missing source evidence")
           print(f"Preview dataset ID: {dataset}; rows: {len(rows)}")
           final = api("users/me/limits")["data"]
           print("Apify monthly usage after test (USD):", final["current"]["monthlyUsageUsd"])
