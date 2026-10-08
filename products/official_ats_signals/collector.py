@@ -98,7 +98,20 @@ def normalize(provider: str, slug: str, payload: object) -> list[dict[str, Any]]
             url, job_id = row.get("jobUrl"), row.get("id")
             department = _text(row.get("department"), 100)
             published = row.get("publishedAt")
-            compensation = _text(row.get("compensation"), 400) if row.get("compensation") else None
+            # Respect the employer's salary-visibility flag and use ONLY
+            # the published human-readable summary, not internal salary tiers.
+            raw_compensation = row.get("compensation")
+            if row.get("shouldDisplayCompensationOnJobPostings") is False:
+                compensation = None
+            elif isinstance(raw_compensation, dict):
+                compensation = _text(
+                    raw_compensation.get("compensationTierSummary")
+                    or raw_compensation.get("scrapeableCompensationSalarySummary"), 400
+                ) or None
+            elif isinstance(raw_compensation, str):
+                compensation = _text(raw_compensation, 400) or None
+            else:
+                compensation = None
         safe_url = _job_url(url)
         if not safe_url or not _text(title):
             continue
