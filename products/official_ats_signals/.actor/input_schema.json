@@ -1,0 +1,63 @@
+{
+  "title": "Official ATS Hiring Signals",
+  "description": "Read up to five company public Greenhouse, Lever or Ashby boards. Only verified public postings are emitted.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "boards": {
+      "title": "Official company job boards",
+      "type": "array",
+      "description": "Each object must contain provider (greenhouse, lever, ashby) and public board slug.",
+      "editor": "json",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "greenhouse",
+              "lever",
+              "ashby"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 75
+          }
+        },
+        "required": [
+          "provider",
+          "slug"
+        ]
+      },
+      "default": [
+        {
+          "provider": "ashby",
+          "slug": "Ashby"
+        }
+      ]
+    },
+    "titleKeywords": {
+      "title": "Title search terms",
+      "type": "array",
+      "editor": "stringList",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "maxResults": {
+      "title": "Maximum matches returned",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 50
+    }
+  },
+  "required": [
+    "boards"
+  ]
+}
