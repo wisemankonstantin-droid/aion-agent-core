@@ -748,6 +748,9 @@ def test_live_model_invented_preflight_thresholds_and_contact_grants_are_rejecte
         "outbound_contact:true",
         "one_target_per_target:true",
         "Motif 1 or Motif 2 is mandatory",
+        "High‑rate preflight submissions unlock a buyer.",
+        "Pre‑flight flood first, buyer later.",
+        "Get the granted contact token from the GO metric.",
     ):
         assert acquisition_agent_mind._references_unsupported_internal_control(
             invented
