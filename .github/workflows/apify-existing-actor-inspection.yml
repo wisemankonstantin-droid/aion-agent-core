@@ -66,11 +66,17 @@ jobs:
           if not isinstance(builds, list):
               raise SystemExit("Build listing unavailable")
           print("RECENT BUILDS LISTED:", len(builds))
-          for b in builds:
-              if b.get("actId") in actor_ids:
-                  print("BUILD:", b.get("id"), "Actor:", b.get("actId"),
-                        "status:", b.get("status"),
-                        "USD:", b.get("usageTotalUsd"),
-                        "started:", b.get("startedAt"))
+          for b in builds[:20]:
+              print("BUILD:", b.get("id"), "Actor:", b.get("actId"),
+                    "status:", b.get("status"),
+                    "USD:", b.get("usageTotalUsd"),
+                    "started:", b.get("startedAt"))
+          runs = read("actor-runs?limit=20&desc=1").get("items", [])
+          if isinstance(runs, list):
+              print("RECENT RUNS LISTED:", len(runs))
+              for run in runs[:20]:
+                  print("RUN:", run.get("id"), "Actor:", run.get("actId"),
+                        "status:", run.get("status"),
+                        "USD:", run.get("usageTotalUsd"))
           print("READ ONLY INSPECTION PASS - NO BILLABLE ACTION")
           PY
