@@ -35,8 +35,8 @@
       },
       "default": [
         {
-          "provider": "ashby",
-          "slug": "Ashby"
+          "provider": "greenhouse",
+          "slug": "greenhouse"
         }
       ]
     },
