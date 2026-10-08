@@ -489,6 +489,13 @@ def test_generated_commercial_reasoning_keeps_outreach_separate_from_aion_purcha
         "external paid execution/spend requires preflight, payment authorization, "
         "and economic justification" in normalized_prompts
     )
+    # Acquisition focus can change without introducing a fake price or creating
+    # a new paid SKU / mandatory customer spend gate.
+    assert "usd 50" in normalized_prompts
+    assert "usd 250-1000+" in normalized_prompts
+    assert "an advertised budget is only" in normalized_prompts
+    assert "unknown budgets stay unknown" in normalized_prompts
+    assert "not an existing sku price" in normalized_prompts
 
 
 def test_worker_mission_routes_to_buyer_contact_not_aion_purchase():
