@@ -29,9 +29,9 @@ Collector needs only Python stdlib; tests use pytest.
 
 Source-only example from repo root:
 
-    python -c 'from products.official_ats_signals.collector import collect; print(collect([{"provider":"ashby","slug":"Ashby"}], title_keywords=["engineer"],max_results=5))'
+    python -c 'from products.official_ats_signals.collector import collect; print(collect([{"provider":"greenhouse","slug":"greenhouse"}], title_keywords=["engineer"],max_results=5))'
 
-Apify actor folder is products/official_ats_signals/ with .actor/ and Dockerfile.
+Apify actor folder is products/official_ats_signals/ with .actor/ and Dockerfile. Link the existing GitHub repository as source URL `https://github.com/wisemankonstantin-droid/aion-agent-core#main:products/official_ats_signals` (not the repository root). The checked first-run example is the public Greenhouse `greenhouse` board; the Ashby `Ashby` board can exceed the intentionally strict 2 MB response limit and is not a safe demo default.
 
 ## Charging — NOT ENABLED
 
