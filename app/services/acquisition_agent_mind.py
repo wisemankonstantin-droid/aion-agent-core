@@ -1889,6 +1889,9 @@ def record_worker_outcome(worker_id: str, outcome: dict) -> None:
             memory["channel_performance"] = perf
 
         row.safe_memory = memory
-        row.last_state = "learning"
+        # Transport-only outcomes are not proof that AI reasoning succeeded.
+        # Preserve degraded/unconfigured/deferred truth from this exact cycle.
+        if row.last_state == "planned" and row.last_plan:
+            row.last_state = "learning"
         row.updated_at = _now()
         db.commit()
