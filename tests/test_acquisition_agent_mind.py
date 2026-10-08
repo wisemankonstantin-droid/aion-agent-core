@@ -1422,6 +1422,8 @@ def test_worker_outcome_memory_is_bounded_and_drops_unapproved_fields(monkeypatc
         assert row.safe_memory["channel_performance"]["federated_a2a"][
             "responses"
         ] == 12
+        assert row.last_state == "model_unconfigured"
+        assert row.total_reasoning_calls == 0
 
 
 def test_commercial_knowledge_uses_configured_deterministic_price(monkeypatch):
