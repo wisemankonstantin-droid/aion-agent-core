@@ -89,7 +89,7 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
                     "Use configured reasoning when available to discover a current "
                     "external-spend need in the assigned intent lane; qualify it, "
                     "call AION preflight, and take at most one policy-approved "
-                    "buyer-facing action. On model failure use safe deterministic "
+                    "buyer-facing route or contact. On model failure use safe deterministic "
                     "discovery without pretending an AI plan succeeded."
                 ),
                 source="parallel_colony_moltbook_and_federated_a2a",
