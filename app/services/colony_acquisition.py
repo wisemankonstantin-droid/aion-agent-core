@@ -421,8 +421,11 @@ def browse_paid_tasks(limit: int = MAX_SEARCH_RESULTS) -> dict:
         "GET",
         "/marketplace/tasks",
         params={
-            "sort": "budget",
-            "limit": min(20, max(bounded * 4, bounded)),
+            # Colony accepts sort=newest and a larger result window in one
+            # request. Budget order surfaces old seller advertisements first;
+            # inspect recent posts, then apply the existing strict buyer filter.
+            "sort": "newest",
+            "limit": min(50, max(bounded * 8, bounded)),
         },
     )
     if result.error or result.status != 200:

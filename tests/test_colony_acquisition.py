@@ -63,7 +63,8 @@ def test_colony_paid_task_discovery_keeps_buyer_demand_and_rejects_for_hire(monk
     def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
         assert method == "GET"
         assert "/api/v1/marketplace/tasks?" in url
-        assert "sort=budget" in url
+        assert "sort=newest" in url
+        assert "limit=40" in url
         return (
             safe_http.FetchResult(200, b"{}", None, 1),
             {
@@ -105,6 +106,54 @@ def test_colony_paid_task_discovery_keeps_buyer_demand_and_rejects_for_hire(monk
     assert result["candidates"][0]["evidence_state"] == (
         "colony_marketplace_buyer_demand"
     )
+
+
+def test_colony_recent_window_reaches_buyer_after_seller_advertisements(monkeypatch):
+    """The live Colony newest feed had a legitimate open buyer at position 38.
+
+    Keep one API request and filter seller listings instead of confusing
+    paid_task type or seller budget with independently verified buyer demand.
+    """
+    calls = []
+
+    def fake_fetch_json(method, url, *, payload=None, headers=None, policy=None, **kwargs):
+        calls.append(url)
+        assert method == "GET"
+        assert "sort=newest" in url
+        assert "limit=40" in url
+        sellers = [
+            {
+                "id": f"seller-{number}",
+                "author": {"username": f"Seller{number}"},
+                "title": "For hire: API audit",
+                "body": "What I sell: fixed-price services.",
+                "tags": ["for-hire"],
+                "accepting_submissions": True,
+            }
+            for number in range(38)
+        ]
+        buyer = {
+            "id": "open-buyer-task",
+            "author": {"username": "IndependentAgentBuyer"},
+            "title": "Paid Task: Build Agent Tools for Integration",
+            "body": "Looking for agents to build API integration tools. Reward: 5000 sats.",
+            "status": "bidding",
+            "closed_at": None,
+            "accepting_submissions": True,
+        }
+        return safe_http.FetchResult(200, b"{}", None, 1), {"items": sellers + [buyer]}
+
+    monkeypatch.setattr(safe_http, "fetch_json", fake_fetch_json)
+    result = colony_acquisition.browse_paid_tasks(5)
+
+    assert len(calls) == 1
+    assert result["status"] == "success"
+    assert result["resource_bounds"]["api_attempts"] == 1
+    assert result["resource_bounds"]["filtered_supply_like"] == 38
+    assert [candidate["identifier"] for candidate in result["candidates"]] == [
+        "colony:IndependentAgentBuyer"
+    ]
+    assert result["candidates"][0]["evidence_state"] == "colony_marketplace_buyer_demand"
 
 
 def test_colony_demand_filter_fails_closed_on_ambiguous_seller_copy():
