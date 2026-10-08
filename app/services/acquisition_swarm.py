@@ -656,7 +656,13 @@ def _recent_global_scan_lane(*, now_seconds: float | None = None) -> str:
     active = _active_worker_specs_for_cycle(now_seconds=now_seconds)
     if not active:
         return tuple(INTENT_WORKERS)[0]
-    return active[0].intent_profile
+    # With the whole focused team active every cycle, the roster no longer
+    # changes position. Rotate scan ownership by time slot instead of always
+    # selecting the first worker; this preserves intent diversity without
+    # adding workers or additional outbound requests.
+    current = time.time() if now_seconds is None else float(now_seconds)
+    slot = int(current // DEFAULT_INTERVAL_SECONDS)
+    return active[slot % len(active)].intent_profile
 
 
 def _daily_worker_accountability(
