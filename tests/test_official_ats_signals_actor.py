@@ -1,6 +1,19 @@
 """Offline regression tests for the proposed market-listed Apify product."""
+import json
+from pathlib import Path
+
 import pytest
 from products.official_ats_signals.collector import collect, normalize, source_url
+
+
+def test_first_run_input_schema_uses_known_bounded_public_board():
+    path = Path(__file__).parents[1] / "products" / "official_ats_signals" / ".actor" / "input_schema.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    defaults = schema["properties"]["boards"]["default"]
+    assert defaults == [{"provider": "greenhouse", "slug": "greenhouse"}]
+    assert source_url(defaults[0]["provider"], defaults[0]["slug"]) == (
+        "https://boards-api.greenhouse.io/v1/boards/greenhouse/jobs"
+    )
 
 
 def test_source_urls_are_fixed_allowlisted_hosts():
