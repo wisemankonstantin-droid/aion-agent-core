@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_BOARDS = 5
 MAX_RESULTS = 100
@@ -21,7 +21,7 @@ _PROVIDERS = {"greenhouse", "lever", "ashby"}
 
 def source_url(provider: str, slug: str) -> str:
     """Strictly fixed domains prevent user-controlled URLs / SSRF."""
-    if provider not in _PROVIDERS or not isinstance(slug, str) or not _SLUG.fullmatch(slug):
+    if not isinstance(provider, str) or provider not in _PROVIDERS or not isinstance(slug, str) or not _SLUG.fullmatch(slug):
         raise ValueError("unsupported_provider_or_board_slug")
     if provider == "greenhouse":
         return f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
@@ -33,13 +33,14 @@ def source_url(provider: str, slug: str) -> str:
 def fetch_public_json(url: str) -> object:
     """One bounded GET, without redirects to arbitrary customer-supplied hosts."""
     request = Request(url, headers={"Accept": "application/json", "User-Agent": "AION-Hiring-Signals/1.0"})
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, newurl):
+            # Never follow an upstream redirect to a private network endpoint.
+            raise ValueError("official_ats_redirect_refused")
+
     try:
-        with urlopen(request, timeout=10) as response:
-            # Redirect targets must remain one of the official ATS domains.
-            from urllib.parse import urlsplit
-            hostname = (urlsplit(response.url).hostname or "").lower()
-            if hostname not in {"boards-api.greenhouse.io", "api.lever.co", "api.ashbyhq.com"}:
-                raise ValueError("unexpected_upstream_redirect")
+        with build_opener(NoRedirect).open(request, timeout=10) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except (HTTPError, URLError, TimeoutError) as exc:
         raise RuntimeError("official_ats_source_unavailable") from exc
