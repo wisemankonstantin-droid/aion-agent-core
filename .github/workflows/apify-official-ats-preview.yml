@@ -1,0 +1,50 @@
+name: AION Official ATS Apify build (manual)
+
+# Manual-only until Apify build costs, account limits, and preview run are verified.
+# This workflow does not publish to the Store, enable PPE billing, or touch Render.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aion-apify-official-ats
+  cancel-in-progress: false
+
+jobs:
+  build-actor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check Actor files
+        run: |
+          set -euo pipefail
+          test -f products/official_ats_signals/.actor/actor.json
+          test -f products/official_ats_signals/.actor/input_schema.json
+          test -f products/official_ats_signals/Dockerfile
+          test -f products/official_ats_signals/main.py
+          test -f products/official_ats_signals/collector.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Push and build Actor on Apify
+        id: apify
+        uses: apify/push-actor-action@5cc259c1492e59394a1e3db984b966e16a3d026c # v1
+        with:
+          token: ${{ secrets.APIFY_TOKEN }}
+          working-directory: products/official_ats_signals
+
+      - name: Report non-secret build result
+        env:
+          BUILD_ID: ${{ steps.apify.outputs.build-id }}
+          BUILD_STATUS: ${{ steps.apify.outputs.build-status }}
+        run: |
+          echo "Apify build ID: $BUILD_ID"
+          echo "Apify build status: $BUILD_STATUS"
