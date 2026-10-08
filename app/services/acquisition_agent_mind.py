@@ -604,14 +604,14 @@ _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "motif 2",
 )
 
-_CONTROL_SEPARATOR_RE = re.compile(r"[_\\-\\u2010\\u2011\\u2012\\u2013\\u2014\\u2015\\u2212]+")
+_CONTROL_SEPARATOR_RE = re.compile(r"[_\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]+")
 _UNVERIFIED_ACQUISITION_GATE_RE = re.compile(
-    r"\\b(?:go|hold|stop)\\s*(?:>=|=>|<=|>|<|=|≥|≤|at least|above|below)\\s*\\d+"
-    r"|\\b\\d+\\s*rpm\\b"
-    r"|\\b\\d+\\s+(?:compliant\\s+)?(?:pre\\s?flight\\s+)?"
-    r"(?:payloads?|requests?|submissions?)\\s*(?:/|per)\\s*(?:min(?:ute)?s?|seconds?)\\b"
-    r"|\\b(?:two|\\d+)\\s+consecutive\\s+(?:\\d+\\s+minute\\s+)?windows?\\b"
-    r"|\\b\\d+\\s+minute\\s+windows?\\b",
+    r"\b(?:go|hold|stop)\s*(?:>=|=>|<=|>|<|=|≥|≤|at least|above|below)\s*\d+"
+    r"|\b\d+\s*rpm\b"
+    r"|\b\d+\s+(?:compliant\s+)?(?:pre\s?flight\s+)?"
+    r"(?:payloads?|requests?|submissions?)\s*(?:/|per)\s*(?:min(?:ute)?s?|seconds?)\b"
+    r"|\b(?:two|\d+)\s+consecutive\s+(?:\d+\s+minute\s+)?windows?\b"
+    r"|\b\d+\s+minute\s+windows?\b",
 )
 
 
