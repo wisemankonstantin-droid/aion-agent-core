@@ -1,8 +1,13 @@
 name: AION Official ATS Apify build (manual)
 
-# Manual-only until Apify build costs, account limits, and preview run are verified.
-# This workflow does not publish to the Store, enable PPE billing, or touch Render.
+# Pushes run only a no-cost credential preflight. Actor builds require manual dispatch
+# until Apify account usage limits and a bounded build/test budget are verified.
+# Neither path publishes to the Store, enables PPE billing, or touches Render.
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apify-official-ats-preview.yml
   workflow_dispatch:
 
 permissions:
@@ -13,7 +18,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify-apify-credential:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify token and AION account without building an Actor
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          token = os.environ.get("APIFY_TOKEN", "")
+          if not token:
+              raise SystemExit("APIFY_TOKEN repository secret is missing")
+          request = Request(
+              "https://api.apify.com/v2/users/me",
+              headers={"Authorization": f"Bearer {token}"},
+          )
+          with urlopen(request, timeout=15) as response:
+              result = json.load(response)
+          username = result.get("data", {}).get("username")
+          if username not in {"aion_supreme", "aion_supreme_tools"}:
+              raise SystemExit("Apify token account differs from the expected AION account")
+          print("Apify authentication preflight PASS (no Actor build or run)")
+          PY
+
   build-actor:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
