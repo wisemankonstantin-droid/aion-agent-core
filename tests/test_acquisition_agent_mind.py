@@ -89,11 +89,11 @@ def test_outreach_strategy_is_bounded_and_defaults_fail_closed():
     assert validated_invalid["outreach_strategy"] == "preflight_first"
 
 
-def test_all_100_workers_have_distinct_cognitive_fingerprints():
+def test_five_active_roles_have_distinct_cognitive_fingerprints():
     profiles = [acquisition_agent_mind.cognitive_profile(worker) for worker in WORKERS]
 
-    assert len(profiles) == 100
-    assert len({row["strategy_fingerprint"] for row in profiles}) == 100
+    assert len(profiles) == 5
+    assert len({row["strategy_fingerprint"] for row in profiles}) == 5
     assert all(row["intent_profile"] for row in profiles)
     assert all(20 <= row["exploration_bias"] <= 80 for row in profiles)
     assert all(20 <= row["verification_bias"] <= 80 for row in profiles)
@@ -233,8 +233,8 @@ def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
         lambda observation: _brain_plan(),
     )
 
-    workers = WORKERS[:8]
-    active_reasoning_workers = WORKERS[5:8]
+    workers = WORKERS[:5]
+    active_reasoning_workers = WORKERS[2:5]
     plans = acquisition_agent_mind.refresh_all_minds(
         workers,
         channel_health={"federated_a2a": {"public_discovery": True}},
@@ -245,7 +245,7 @@ def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
         reasoning_workers=active_reasoning_workers,
     )
 
-    expected = {WORKERS[5].id, WORKERS[6].id}
+    expected = {WORKERS[2].id, WORKERS[3].id}
     assert set(plans) == expected
     assert set(selected_ids) == expected
 
@@ -260,10 +260,10 @@ def test_reasoning_budget_is_spent_on_explicit_active_workers(monkeypatch):
                 )
             )
         }
-    assert rows[WORKERS[5].id].last_state == "planned"
-    assert rows[WORKERS[6].id].last_state == "planned"
+    assert rows[WORKERS[2].id].last_state == "planned"
+    assert rows[WORKERS[3].id].last_state == "planned"
     assert rows[WORKERS[0].id].last_state == "reasoning_budget_deferred"
-    assert rows[WORKERS[7].id].last_state == "reasoning_budget_deferred"
+    assert rows[WORKERS[4].id].last_state == "reasoning_budget_deferred"
 
 
 def test_openai_reasoning_request_is_structured_bounded_and_not_stored(monkeypatch):
@@ -1544,7 +1544,7 @@ def test_commercial_truth_flows_to_temple_and_workers_without_model_price_author
     assert "only authority for AION product" in acquisition_agent_mind._MIND_INSTRUCTIONS
 
 
-def test_live_temple_exposes_shared_brain_separately_from_100_worker_minds(monkeypatch):
+def test_live_temple_exposes_shared_brain_separately_from_live_minds(monkeypatch):
     _clean_minds()
     monkeypatch.setenv("OPENAI_API_KEY", "brain-secret-must-not-leak")
     now = acquisition_agent_mind._now()
