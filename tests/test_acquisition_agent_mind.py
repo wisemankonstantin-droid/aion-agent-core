@@ -702,6 +702,92 @@ def test_unicode_hyphen_control_hallucinations_are_canonicalized_and_removed():
         assert acquisition_agent_mind._references_unsupported_internal_control(value)
 
 
+def test_live_model_invented_preflight_thresholds_and_contact_grants_are_rejected():
+    brain_plan = _brain_plan()
+    brain_plan["collective_summary"] = (
+        "Drive the GO threshold, then use the outbound‑contact grant to touch a buyer."
+    )
+    brain_plan["priority_hypotheses"] = [
+        "Sustaining ≥ 20 compliant pre‑flight payloads/minute raises GO ≥ 15 %.",
+        "Reach GO>=15 for two consecutive 2‑minute windows.",
+        "A real external buyer asking for a provider price quote merits preflight.",
+    ]
+    brain_plan["peer_directives"] = [
+        "Submit outbound_contact:true with one_target_per_target:true.",
+        "Use at most one contact for a qualified external buyer need.",
+    ]
+    brain_plan["learning_agenda"] = [
+        "Submit 20 RPM to unlock the contact grant.",
+        "Compare real integration requests from independent buyers.",
+    ]
+    guarded = acquisition_agent_mind._validate_temple_brain_plan(brain_plan)
+    serialized = json.dumps(guarded, ensure_ascii=False).lower()
+
+    for invented in (
+        "go threshold",
+        "contact grant",
+        "go>=15",
+        "go ≥ 15",
+        "payloads/minute",
+        "20 rpm",
+        "outbound_contact",
+        "one_target_per_target",
+    ):
+        assert invented not in serialized
+    assert "external buyer asking for a provider price quote" in serialized
+    assert "compare real integration requests" in serialized
+    assert "one contact for a qualified external buyer" in serialized
+
+    for invented in (
+        "GO ≥ 15 %",
+        "GO>=15",
+        "20 RPM",
+        "20 compliant pre‑flight payloads/minute",
+        "two consecutive 2‑minute windows",
+        "outbound‑contact grant",
+        "outbound_contact:true",
+        "one_target_per_target:true",
+        "Motif 1 or Motif 2 is mandatory",
+        "High‑rate preflight submissions unlock a buyer.",
+        "Pre‑flight flood first, buyer later.",
+        "Get the granted contact token from the GO metric.",
+    ):
+        assert acquisition_agent_mind._references_unsupported_internal_control(
+            invented
+        )
+
+
+def test_invented_traffic_gate_cannot_override_buyer_intent_worker_policy():
+    worker_plan = _plan(WORKERS[0].id)
+    worker_plan["search_queries"] = [
+        "pre‑flight 20 payloads/minute to unlock outbound contact grant",
+        "independent agent asks to buy a provider integration now",
+    ]
+    worker_plan["sales_plan"] = [
+        "Wait until GO ≥ 15 % for two consecutive windows.",
+        "Offer bounded preflight to an independent buyer with current intent.",
+    ]
+    worker_plan["contact_policy"] = "contact_one_if_qualified"
+    guarded = acquisition_agent_mind._validate_plan(worker_plan, ["buyer quote"])
+    serialized = json.dumps(guarded, ensure_ascii=False).lower()
+
+    assert guarded["contact_policy"] == "discover_only"
+    assert guarded["search_queries"] == [
+        "independent agent asks to buy a provider integration now"
+    ]
+    assert "two consecutive windows" not in serialized
+    assert "bounded preflight to an independent buyer" in serialized
+    memory = acquisition_agent_mind._guard_memory_payload(
+        {"lessons": [
+            "GO ≥ 15 % unlocks contact after 20 RPM.",
+            "An independent buyer requested integration pricing.",
+        ]}
+    )
+    assert memory["lessons"] == [
+        "An independent buyer requested integration pricing."
+    ]
+
+
 def test_reasoning_prompts_forbid_invented_aion_control_plane_resources():
     worker_prompt = " ".join(acquisition_agent_mind._MIND_INSTRUCTIONS.split()).lower()
     brain_prompt = " ".join(
