@@ -270,7 +270,11 @@ internal lookups. Missing hypothetical metadata must not become a hard-hold gate
 Do not invent demand, buyers, conversations, outcomes, URLs, credentials or payments.
 Do not expose chain-of-thought. Never recommend spam, duplicate contact, new fake identities,
 platform-limit evasion, self-payment, uncontrolled money movement, or contact
-that violates opt-out/channel health. A shared strategy may prioritize channels,
+that violates opt-out/channel health. Never fabricate GO/HOLD/STOP percentages,
+preflight requests-per-minute, rolling-window thresholds, outbound-contact grants,
+Motif 1/2 obligations or mandatory JSON flags as prerequisites to reaching buyers.
+Preflight is a per-need decision, not a way to manufacture traffic or permissions.
+A shared strategy may prioritize channels,
 buyer-intent motifs, hypotheses and experiments, but the bounded executor remains
 the only authority for network writes and payments.
 
@@ -587,15 +591,34 @@ _UNSUPPORTED_INTERNAL_CONTROL_MARKERS = (
     "buyer intent registry",
     "authoritative registry",
     "registry snapshot",
+    # These gates appeared in live model plans but have no verified executor or
+    # commercial authorization behind them. Never turn them into acquisition policy.
+    "outbound contact grant",
+    "contact grant",
+    "outbound contact permission",
+    "outbound contact:",
+    "one target per target",
+    "go threshold",
+    "go rate",
+    "motif 1",
+    "motif 2",
 )
 
-_CONTROL_SEPARATOR_RE = re.compile(r"[_\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]+")
+_CONTROL_SEPARATOR_RE = re.compile(r"[_\\-\\u2010\\u2011\\u2012\\u2013\\u2014\\u2015\\u2212]+")
+_UNVERIFIED_ACQUISITION_GATE_RE = re.compile(
+    r"\\b(?:go|hold|stop)\\s*(?:>=|=>|<=|>|<|=|≥|≤|at least|above|below)\\s*\\d+"
+    r"|\\b\\d+\\s*rpm\\b"
+    r"|\\b\\d+\\s+(?:compliant\\s+)?(?:pre\\s?flight\\s+)?"
+    r"(?:payloads?|requests?|submissions?)\\s*(?:/|per)\\s*(?:min(?:ute)?s?|seconds?)\\b"
+    r"|\\b(?:two|\\d+)\\s+consecutive\\s+(?:\\d+\\s+minute\\s+)?windows?\\b"
+    r"|\\b\\d+\\s+minute\\s+windows?\\b",
+)
 
 
 def _references_unsupported_internal_control(value: object) -> bool:
     text = " ".join(str(value or "").split()).lower()
     canonical = _CONTROL_SEPARATOR_RE.sub(" ", text)
-    return any(
+    return bool(_UNVERIFIED_ACQUISITION_GATE_RE.search(canonical)) or any(
         marker in text or marker in canonical
         for marker in _UNSUPPORTED_INTERNAL_CONTROL_MARKERS
     )
