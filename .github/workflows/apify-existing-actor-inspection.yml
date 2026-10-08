@@ -1,0 +1,76 @@
+name: AION Apify read-only Actor inventory
+
+# No build, run, account mutation, Store publication, payment or spending.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apify-existing-actor-inspection.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect existing account Actors and builds via saved secret
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+          token = os.environ.get("APIFY_TOKEN")
+          if not token:
+              raise SystemExit("Missing APIFY_TOKEN")
+          def read(path):
+              req = Request("https://api.apify.com/v2/" + path,
+                            headers={"Authorization": f"Bearer {token}"})
+              try:
+                  with urlopen(req, timeout=15) as response:
+                      return json.load(response).get("data", {})
+              except HTTPError as exc:
+                  print(f"Read-only endpoint {path.split('?')[0]}: HTTP {exc.code}")
+                  return {}
+
+          user = read("users/me")
+          if user.get("username") != "aion_supreme":
+              raise SystemExit("Unexpected Apify account")
+          limits = read("users/me/limits")
+          print("ACCOUNT PLAN:", user.get("plan", {}).get("id"))
+          print("CURRENT USD USAGE:", limits.get("current", {}).get("monthlyUsageUsd"))
+          print("CURRENT USD LIMIT:", limits.get("limits", {}).get("maxMonthlyUsageUsd"))
+          print("ACTIVE ACTOR JOBS:", limits.get("current", {}).get("activeActorJobCount"))
+          print("ACCOUNT ACTOR COUNT:", limits.get("current", {}).get("actorCount"))
+
+          actors = read("actors?my=1&desc=1&limit=100").get("items", [])
+          if not isinstance(actors, list):
+              raise SystemExit("Actor listing unavailable")
+          print("OWNED ACTORS LISTED:", len(actors))
+          actor_ids = set()
+          for actor in actors:
+              name = actor.get("name", "")
+              actor_id = actor.get("id")
+              if not name or not actor_id:
+                  continue
+              actor_ids.add(actor_id)
+              print("ACTOR:", name, "ID:", actor_id,
+                    "isPublic:", actor.get("isPublic"),
+                    "lastRun:", (actor.get("stats") or {}).get("lastRunStartedAt"))
+
+          builds = read("actor-builds?limit=100&desc=1").get("items", [])
+          if not isinstance(builds, list):
+              raise SystemExit("Build listing unavailable")
+          print("RECENT BUILDS LISTED:", len(builds))
+          for b in builds:
+              if b.get("actId") in actor_ids:
+                  print("BUILD:", b.get("id"), "Actor:", b.get("actId"),
+                        "status:", b.get("status"),
+                        "USD:", b.get("usageTotalUsd"),
+                        "started:", b.get("startedAt"))
+          print("READ ONLY INSPECTION PASS - NO BILLABLE ACTION")
+          PY
