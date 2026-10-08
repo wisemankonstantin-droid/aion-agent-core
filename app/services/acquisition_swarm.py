@@ -244,8 +244,8 @@ MOLTBOOK_INTENT_QUERIES: dict[str, tuple[str, ...]] = {
 }
 
 MAX_WORKERS_PER_CYCLE = WORKER_COUNT
-DEFAULT_ACTIVE_WORKERS_PER_CYCLE = 20
-MAX_CONTACTS_PER_CYCLE = 20
+DEFAULT_ACTIVE_WORKERS_PER_CYCLE = 5
+MAX_CONTACTS_PER_CYCLE = 5
 MAX_COLONY_SCOUT_WORKERS_PER_CYCLE = 5
 MAX_COLONY_COMMENTS_PER_CYCLE = 2
 MAX_COLONY_COMMENTS_PER_DAY = 20
@@ -430,7 +430,7 @@ def _bounded_active_worker_count() -> int:
 def _active_worker_specs_for_cycle(
     *, now_seconds: float | None = None
 ) -> tuple:
-    """Rotate real assignments across the transparent 100-worker force.
+    """Select the bounded five-role live acquisition team.
 
     Worker count is capability/ownership topology, not permission to generate
     unbounded network traffic. Shared transport health and channel limits remain
@@ -453,7 +453,7 @@ def _active_worker_specs_for_cycle(
 def _next_active_worker_specs(
     *, now_seconds: float | None = None
 ) -> tuple:
-    """Advance the real 100-worker rotation by completed-cycle order.
+    """Advance the bounded live-team rotation by completed-cycle order.
 
     Wall-clock slots seed the first cohort after process start only. Later
     cohorts advance by the active cohort size, so variable external-discovery
@@ -1268,7 +1268,7 @@ def run_intent_acquisition_cycle(db: Session, *, send: bool | None = None) -> di
             "suspended_until": moltbook_outbound_status().get("suspended_until"),
         },
         "truth": (
-            "The 100 workers are transparent AION-operated acquisition infrastructure. "
+            "The five live roles are transparent AION-operated acquisition infrastructure. "
             "The rotating active cohort receives bounded external transport slots. When the "
             "model runtime is configured, the configured reasoning-call budget is spent only "
             "on workers in that active cohort; remaining active workers use deterministic "
