@@ -42,8 +42,8 @@ CLOUDRU_FOUNDATION_MODELS_HOST = "foundation-models.api.cloud.ru"
 CLOUDRU_CHAT_COMPLETIONS_URL = (
     "https://foundation-models.api.cloud.ru/v1/chat/completions"
 )
-DEFAULT_MAX_CALLS_PER_CYCLE = 100
-DEFAULT_MAX_CONCURRENCY = 8
+DEFAULT_MAX_CALLS_PER_CYCLE = 5
+DEFAULT_MAX_CONCURRENCY = 2
 DEFAULT_MAX_OUTPUT_TOKENS = 600
 MAX_OBSERVATION_BYTES = 12_000
 MAX_COLLECTIVE_OBSERVATION_BYTES = 24_000
@@ -246,7 +246,7 @@ strategy when prior queries produced duplicates, sellers or no responses.
 _TEMPLE_BRAIN_INSTRUCTIONS = """You are the shared strategic cognition layer of AION.
 Your only North Star is FIRST REAL SETTLED AGENT TRANSACTION.
 
-Synthesize the safe, redacted, durable experience of the whole 100-agent
+Synthesize the safe, redacted, durable experience of the active bounded
 acquisition force. Produce a compact collective strategy that helps independent
 minds search wider, learn from one another, avoid repeated failures, and move
 genuine external buyer intent through AION preflight to GO/HOLD/STOP and then a
