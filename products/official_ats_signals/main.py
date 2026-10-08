@@ -46,8 +46,11 @@ async def main() -> None:
             return
 
         charged = await Actor.charge(event_name="verified-batch")
-        if charged.event_charge_limit_reached:
-            await Actor.set_value("OUTPUT", {"status": "payment_limit_reached", "results": 0})
+        # event_charge_limit_reached can be True AFTER one successful charge:
+        # the remaining spend budget may now be zero. Gate delivery on the
+        # actual number of charged events, never on post-charge capacity.
+        if charged.charged_count != 1:
+            await Actor.set_value("OUTPUT", {"status": "payment_not_charged", "results": 0})
             return
         await Actor.push_data(result["jobs"])
         await Actor.set_value("OUTPUT", {
