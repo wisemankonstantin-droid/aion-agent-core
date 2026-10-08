@@ -1,17 +1,16 @@
 """AION acquisition force manifest.
 
-These are transparent AION-operated logical workers, never fake external users,
-customers, adoption, or SAT evidence. The fleet is deliberately larger than the
-currently active transport budget: every worker is visible in the control plane,
-while network writes remain governed by shared dedupe, channel health, platform
-limits and one-contact-per-target rules.
+These are five real bounded procurement roles, not 100 nominal AI agents or
+independent customers. Historical worker rows are retained for durable evidence;
+only these roles are scheduled. Actual model intelligence depends on successful
+provider responses; transport remains governed by dedupe and platform limits.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 
 
-WORKER_COUNT = 100
+WORKER_COUNT = 5
 LEGACY_WORKER_IDS = (
     "aion-scout-a2a",
     "aion-scout-mcp",
@@ -36,6 +35,14 @@ INTENT_PROFILES = (
     "payments_buyers",
     "verification_buyers",
 )
+ACTIVE_INTENT_PROFILES = (
+    "provider_selection",
+    "mcp_buyers",
+    "paid_api_buyers",
+    "fallback_seekers",
+    "verification_buyers",
+)
+
 UNIVERSAL_SKILLS = (
     "reason_over_safe_durable_memory",
     "learn_from_shared_temple_brain",
@@ -68,7 +75,7 @@ class AcquisitionWorker:
 def _build_workers() -> tuple[AcquisitionWorker, ...]:
     workers = []
     for index in range(1, WORKER_COUNT + 1):
-        intent = INTENT_PROFILES[(index - 1) % len(INTENT_PROFILES)]
+        intent = ACTIVE_INTENT_PROFILES[(index - 1) % len(ACTIVE_INTENT_PROFILES)]
         shard = ((index - 1) // len(INTENT_PROFILES)) + 1
         worker_id = (
             LEGACY_WORKER_IDS[index - 1]
@@ -79,10 +86,11 @@ def _build_workers() -> tuple[AcquisitionWorker, ...]:
             AcquisitionWorker(
                 id=worker_id,
                 mission=(
-                    "Independently reason from safe durable memory, find a real external "
-                    "machine need, qualify it, choose a bounded next action, learn from the "
-                    "verified outcome, and route qualified intent through AION preflight to "
-                    "GO/HOLD/STOP and one bounded buyer-facing route."
+                    "Use configured reasoning when available to discover a current "
+                    "external-spend need in the assigned intent lane; qualify it, "
+                    "call AION preflight, and take at most one policy-approved "
+                    "buyer-facing route or contact. On model failure use safe deterministic "
+                    "discovery without pretending an AI plan succeeded."
                 ),
                 source="parallel_colony_moltbook_and_federated_a2a",
                 action="reason_align_sales_plan_discover_qualify_contact_learn_route",
