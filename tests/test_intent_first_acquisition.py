@@ -328,20 +328,20 @@ def test_machine_discovery_surfaces_make_zero_cost_preflight_first_class():
     assert "/commercial/route-intelligence/preflight" in llms.text
 
 
-def test_swarm_has_100_transparent_workers_and_3000_target_capacity(monkeypatch):
+def test_swarm_has_five_targeted_live_roles_and_bounded_capacity(monkeypatch):
     from app.acquisition import worker_manifest
 
     assert len(acquisition_swarm.INTENT_WORKERS) == 15
     manifest = worker_manifest()
-    assert len(manifest) == acquisition_swarm.WORKER_COUNT == 100
-    assert len({worker["id"] for worker in manifest}) == 100
+    assert len(manifest) == acquisition_swarm.WORKER_COUNT == 5
+    assert len({worker["id"] for worker in manifest}) == 5
     assert all(
         worker["intent_profile"] in acquisition_swarm.INTENT_WORKERS
         for worker in manifest
     )
     assert (
         acquisition_swarm.WORKER_COUNT * ambassador.MAX_CAMPAIGN_TARGETS
-        == 3000
+        == 150
     )
     flattened = [
         query
@@ -357,7 +357,7 @@ def test_swarm_has_100_transparent_workers_and_3000_target_capacity(monkeypatch)
     assert acquisition_swarm.start_acquisition_swarm_if_enabled() is False
 
 
-def test_swarm_rotation_covers_all_100_workers_without_claiming_100_concurrent_writes(
+def test_swarm_rotation_stays_with_five_live_roles_without_unbounded_writes(
     monkeypatch,
 ):
     monkeypatch.delenv("AION_ACQUISITION_ACTIVE_WORKERS_PER_CYCLE", raising=False)
@@ -371,17 +371,17 @@ def test_swarm_rotation_covers_all_100_workers_without_claiming_100_concurrent_w
         acquisition_swarm._reset_rotation_cursor_for_tests(None)
 
     assert all(
-        len(cohort) == acquisition_swarm.DEFAULT_ACTIVE_WORKERS_PER_CYCLE == 20
+        len(cohort) == acquisition_swarm.DEFAULT_ACTIVE_WORKERS_PER_CYCLE == 5
         for cohort in cohorts
     )
-    assert len({worker.id for cohort in cohorts for worker in cohort}) == 100
+    assert len({worker.id for cohort in cohorts for worker in cohort}) == 5
     assert [worker.id for worker in cohorts[0]] == [
-        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[:20]
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[:5]
     ]
     assert [worker.id for worker in cohorts[4]] == [
-        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[80:100]
+        worker.id for worker in acquisition_swarm.ACQUISITION_WORKERS[:5]
     ]
-    assert acquisition_swarm.MAX_CONTACTS_PER_CYCLE == 20
+    assert acquisition_swarm.MAX_CONTACTS_PER_CYCLE == 5
 
 
 def test_swarm_cadence_is_measured_from_cycle_start_not_completion(monkeypatch):
@@ -1279,15 +1279,15 @@ def test_swarm_response_snapshot_keeps_only_safe_routing_evidence():
 
 
 
-def test_live_temple_is_read_only_truth_view_with_100_workers():
+def test_live_temple_is_read_only_truth_view_with_five_live_roles():
     response = client.get("/temple/live/state")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     data = response.json()
     assert data["north_star"] == "FIRST_REAL_SETTLED_AGENT_TRANSACTION"
-    assert data["fleet"]["worker_count"] == 100
-    assert len(data["fleet"]["workers"]) == 100
+    assert data["fleet"]["worker_count"] == 5
+    assert len(data["fleet"]["workers"]) == 5
     assert "recent_events" in data["inbound_visibility"]
     assert all(
         set(event).issubset({"source", "created_at"})
