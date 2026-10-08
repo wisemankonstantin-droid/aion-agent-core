@@ -45,6 +45,47 @@ jobs:
           if not username:
               raise SystemExit("Apify token response did not include an account username")
           print(f"Apify authentication preflight PASS for {username} (no Actor build or run)")
+
+          # Read-only billing check; do not log private user JSON or credentials.
+          from decimal import Decimal, InvalidOperation
+          def get_data(path):
+              req = Request(
+                  "https://api.apify.com/v2/" + path,
+                  headers={"Authorization": f"Bearer {token}"},
+              )
+              with urlopen(req, timeout=15) as response:
+                  return json.load(response).get("data", {})
+
+          limits = get_data("users/me/limits")
+          current = limits.get("current", {})
+          ceiling = limits.get("limits", {})
+          plan = result.get("data", {}).get("plan", {})
+          def nonnegative(value, label):
+              try:
+                  n = Decimal(str(value))
+              except (InvalidOperation, TypeError):
+                  raise SystemExit(f"Apify {label} is missing or invalid")
+              if not n.is_finite() or n < 0:
+                  raise SystemExit(f"Apify {label} is invalid")
+              return n
+
+          usage = nonnegative(current.get("monthlyUsageUsd"), "monthly usage")
+          max_usage = nonnegative(ceiling.get("maxMonthlyUsageUsd"), "monthly cap")
+          prepaid = nonnegative(plan.get("monthlyUsageCreditsUsd"), "prepaid monthly credits")
+          remaining_prepaid = max(Decimal("0"), prepaid - usage)
+          remaining_under_cap = max(Decimal("0"), max_usage - usage)
+          print(f"Apify monthly usage (USD): {usage}")
+          print(f"Apify plan prepaid credits (USD): {prepaid}")
+          print(f"Apify monthly hard limit (USD): {max_usage}")
+          print(f"Apify unused prepaid allowance (USD): {remaining_prepaid}")
+          print(f"Apify unused monthly hard-limit room (USD): {remaining_under_cap}")
+          if not remaining_prepaid or not remaining_under_cap:
+              raise SystemExit("BLOCKED: No confirmed prepaid capacity for Actor build")
+          if remaining_under_cap > Decimal("1"):
+              print("HOLD: account-wide hard limit exceeds the authorized $1 experiment")
+          else:
+              print("PASS: account monthly headroom is within $1, subject to separate existing-credits check")
+          print("COST PREFLIGHT COMPLETE: no Actor build/run, billing mutation or payment")
           PY
 
   build-actor:
